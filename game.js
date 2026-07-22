@@ -988,17 +988,18 @@
   function startAttack() {
     if (game.mode !== "playing" || player.attackCooldown > 0 || player.attackTimer > 0) return;
 
-    const aim = getPointerAim();
-    let dirX = pointer.active ? aim.x : player.facing;
-    let dirY = pointer.active ? aim.y : 0;
+    const movingLeft = keys.has("KeyA") || keys.has("ArrowLeft");
+    const movingRight = keys.has("KeyD") || keys.has("ArrowRight");
+    if (movingLeft && !movingRight) player.facing = -1;
+    if (movingRight && !movingLeft) player.facing = 1;
+
+    let dirY = 0;
     if (keys.has("KeyW") || keys.has("ArrowUp")) dirY = -0.82;
     if (keys.has("KeyS") || keys.has("ArrowDown")) dirY = 0.82;
-    if (!pointer.active && (keys.has("KeyA") || keys.has("ArrowLeft"))) dirX = -1;
-    if (!pointer.active && (keys.has("KeyD") || keys.has("ArrowRight"))) dirX = 1;
+    const dirX = dirY === 0 ? player.facing : player.facing * 0.58;
     const directionLength = Math.max(1, Math.hypot(dirX, dirY));
     player.attackDir.x = dirX / directionLength;
     player.attackDir.y = dirY / directionLength;
-    player.facing = player.attackDir.x >= 0 ? 1 : -1;
     player.chargedAttack = player.echoGauge >= 100;
     if (player.chargedAttack) player.echoGauge = 0;
 
