@@ -1478,10 +1478,11 @@
 
   function respawn() {
     game.deaths += 1;
-    const deathStage = player.respawnStage ?? getStageIndexAt(player.respawnX);
+    const deathZoneIndex = getZoneIndexAt(player.x + player.w / 2);
+    const deathZone = zones[deathZoneIndex];
     let revivedCount = 0;
-    for (const enemy of enemies) {
-      if (enemy.stageIndex !== deathStage) continue;
+    let revivedBossKind = null;
+    for (const enemy of getZoneEnemies(deathZoneIndex)) {
       if (!enemy.alive || enemy.hp < enemy.maxHp) revivedCount += 1;
       enemy.alive = true;
       enemy.hp = enemy.maxHp;
@@ -1498,16 +1499,18 @@
       enemy.hitAttackId = -1;
       enemy.hitShotId = -1;
       enemy.blockedAttackId = -1;
+      if (enemy.type === "boss") revivedBossKind = enemy.bossKind;
     }
     for (const room of combatRooms) {
-      if (room.stageIndex !== deathStage) continue;
+      if (getZoneIndexAt(room.left) !== deathZoneIndex) continue;
       room.triggered = false;
       room.cleared = false;
-      room.remaining = enemies.filter((enemy) => enemy.stageIndex === deathStage && enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
+      room.remaining = enemies.filter((enemy) => enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
     }
-    const stageBossKind = stages[deathStage].bossKind;
-    game.defeatedBosses.delete(stageBossKind);
-    game.stageClearTimes[deathStage] = 0;
+    if (revivedBossKind) {
+      game.defeatedBosses.delete(revivedBossKind);
+      game.stageClearTimes[deathZone.stageIndex] = 0;
+    }
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("censor");
     player.x = player.respawnX;
@@ -1526,7 +1529,7 @@
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.shake = 12;
-    game.hint = `체크포인트 재개 · STAGE 0${deathStage + 1} 적 ${revivedCount}기 완전 복구`;
+    game.hint = `체크포인트 재개 · ${deathZone.name} 적 ${revivedCount}기 부활`;
     game.hintTimer = 3.8;
     saveCampaign();
   }
