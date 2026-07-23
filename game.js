@@ -290,6 +290,8 @@
     respawnX: 150,
     respawnY: 540,
     respawnStage: 0,
+    respawnZone: 0,
+    respawnCheckpointIndex: -1,
     trail: [],
     afterimageTimer: 0,
     combo: 0,
@@ -397,6 +399,31 @@
     return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive).length;
   }
 
+  function getEnemyLockdownBounds(enemy) {
+    const zone = zones[getZoneIndexAt(enemy.originX)];
+    let left = zone.x + 48;
+    let right = zone.x + ZONE_W - 48;
+    const room = combatRooms.find((candidate) => enemy.originX > candidate.left && enemy.originX < candidate.right);
+    if (room) {
+      left = Math.max(left, room.left + 24);
+      right = Math.min(right, room.right - 24);
+    }
+    return { left, right };
+  }
+
+  function constrainEnemyToLockdown(enemy) {
+    const bounds = getEnemyLockdownBounds(enemy);
+    if (enemy.x < bounds.left) {
+      enemy.x = bounds.left;
+      enemy.vx = Math.max(0, enemy.vx);
+    }
+    if (enemy.x + enemy.w > bounds.right) {
+      enemy.x = bounds.right - enemy.w;
+      enemy.vx = Math.min(0, enemy.vx);
+    }
+    return bounds;
+  }
+
   function lerp(a, b, amount) {
     return a + (b - a) * amount;
   }
@@ -449,6 +476,47 @@
 
   function addCheckpoint(x, y, label) {
     checkpoints.push({ x, y, w: 32, h: 88, label, active: false });
+  }
+
+  function getCheckpointRespawnPosition(checkpoint) {
+    const centerX = checkpoint.x + checkpoint.w / 2;
+    const expectedFloorY = checkpoint.y + checkpoint.h;
+    const support = platforms
+      .filter((platform) => centerX >= platform.x && centerX <= platform.x + platform.w)
+      .sort((first, second) => (
+        Math.abs(first.originalY - expectedFloorY) - Math.abs(second.originalY - expectedFloorY)
+      ))[0];
+    const floorY = support?.y ?? expectedFloorY;
+    return {
+      x: clamp(centerX - player.w / 2, 0, WORLD_W - player.w),
+      y: floorY - player.h - 1,
+    };
+  }
+
+  function setRespawnCheckpoint(checkpoint, checkpointIndex = checkpoints.indexOf(checkpoint)) {
+    const position = getCheckpointRespawnPosition(checkpoint);
+    checkpoints.forEach((item) => { item.active = false; });
+    checkpoint.active = true;
+    player.respawnX = position.x;
+    player.respawnY = position.y;
+    player.respawnStage = getStageIndexAt(checkpoint.x);
+    player.respawnZone = getZoneIndexAt(checkpoint.x);
+    player.respawnCheckpointIndex = checkpointIndex;
+    return position;
+  }
+
+  function activateCheckpoint(checkpoint) {
+    const checkpointIndex = checkpoints.indexOf(checkpoint);
+    if (checkpointIndex < 0 || checkpointIndex <= player.respawnCheckpointIndex) return false;
+    setRespawnCheckpoint(checkpoint, checkpointIndex);
+    player.hp = player.maxHp;
+    player.airJumpAvailable = true;
+    game.hint = `${checkpoint.label} 체크포인트 확보`;
+    game.hintTimer = 3;
+    spawnParticles(checkpoint.x + 16, checkpoint.y + 30, palette.cyan, 18, 300, 0.7, 220);
+    sound.checkpoint();
+    saveCampaign();
+    return true;
   }
 
   function addPickup(x, y, kind = "repair") {
@@ -1001,6 +1069,8 @@
         respawnX: player.respawnX,
         respawnY: player.respawnY,
         respawnStage: player.respawnStage,
+        respawnZone: player.respawnZone,
+        respawnCheckpointIndex: player.respawnCheckpointIndex,
         defeatedBosses: [...game.defeatedBosses],
         stageClearTimes: [...game.stageClearTimes],
         storySeen: [...game.storySeen],
@@ -1028,9 +1098,15 @@
       room.triggered = Boolean(state.triggered);
       room.cleared = Boolean(state.cleared);
     }
-    player.respawnX = saved.respawnX ?? 150;
-    player.respawnY = saved.respawnY ?? 540;
-    player.respawnStage = clamp(saved.respawnStage ?? 0, 0, stages.length - 1);
+    const savedCheckpointIndex = Number.isInteger(saved.respawnCheckpointIndex)
+      ? clamp(saved.respawnCheckpointIndex, 0, checkpoints.length - 1)
+      : checkpoints.reduce((closestIndex, checkpoint, index) => (
+        Math.abs(checkpoint.x - (saved.respawnX ?? 150))
+          < Math.abs(checkpoints[closestIndex].x - (saved.respawnX ?? 150))
+          ? index
+          : closestIndex
+      ), 0);
+    setRespawnCheckpoint(checkpoints[savedCheckpointIndex], savedCheckpointIndex);
     player.x = player.respawnX;
     player.y = player.respawnY;
     player.hp = player.maxHp;
@@ -1048,11 +1124,6 @@
     game.zone = clamp(zones.findLastIndex((zone) => player.x >= zone.x), 0, zones.length - 1);
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("censor");
-    checkpoints.forEach((checkpoint) => { checkpoint.active = false; });
-    const activeCheckpoint = checkpoints.reduce((closest, checkpoint) => (
-      Math.abs(checkpoint.x - player.respawnX) < Math.abs((closest?.x ?? Infinity) - player.respawnX) ? checkpoint : closest
-    ), null);
-    if (activeCheckpoint) activeCheckpoint.active = true;
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.hint = `자동 저장 불러오기 · STAGE 0${game.stage + 1}`;
@@ -1086,6 +1157,8 @@
       respawnX: 150,
       respawnY: 540,
       respawnStage: 0,
+      respawnZone: 0,
+      respawnCheckpointIndex: -1,
       trail: [],
       afterimageTimer: 0,
       combo: 0,
@@ -1478,45 +1551,85 @@
 
   function respawn() {
     game.deaths += 1;
-    const deathZoneIndex = getZoneIndexAt(player.x + player.w / 2);
-    const deathZone = zones[deathZoneIndex];
-    let revivedCount = 0;
-    let revivedBossKind = null;
-    for (const enemy of getZoneEnemies(deathZoneIndex)) {
-      if (!enemy.alive || enemy.hp < enemy.maxHp) revivedCount += 1;
+    const checkpointIndex = Number.isInteger(player.respawnCheckpointIndex) && player.respawnCheckpointIndex >= 0
+      ? clamp(player.respawnCheckpointIndex, 0, checkpoints.length - 1)
+      : checkpoints.reduce((closestIndex, checkpoint, index) => (
+        Math.abs(checkpoint.x - player.respawnX) < Math.abs(checkpoints[closestIndex].x - player.respawnX)
+          ? index
+          : closestIndex
+      ), 0);
+    const checkpoint = checkpoints[checkpointIndex];
+    const checkpointPosition = setRespawnCheckpoint(checkpoint, checkpointIndex);
+    const restartZoneIndex = getZoneIndexAt(checkpoint.x);
+    let restartedEnemyCount = 0;
+
+    for (const enemy of enemies) {
+      const enemyZoneIndex = getZoneIndexAt(enemy.originX);
+      enemy.vx = 0;
+      enemy.vy = 0;
+      enemy.windup = 0;
+      enemy.bossAction = null;
+      enemy.bossShotPattern = null;
+      enemy.bossChargeDuration = 0;
+      enemy.bossChargeDirection = 0;
+      enemy.targetX = null;
+      enemy.targetY = null;
+      if (enemyZoneIndex < restartZoneIndex) {
+        enemy.alive = false;
+        enemy.hp = 0;
+        enemy.countedKill = true;
+        continue;
+      }
+      restartedEnemyCount += 1;
       enemy.alive = true;
       enemy.hp = enemy.maxHp;
       enemy.x = enemy.spawnX;
       enemy.y = enemy.spawnY;
       enemy.baseY = enemy.spawnY;
-      enemy.vx = 0;
-      enemy.vy = 0;
+      enemy.grounded = false;
       enemy.cooldown = 0.65 + hash(enemy.originX) * 0.9;
-      enemy.windup = 0;
       enemy.hurt = 0;
       enemy.bossPhase = 0;
-      enemy.bossAction = null;
+      enemy.bossJumpCooldown = 0;
+      enemy.stuckTimer = 0;
       enemy.hitAttackId = -1;
       enemy.hitShotId = -1;
       enemy.blockedAttackId = -1;
-      if (enemy.type === "boss") revivedBossKind = enemy.bossKind;
     }
+
     for (const room of combatRooms) {
-      if (getZoneIndexAt(room.left) !== deathZoneIndex) continue;
-      room.triggered = false;
-      room.cleared = false;
-      room.remaining = enemies.filter((enemy) => enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
+      const roomZoneIndex = getZoneIndexAt(room.left);
+      const clearedBeforeCheckpoint = roomZoneIndex < restartZoneIndex;
+      room.triggered = clearedBeforeCheckpoint;
+      room.cleared = clearedBeforeCheckpoint;
+      room.remaining = clearedBeforeCheckpoint
+        ? 0
+        : enemies.filter((enemy) => enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
     }
-    if (revivedBossKind) {
-      game.defeatedBosses.delete(revivedBossKind);
-      game.stageClearTimes[deathZone.stageIndex] = 0;
+
+    for (const stage of stages) {
+      const bossZoneIndex = getZoneIndexAt(stage.bossX);
+      if (bossZoneIndex < restartZoneIndex) {
+        game.defeatedBosses.add(stage.bossKind);
+      } else {
+        game.defeatedBosses.delete(stage.bossKind);
+        game.stageClearTimes[stages.indexOf(stage)] = 0;
+      }
     }
+
+    for (const pickup of pickups) {
+      pickup.active = getZoneIndexAt(pickup.x) >= restartZoneIndex;
+    }
+
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("censor");
-    player.x = player.respawnX;
-    player.y = player.respawnY;
+    game.stage = getStageIndexAt(checkpoint.x);
+    game.zone = restartZoneIndex;
+    player.x = checkpointPosition.x;
+    player.y = checkpointPosition.y;
     player.vx = 0;
     player.vy = 0;
+    player.grounded = false;
     player.hp = player.maxHp;
     player.invincible = 1.2;
     player.airJumpAvailable = true;
@@ -1529,7 +1642,7 @@
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.shake = 12;
-    game.hint = `체크포인트 재개 · ${deathZone.name} 적 ${revivedCount}기 부활`;
+    game.hint = `${checkpoint.label} 복귀 · 이전 구역 유지 / 이후 적 ${restartedEnemyCount}기 재시작`;
     game.hintTimer = 3.8;
     saveCampaign();
   }
@@ -1577,6 +1690,90 @@
       color: "#ff6f75",
     });
     sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
+  }
+
+  function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
+    const rank = enemy.stageIndex;
+    enemy.windup = duration;
+    enemy.bossAction = "chargeShot";
+    enemy.bossShotPattern = pattern;
+    enemy.bossChargeDuration = duration;
+    enemy.bossChargeDirection = dx >= 0 ? -1 : 1;
+    enemy.targetX = player.x + player.w / 2;
+    enemy.targetY = player.y + player.h / 2;
+    enemy.vx = enemy.bossChargeDirection * (165 + rank * 24);
+    const accent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red;
+    spawnParticles(
+      enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.42,
+      enemy.y + enemy.h * 0.42,
+      accent,
+      18 + rank * 3,
+      220,
+      duration,
+      0,
+    );
+    sound.tone(105 + rank * 22, duration * 0.7, "sawtooth", 0.018, 1.7);
+  }
+
+  function releaseBossChargedShot(enemy) {
+    const target = { x: enemy.targetX, y: enemy.targetY };
+    switch (enemy.bossShotPattern) {
+      case "warden-volley":
+        [-0.16, 0, 0.16].forEach((spread) => fireBullet(enemy, 400, spread, "standard", target));
+        break;
+      case "warden-air":
+        if (enemy.grounded) {
+          enemy.vy = -590;
+          enemy.vx = -enemy.bossChargeDirection * 230;
+        }
+        fireBullet(enemy, 330, 0, "standard", target);
+        break;
+      case "furnace-mortar":
+        fireMortar(enemy, enemy.targetX - 150);
+        fireMortar(enemy, enemy.targetX + 150);
+        break;
+      case "furnace-volley":
+        for (let index = -2; index <= 2; index += 1) fireBullet(enemy, 375, index * 0.13, "standard", target);
+        break;
+      case "weaver-lance":
+        [-0.18, 0, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
+        break;
+      case "weaver-fan":
+        for (let index = -3; index <= 3; index += 1) fireBullet(enemy, 340, index * 0.16, "phase", target);
+        break;
+      case "censor-volley":
+        for (let index = -3; index <= 3; index += 1) {
+          fireBullet(enemy, 430, index * 0.115, index % 2 === 0 ? "phase" : "standard", target);
+        }
+        break;
+      case "censor-mortar":
+        [-220, 0, 220].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        break;
+      case "censor-air":
+        if (enemy.grounded) {
+          enemy.vy = -720;
+          enemy.vx = -enemy.bossChargeDirection * 360;
+        }
+        [-0.22, 0, 0.22].forEach((spread) => fireBullet(enemy, 470, spread, "phase", target));
+        break;
+      default:
+        fireBullet(enemy, 390, 0, "standard", target);
+        break;
+    }
+    const accent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red;
+    spawnParticles(
+      enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.52,
+      enemy.y + enemy.h * 0.42,
+      accent,
+      34 + enemy.stageIndex * 5,
+      520,
+      0.52,
+      120,
+    );
+    enemy.bossAction = null;
+    enemy.bossShotPattern = null;
+    enemy.bossChargeDuration = 0;
+    game.shake = 12 + enemy.stageIndex * 2;
   }
 
   function startBurst() {
@@ -1820,18 +2017,7 @@
 
     for (const checkpoint of checkpoints) {
       if (!checkpoint.active && Math.abs(player.x + player.w / 2 - checkpoint.x) < 55 && Math.abs(player.y + player.h - (checkpoint.y + checkpoint.h)) < 110) {
-        checkpoints.forEach((item) => { item.active = false; });
-        checkpoint.active = true;
-        player.respawnX = checkpoint.x - 10;
-        player.respawnY = checkpoint.y + checkpoint.h - player.h - 4;
-        player.respawnStage = getStageIndexAt(checkpoint.x);
-        player.hp = player.maxHp;
-        player.airJumpAvailable = true;
-        game.hint = `${checkpoint.label} 체크포인트 확보`;
-        game.hintTimer = 3;
-        spawnParticles(checkpoint.x + 16, checkpoint.y + 30, palette.cyan, 18, 300, 0.7, 220);
-        sound.checkpoint();
-        saveCampaign();
+        activateCheckpoint(checkpoint);
       }
     }
 
@@ -1933,6 +2119,7 @@
     }
 
     enemy.x = clamp(enemy.x, 0, WORLD_W - enemy.w);
+    constrainEnemyToLockdown(enemy);
     if (blocked) {
       enemy.stuckTimer = (enemy.stuckTimer || 0) + dt;
       if (enemy.stuckTimer > 0.16 && enemy.grounded) {
@@ -1964,6 +2151,7 @@
         second.vx *= 0.35;
       }
     }
+    for (const enemy of solidEnemies) constrainEnemyToLockdown(enemy);
   }
 
   function resolvePlayerEnemyOverlap() {
@@ -2012,6 +2200,7 @@
         enemy.y = previousDroneY;
         enemy.baseY -= Math.sign(Math.sin(enemy.anim * 2.2) || 1) * 8;
       }
+      constrainEnemyToLockdown(enemy);
       if (distance < 560 && enemy.cooldown <= 0) {
         fireBullet(enemy, 410);
         enemy.cooldown = 1.75 + hash(enemy.anim) * 0.45;
@@ -2110,7 +2299,11 @@
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
     const enrage = hpRatio < 0.45 ? 1.18 : 1;
     const desiredSpeed = (72 + rank * 18) * speedScale * enrage;
-    if (distance < 760 && Math.abs(dx) > 115) {
+    const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
+    if (chargingShot) {
+      const retreatSpeed = (165 + rank * 24) * speedScale;
+      enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
+    } else if (distance < 760 && Math.abs(dx) > 115) {
       enemy.vx = moveToward(enemy.vx, Math.sign(dx) * desiredSpeed, 360 * dt);
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
@@ -2156,27 +2349,22 @@
 
       if (kind === "warden") {
         if (enemy.bossPhase === 0) {
-          [-0.16, 0, 0.16].forEach((spread) => fireBullet(enemy, 400, spread));
+          startBossChargedShot(enemy, "warden-volley", dx, 0.82);
           enemy.cooldown = 1.95 * recovery;
         } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.72;
           enemy.bossAction = "dash";
           enemy.cooldown = 2.25 * recovery;
         } else {
-          if (enemy.grounded) {
-            enemy.vy = -590;
-            enemy.vx = Math.sign(dx) * 230;
-          }
-          fireBullet(enemy, 330, 0);
+          startBossChargedShot(enemy, "warden-air", dx, 0.68);
           enemy.cooldown = 2.1 * recovery;
         }
       } else if (kind === "furnace") {
         if (enemy.bossPhase === 0) {
-          fireMortar(enemy, player.x + player.w / 2 - 150);
-          fireMortar(enemy, player.x + player.w / 2 + 150);
+          startBossChargedShot(enemy, "furnace-mortar", dx, 0.94);
           enemy.cooldown = 2.35 * recovery;
         } else if (enemy.bossPhase === 1) {
-          for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 375, i * 0.13);
+          startBossChargedShot(enemy, "furnace-volley", dx, 0.82);
           enemy.cooldown = 1.85 * recovery;
         } else {
           enemy.windup = 0.82;
@@ -2189,10 +2377,10 @@
           enemy.x = clamp(player.x + (dx > 0 ? -420 : 420), arenaLeft + 35, arenaRight - enemy.w - 35);
           enemy.y = enemy.baseY;
           enemy.vx = 0;
-          [-0.18, 0, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase"));
+          startBossChargedShot(enemy, "weaver-lance", dx, 0.76);
           enemy.cooldown = 2.2 * recovery;
         } else if (enemy.bossPhase === 1) {
-          for (let i = -3; i <= 3; i += 1) fireBullet(enemy, 340, i * 0.16, "phase");
+          startBossChargedShot(enemy, "weaver-fan", dx, 0.86);
           enemy.cooldown = 1.95 * recovery;
         } else {
           enemy.windup = 0.68;
@@ -2201,21 +2389,17 @@
         }
       } else {
         if (enemy.bossPhase === 0) {
-          for (let i = -3; i <= 3; i += 1) fireBullet(enemy, 430, i * 0.115, i % 2 === 0 ? "phase" : "standard");
+          startBossChargedShot(enemy, "censor-volley", dx, 0.72);
           enemy.cooldown = 1.55 * recovery;
         } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.55;
           enemy.bossAction = "dash";
           enemy.cooldown = 1.65 * recovery;
         } else if (enemy.bossPhase === 2) {
-          [-220, 0, 220].forEach((offset) => fireMortar(enemy, player.x + player.w / 2 + offset));
+          startBossChargedShot(enemy, "censor-mortar", dx, 0.98);
           enemy.cooldown = 2.05 * recovery;
         } else {
-          if (enemy.grounded) {
-            enemy.vy = -720;
-            enemy.vx = Math.sign(dx) * 360;
-          }
-          [-0.22, 0, 0.22].forEach((spread) => fireBullet(enemy, 470, spread, "phase"));
+          startBossChargedShot(enemy, "censor-air", dx, 0.66);
           enemy.cooldown = 1.8 * recovery;
         }
       }
@@ -2229,11 +2413,13 @@
           enemy.vy = -760;
           enemy.vx = Math.sign(dx) * 300;
           for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 310, i * 0.18);
-        } else {
+        } else if (enemy.bossAction === "dash") {
           enemy.vx = Math.sign(dx) * (420 + rank * 65);
           if (Math.abs(dx) < 165 && Math.abs(player.y - enemy.y) < 100) damagePlayer(rank >= 3 ? 2 : 1, enemy.x);
+        } else if (enemy.bossAction === "chargeShot") {
+          releaseBossChargedShot(enemy);
         }
-        game.shake = 10 + rank * 2;
+        game.shake = Math.max(game.shake, 10 + rank * 2);
       }
     }
 
@@ -3306,7 +3492,36 @@
   function drawEnemyTelegraph(enemy) {
     if (enemy.windup <= 0) return;
     const pulse = 0.45 + Math.sin(game.time * 28) * 0.22;
-    if (enemy.type === "piercer" && Number.isFinite(enemy.targetX)) {
+    if (enemy.type === "boss" && enemy.bossAction === "chargeShot") {
+      const duration = Math.max(0.01, enemy.bossChargeDuration || enemy.windup);
+      const progress = clamp(1 - enemy.windup / duration, 0, 1);
+      const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
+      const muzzleY = enemy.y + enemy.h * 0.42;
+      const accent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `${accent}${Math.round((0.3 + progress * 0.55) * 255).toString(16).padStart(2, "0")}`;
+      ctx.lineWidth = 2 + progress * 3;
+      ctx.setLineDash([6 + progress * 8, 9 - progress * 4]);
+      ctx.beginPath();
+      ctx.moveTo(muzzleX, muzzleY);
+      ctx.lineTo(enemy.targetX, enemy.targetY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let ring = 0; ring < 3; ring += 1) {
+        const radius = 34 - progress * 24 + ring * 8;
+        ctx.globalAlpha = clamp(0.85 - ring * 0.2 + Math.sin(game.time * 24 + ring) * 0.12, 0.15, 1);
+        ctx.beginPath();
+        ctx.arc(muzzleX, muzzleY, radius, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.55 + progress * 0.45;
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.arc(muzzleX, muzzleY, 4 + progress * 9, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    } else if (enemy.type === "piercer" && Number.isFinite(enemy.targetX)) {
       ctx.save();
       ctx.strokeStyle = `rgba(121, 223, 255, ${pulse})`;
       ctx.lineWidth = 2;
@@ -3635,6 +3850,10 @@
       const shoulder = Math.sin(enemy.anim * 3.5) * 5;
       const bossKind = enemy.bossKind || "warden";
       const bossAccent = BOSS_DEFINITIONS[bossKind]?.accent || palette.red;
+      const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
+      const chargeProgress = chargingShot
+        ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
+        : 0;
       drawRobotLeg(-19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3) + Math.PI, 13, 13, 11, bossAccent, true);
       drawRobotLeg(19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3), 13, 13, 11, bossAccent, true);
 
@@ -3782,6 +4001,27 @@
         ctx.fillRect(31, 49, 58, 8);
         ctx.fillStyle = bossAccent;
         ctx.fillRect(79, 51, 10, 4);
+      }
+      if (chargingShot) {
+        const muzzleX = 63 - chargeProgress * 7;
+        const muzzleY = bossKind === "weaver" ? 48 : 50;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 2 + chargeProgress * 2;
+        ctx.globalAlpha = 0.45 + chargeProgress * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(12, 55);
+        ctx.lineTo(muzzleX - 8, muzzleY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(muzzleX, muzzleY, 5 + chargeProgress * 8 + Math.sin(game.time * 30) * 2, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = bossAccent;
+        ctx.beginPath();
+        ctx.arc(muzzleX, muzzleY, 2 + chargeProgress * 5, 0, TAU);
+        ctx.fill();
+        ctx.restore();
       }
     } else {
       const runnerLean = clamp(Math.abs(enemy.vx) / 240, 0, 0.28);
