@@ -64,10 +64,42 @@
   })));
 
   const BOSS_DEFINITIONS = {
-    warden: { name: "폐기장 감독관 · 철각", hp: 12, accent: "#65f5ea", subtitle: "느린 추적 · 예고 돌진 · 삼연사" },
-    furnace: { name: "용광 심장 · 홍련", hp: 18, accent: "#ff7b62", subtitle: "용탕 포격 · 화염 부채꼴 · 지면 강타" },
-    weaver: { name: "기억 직조기 · 백면", hp: 24, accent: "#d7a0ff", subtitle: "순간 이동 · 위상탄 · 방사형 기억침" },
-    censor: { name: "중앙국 검열기 · 무명", hp: 32, accent: "#ff496c", subtitle: "복합 연계 · 고속 돌진 · 검열 포화" },
+    warden: {
+      name: "폐기장 감독관 · 철각",
+      hp: 12,
+      accent: "#65f5ea",
+      silhouette: "방패형 지휘 기체",
+      weapon: "삼열 감시포",
+      patterns: ["감시 삼연사", "방벽 돌진", "도약 저격", "제압 사격"],
+      subtitle: "방벽 돌진 · 도약 저격 · 제압 사격",
+    },
+    furnace: {
+      name: "용광 심장 · 홍련",
+      hp: 18,
+      accent: "#ff7b62",
+      silhouette: "용광로 중장 기체",
+      weapon: "용탕 투사기",
+      patterns: ["용탕 낙하", "화염 부채꼴", "노심 강타", "노심 폭발"],
+      subtitle: "용탕 낙하 · 노심 강타 · 전방위 폭발",
+    },
+    weaver: {
+      name: "기억 직조기 · 백면",
+      hp: 24,
+      accent: "#d7a0ff",
+      silhouette: "부유형 가면 기체",
+      weapon: "기억 직조륜",
+      patterns: ["배후 전이", "위상 부채", "잔상 관통", "기억침 궤도"],
+      subtitle: "배후 전이 · 잔상 관통 · 기억침 궤도",
+    },
+    censor: {
+      name: "중앙국 검열기 · 무명",
+      hp: 32,
+      accent: "#ff496c",
+      silhouette: "익형 처형 기체",
+      weapon: "검열 레일건",
+      patterns: ["검열 포화", "절단 돌진", "좌표 말소", "처형 도약", "격자 삭제"],
+      subtitle: "절단 돌진 · 좌표 말소 · 격자 삭제",
+    },
   };
 
   const difficultySettings = {
@@ -400,7 +432,10 @@
   }
 
   function getEnemyLockdownBounds(enemy) {
-    const zone = zones[getZoneIndexAt(enemy.originX)];
+    const homeZoneIndex = Number.isInteger(enemy.homeZoneIndex)
+      ? enemy.homeZoneIndex
+      : getZoneIndexAt(enemy.originX);
+    const zone = zones[homeZoneIndex];
     let left = zone.x + 48;
     let right = zone.x + ZONE_W - 48;
     const room = combatRooms.find((candidate) => enemy.originX > candidate.left && enemy.originX < candidate.right);
@@ -411,8 +446,11 @@
     return { left, right };
   }
 
-  function constrainEnemyToLockdown(enemy) {
-    const bounds = getEnemyLockdownBounds(enemy);
+  function constrainEnemyToLockdown(enemy, bounds = getEnemyLockdownBounds(enemy)) {
+    if (!Number.isFinite(enemy.x)) {
+      enemy.x = clamp(enemy.spawnX, bounds.left, bounds.right - enemy.w);
+      enemy.vx = 0;
+    }
     if (enemy.x < bounds.left) {
       enemy.x = bounds.left;
       enemy.vx = Math.max(0, enemy.vx);
@@ -422,6 +460,28 @@
       enemy.vx = Math.min(0, enemy.vx);
     }
     return bounds;
+  }
+
+  function recoverEnemyToHome(enemy) {
+    enemy.x = enemy.spawnX;
+    enemy.y = enemy.spawnY;
+    enemy.baseY = enemy.spawnY;
+    enemy.vx = 0;
+    enemy.vy = 0;
+    enemy.grounded = false;
+    enemy.stuckTimer = 0;
+    enemy.bossJumpCooldown = 0.45;
+    constrainEnemyToLockdown(enemy);
+  }
+
+  function enforceEnemyLockdowns() {
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      constrainEnemyToLockdown(enemy);
+      if (!Number.isFinite(enemy.y) || enemy.y > WORLD_H + 100 || enemy.y < -enemy.h - 260) {
+        recoverEnemyToHome(enemy);
+      }
+    }
   }
 
   function lerp(a, b, amount) {
@@ -568,6 +628,7 @@
       facing: -1,
       originX: x,
       stageIndex,
+      homeZoneIndex: getZoneIndexAt(x),
       range,
       cooldown: hash(x) * 1.4,
       windup: 0,
@@ -1728,6 +1789,11 @@
         }
         fireBullet(enemy, 330, 0, "standard", target);
         break;
+      case "warden-suppress":
+        for (let index = -3; index <= 3; index += 1) {
+          fireBullet(enemy, 445 - Math.abs(index) * 18, index * 0.085, "standard", target);
+        }
+        break;
       case "furnace-mortar":
         fireMortar(enemy, enemy.targetX - 150);
         fireMortar(enemy, enemy.targetX + 150);
@@ -1735,11 +1801,22 @@
       case "furnace-volley":
         for (let index = -2; index <= 2; index += 1) fireBullet(enemy, 375, index * 0.13, "standard", target);
         break;
+      case "furnace-eruption":
+        for (let index = 0; index < 8; index += 1) {
+          fireBullet(enemy, 285, index * TAU / 8, "standard", target);
+        }
+        fireMortar(enemy, enemy.targetX);
+        break;
       case "weaver-lance":
         [-0.18, 0, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
         break;
       case "weaver-fan":
         for (let index = -3; index <= 3; index += 1) fireBullet(enemy, 340, index * 0.16, "phase", target);
+        break;
+      case "weaver-orbit":
+        for (let index = 0; index < 12; index += 1) {
+          fireBullet(enemy, 305 + (index % 2) * 45, index * TAU / 12, "phase", target);
+        }
         break;
       case "censor-volley":
         for (let index = -3; index <= 3; index += 1) {
@@ -1755,6 +1832,12 @@
           enemy.vx = -enemy.bossChargeDirection * 360;
         }
         [-0.22, 0, 0.22].forEach((spread) => fireBullet(enemy, 470, spread, "phase", target));
+        break;
+      case "censor-grid":
+        for (let index = -4; index <= 4; index += 1) {
+          fireBullet(enemy, 455, index * 0.09, index % 2 === 0 ? "phase" : "standard", target);
+        }
+        [-260, 260].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       default:
         fireBullet(enemy, 390, 0, "standard", target);
@@ -2074,6 +2157,7 @@
   function moveEnemyPhysics(enemy, dt) {
     enemy.grounded = false;
     enemy.vy = Math.min((enemy.vy || 0) + GRAVITY * 0.78 * dt, 980);
+    const lockdownBounds = getEnemyLockdownBounds(enemy);
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(enemy.vx * dt), Math.abs(enemy.vy * dt)) / 7));
     const stepTime = dt / steps;
     let blocked = false;
@@ -2081,6 +2165,10 @@
     for (let step = 0; step < steps; step += 1) {
       const oldX = enemy.x;
       enemy.x += enemy.vx * stepTime;
+      if (enemy.x < lockdownBounds.left || enemy.x + enemy.w > lockdownBounds.right) {
+        constrainEnemyToLockdown(enemy, lockdownBounds);
+        blocked = true;
+      }
       for (const platform of platforms) {
         if (!overlaps(enemy, platform)) continue;
         if (oldX + enemy.w <= platform.x + 1 && enemy.vx > 0) enemy.x = platform.x - enemy.w;
@@ -2119,7 +2207,7 @@
     }
 
     enemy.x = clamp(enemy.x, 0, WORLD_W - enemy.w);
-    constrainEnemyToLockdown(enemy);
+    constrainEnemyToLockdown(enemy, lockdownBounds);
     if (blocked) {
       enemy.stuckTimer = (enemy.stuckTimer || 0) + dt;
       if (enemy.stuckTimer > 0.16 && enemy.grounded) {
@@ -2130,7 +2218,9 @@
     } else {
       enemy.stuckTimer = Math.max(0, (enemy.stuckTimer || 0) - dt * 2);
     }
-    if (enemy.y > WORLD_H + 100) enemy.alive = false;
+    if (!Number.isFinite(enemy.y) || enemy.y > WORLD_H + 100 || enemy.y < -enemy.h - 260) {
+      recoverEnemyToHome(enemy);
+    }
   }
 
   function resolveEnemySeparation() {
@@ -2343,7 +2433,7 @@
     }
 
     if (enemy.cooldown <= 0 && distance < 900) {
-      const phaseCount = kind === "censor" ? 4 : 3;
+      const phaseCount = BOSS_DEFINITIONS[kind].patterns.length;
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
       const recovery = hpRatio < 0.45 ? 0.82 : 1;
 
@@ -2355,9 +2445,12 @@
           enemy.windup = 0.72;
           enemy.bossAction = "dash";
           enemy.cooldown = 2.25 * recovery;
-        } else {
+        } else if (enemy.bossPhase === 2) {
           startBossChargedShot(enemy, "warden-air", dx, 0.68);
           enemy.cooldown = 2.1 * recovery;
+        } else {
+          startBossChargedShot(enemy, "warden-suppress", dx, 0.92);
+          enemy.cooldown = 2.3 * recovery;
         }
       } else if (kind === "furnace") {
         if (enemy.bossPhase === 0) {
@@ -2366,10 +2459,13 @@
         } else if (enemy.bossPhase === 1) {
           startBossChargedShot(enemy, "furnace-volley", dx, 0.82);
           enemy.cooldown = 1.85 * recovery;
-        } else {
+        } else if (enemy.bossPhase === 2) {
           enemy.windup = 0.82;
           enemy.bossAction = "slam";
           enemy.cooldown = 2.45 * recovery;
+        } else {
+          startBossChargedShot(enemy, "furnace-eruption", dx, 1.08);
+          enemy.cooldown = 2.7 * recovery;
         }
       } else if (kind === "weaver") {
         if (enemy.bossPhase === 0) {
@@ -2382,10 +2478,13 @@
         } else if (enemy.bossPhase === 1) {
           startBossChargedShot(enemy, "weaver-fan", dx, 0.86);
           enemy.cooldown = 1.95 * recovery;
-        } else {
+        } else if (enemy.bossPhase === 2) {
           enemy.windup = 0.68;
           enemy.bossAction = "dash";
           enemy.cooldown = 2.05 * recovery;
+        } else {
+          startBossChargedShot(enemy, "weaver-orbit", dx, 1.02);
+          enemy.cooldown = 2.5 * recovery;
         }
       } else {
         if (enemy.bossPhase === 0) {
@@ -2398,9 +2497,12 @@
         } else if (enemy.bossPhase === 2) {
           startBossChargedShot(enemy, "censor-mortar", dx, 0.98);
           enemy.cooldown = 2.05 * recovery;
-        } else {
+        } else if (enemy.bossPhase === 3) {
           startBossChargedShot(enemy, "censor-air", dx, 0.66);
           enemy.cooldown = 1.8 * recovery;
+        } else {
+          startBossChargedShot(enemy, "censor-grid", dx, 1.12);
+          enemy.cooldown = 2.35 * recovery;
         }
       }
     }
@@ -2596,12 +2698,14 @@
       }
     }
 
+    enforceEnemyLockdowns();
     updatePlayer(dt);
     for (const enemy of enemies) updateEnemy(enemy, dt);
     resolveEnemySeparation();
     resolvePlayerEnemyOverlap();
     updateCombatRooms();
     updateBullets(dt);
+    enforceEnemyLockdowns();
     updateParticles(dt);
     updateCamera(dt);
 
@@ -3854,10 +3958,39 @@
       const chargeProgress = chargingShot
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
         : 0;
-      drawRobotLeg(-19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3) + Math.PI, 13, 13, 11, bossAccent, true);
-      drawRobotLeg(19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3), 13, 13, 11, bossAccent, true);
+      if (bossKind === "weaver") {
+        ctx.strokeStyle = `rgba(215, 160, 255, ${0.32 + pulse * 0.32})`;
+        ctx.lineWidth = 3;
+        for (let shard = -1; shard <= 1; shard += 1) {
+          const shardX = shard * 22 + Math.sin(enemy.anim * 1.8 + shard) * 5;
+          const shardY = 73 + Math.cos(enemy.anim * 2.1 + shard) * 8;
+          ctx.beginPath();
+          ctx.moveTo(shardX - 7, shardY);
+          ctx.lineTo(shardX, shardY + 17);
+          ctx.lineTo(shardX + 7, shardY);
+          ctx.stroke();
+        }
+      } else {
+        const legSpread = bossKind === "furnace" ? 24 : 19;
+        const legSpeed = bossKind === "censor" ? 4.3 : 3.2 + enemy.stageIndex * 0.3;
+        drawRobotLeg(-legSpread, 77, enemy.anim * legSpeed + Math.PI, 13, 13, 11, bossAccent, true);
+        drawRobotLeg(legSpread, 77, enemy.anim * legSpeed, 13, 13, 11, bossAccent, true);
+      }
 
       if (bossKind === "warden") {
+        ctx.fillStyle = "#243f46";
+        ctx.beginPath();
+        ctx.moveTo(-62, 28);
+        ctx.lineTo(-43, 21);
+        ctx.lineTo(-35, 82);
+        ctx.lineTo(-57, 94);
+        ctx.lineTo(-72, 76);
+        ctx.lineTo(-70, 39);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 3;
+        ctx.stroke();
         ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1a2c32";
         ctx.fillRect(-39, 34, 78, 50);
         ctx.fillStyle = "#42636a";
@@ -3869,6 +4002,13 @@
         ctx.fillRect(-21, 16, 42, 10);
         ctx.fillStyle = bossAccent;
         ctx.fillRect(-16, 19, 32, 4);
+        ctx.fillStyle = "#8ca5a7";
+        ctx.fillRect(-4, -7, 7, 17);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(-7, -11, 13, 5);
+        ctx.globalAlpha = 0.48 + Math.sin(game.time * 12) * 0.28;
+        ctx.fillRect(-11, -14, 21, 2);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = "#0a1218";
         ctx.fillRect(-29, 51, 58, 23);
         ctx.strokeStyle = bossAccent;
@@ -3876,10 +4016,14 @@
         ctx.strokeRect(-22, 56, 44, 13);
         ctx.fillStyle = "#a9c5c5";
         ctx.fillRect(39, 47, 45, 9);
+        ctx.fillRect(43, 39, 38, 4);
+        ctx.fillRect(43, 61, 38, 4);
         ctx.fillStyle = "#263b42";
         ctx.fillRect(47, 56, 17, 7);
         ctx.fillStyle = bossAccent;
         ctx.fillRect(78, 49, 8, 5);
+        ctx.fillRect(78, 39, 8, 3);
+        ctx.fillRect(78, 62, 8, 3);
       } else if (bossKind === "furnace") {
         ctx.fillStyle = "#311713";
         ctx.fillRect(-35, 5, 13, 33);
@@ -3887,6 +4031,16 @@
         ctx.fillStyle = "#734034";
         ctx.fillRect(-31, -1, 5, 10);
         ctx.fillRect(26, -1, 5, 10);
+        const exhaust = 9 + Math.sin(game.time * 18) * 5;
+        ctx.fillStyle = `rgba(255, 123, 98, ${0.42 + pulse * 0.34})`;
+        ctx.beginPath();
+        ctx.moveTo(-34, -1);
+        ctx.lineTo(-28, -exhaust);
+        ctx.lineTo(-22, -1);
+        ctx.moveTo(22, -1);
+        ctx.lineTo(28, -exhaust * 1.18);
+        ctx.lineTo(34, -1);
+        ctx.fill();
         ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#4b2721";
         ctx.beginPath();
         ctx.arc(0, 57, 42, 0, TAU);
@@ -3914,6 +4068,16 @@
         ctx.fillRect(34, 37 + shoulder, 43, 18);
         ctx.fillStyle = "#d49b70";
         ctx.fillRect(67, 40 + shoulder, 15, 12);
+        ctx.fillStyle = "#2a1210";
+        ctx.fillRect(-58, 40 - shoulder, 25, 34);
+        ctx.fillStyle = "#96523c";
+        ctx.fillRect(-65, 47 - shoulder, 16, 21);
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-42, 46);
+        ctx.bezierCurveTo(-27, 31, 22, 31, 41, 45);
+        ctx.stroke();
       } else if (bossKind === "weaver") {
         ctx.strokeStyle = `rgba(215, 160, 255, ${0.48 + pulse})`;
         ctx.lineWidth = 4;
@@ -3926,6 +4090,22 @@
           ctx.rotate(TAU / 6);
           ctx.fillStyle = "rgba(215, 160, 255, 0.4)";
           ctx.fillRect(32, -2, 13, 4);
+        }
+        ctx.restore();
+        ctx.save();
+        ctx.rotate(-enemy.anim * 0.46);
+        for (let mask = 0; mask < 3; mask += 1) {
+          ctx.rotate(TAU / 3);
+          ctx.fillStyle = "rgba(241, 232, 244, 0.78)";
+          ctx.beginPath();
+          ctx.moveTo(47, -7);
+          ctx.lineTo(62, 0);
+          ctx.lineTo(47, 7);
+          ctx.lineTo(42, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = bossAccent;
+          ctx.fillRect(52, -2, 7, 3);
         }
         ctx.restore();
         ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#21182f";
@@ -3959,6 +4139,20 @@
           ctx.stroke();
         }
       } else {
+        ctx.fillStyle = "#271624";
+        for (const wing of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(wing * 28, 34);
+          ctx.lineTo(wing * 76, 15);
+          ctx.lineTo(wing * 60, 48);
+          ctx.lineTo(wing * 82, 65);
+          ctx.lineTo(wing * 31, 72);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = bossAccent;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
         ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#15131f";
         ctx.fillRect(-34, 34, 68, 58);
         ctx.fillStyle = "#3b2637";
@@ -3988,6 +4182,11 @@
         ctx.fillRect(-3, 20, 25, 7);
         ctx.fillStyle = bossAccent;
         ctx.fillRect(11, 21, 11, 5);
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 7, 29 + pulse * 3, Math.PI, TAU);
+        ctx.stroke();
         ctx.fillStyle = "#160d17";
         ctx.beginPath();
         ctx.arc(0, 59, 18, 0, TAU);
@@ -3999,8 +4198,12 @@
         ctx.stroke();
         ctx.fillStyle = "#d8dce4";
         ctx.fillRect(31, 49, 58, 8);
+        ctx.fillRect(43, 42, 38, 4);
+        ctx.fillStyle = "#5a4558";
+        ctx.fillRect(37, 57, 34, 8);
         ctx.fillStyle = bossAccent;
         ctx.fillRect(79, 51, 10, 4);
+        ctx.fillRect(79, 43, 10, 3);
       }
       if (chargingShot) {
         const muzzleX = 63 - chargeProgress * 7;
@@ -4524,6 +4727,10 @@
       ctx.font = "800 12px 'Malgun Gothic', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(bossDefinition.name, W / 2, 49);
+      ctx.fillStyle = bossDefinition.accent;
+      ctx.font = "700 9px 'Malgun Gothic', sans-serif";
+      const currentPatternName = bossDefinition.patterns[boss.bossPhase] || bossDefinition.patterns[0];
+      ctx.fillText(`${bossDefinition.silhouette} · ${bossDefinition.weapon} · ${currentPatternName}`, W / 2, 63);
       ctx.fillStyle = "#39202b";
       ctx.fillRect(W / 2 - 240, 70, 480, 6);
       ctx.fillStyle = bossDefinition.accent;
