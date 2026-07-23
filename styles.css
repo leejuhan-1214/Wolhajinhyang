@@ -181,6 +181,15 @@ h2 {
   letter-spacing: 0.12em;
 }
 
+.stage-strip em {
+  display: block;
+  margin-top: 5px;
+  color: #718f9b;
+  font: 700 8px/1.25 "Malgun Gothic", sans-serif;
+  font-style: normal;
+  letter-spacing: 0;
+}
+
 .difficulty-select {
   display: flex;
   align-items: center;

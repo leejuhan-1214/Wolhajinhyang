@@ -383,6 +383,20 @@
     return clamp(stages.findLastIndex((stage) => x >= stage.x), 0, stages.length - 1);
   }
 
+  function getZoneIndexAt(x) {
+    return clamp(zones.findLastIndex((zone) => x >= zone.x), 0, zones.length - 1);
+  }
+
+  function getZoneEnemies(zoneIndex) {
+    const zone = zones[zoneIndex];
+    if (!zone) return [];
+    return enemies.filter((enemy) => enemy.originX >= zone.x && enemy.originX < zone.x + ZONE_W);
+  }
+
+  function getZoneRemaining(zoneIndex) {
+    return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive).length;
+  }
+
   function lerp(a, b, amount) {
     return a + (b - a) * amount;
   }
@@ -1393,6 +1407,16 @@
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.red, enemy.type === "boss" ? 50 : 22, 520, 0.8, 920);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.cyan, enemy.type === "boss" ? 40 : 12, 380, 0.65, 620);
 
+    const clearedZoneIndex = getZoneIndexAt(enemy.originX);
+    if (getZoneRemaining(clearedZoneIndex) === 0 && enemy.type !== "boss") {
+      game.hint = `${zones[clearedZoneIndex].name} 확보 · 다음 구역 개방`;
+      game.hintTimer = 3.2;
+      player.hp = Math.min(player.maxHp, player.hp + 1);
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.cyan, 24, 360, 0.7, 420);
+      saveCampaign();
+      sound.checkpoint();
+    }
+
     if (enemy.type === "boss") {
       const rank = enemy.stageIndex;
       const kind = enemy.bossKind || stages[rank].bossKind;
@@ -1821,6 +1845,19 @@
 
     if (player.y > WORLD_H + 120) respawn();
     if (pressed.has("KeyR")) respawn();
+
+    for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+      const lockedZone = zones[zoneIndex];
+      const zoneBoundary = lockedZone.x + ZONE_W - 48;
+      if (player.x + player.w <= zoneBoundary) break;
+      const zoneRemaining = getZoneRemaining(zoneIndex);
+      if (zoneRemaining === 0) continue;
+      player.x = zoneBoundary - player.w;
+      player.vx = Math.min(0, player.vx);
+      game.hint = `${lockedZone.name} 봉쇄 · 남은 적 ${zoneRemaining}기`;
+      game.hintTimer = Math.max(game.hintTimer, 1.2);
+      break;
+    }
 
     for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
       const stage = stages[stageIndex];
@@ -3994,6 +4031,12 @@
       if (room.left > left - 40 && room.left < right + 40) drawCombatSeal(room.left);
       if (room.right > left - 40 && room.right < right + 40) drawCombatSeal(room.right);
     }
+    for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+      const zone = zones[zoneIndex];
+      if (zone.template === "boss" || getZoneRemaining(zoneIndex) === 0) continue;
+      const boundary = zone.x + ZONE_W - 48;
+      if (boundary > left - 40 && boundary < right + 40) drawCombatSeal(boundary);
+    }
     for (const stage of stages) {
       if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.defeatedBosses.has(stage.bossKind));
     }
@@ -4223,6 +4266,10 @@
     ctx.fillRect(W - 295, 77, 250, 3);
     ctx.fillStyle = zones[game.zone].color;
     ctx.fillRect(W - 295, 77, 250 * progress, 3);
+    const hudZoneRemaining = getZoneRemaining(game.zone);
+    ctx.fillStyle = hudZoneRemaining > 0 ? palette.red : palette.cyan;
+    ctx.font = "800 9px 'Malgun Gothic', sans-serif";
+    ctx.fillText(hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
     ctx.textAlign = "left";
 
     const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
