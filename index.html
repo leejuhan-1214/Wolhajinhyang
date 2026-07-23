@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="샷건 반동과 발도술을 결합한 한국형 사이버펑크 횡스크롤 액션 프로토타입"
+      content="샷건 반동과 발도술을 결합한 4막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
-    <title>월하잔향: 백야 작전 — 액션 프로토타입</title>
+    <title>월하잔향: 백야 작전 — 4막 캠페인</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -15,17 +15,18 @@
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">PIXEL MOTION REBUILD · v1.0.3</div>
+        <div class="eyebrow">FOUR ACT CAMPAIGN · v1.1.1</div>
         <h1>월하잔향</h1>
         <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
-          <strong>감찰 기록 04-11 · 백야 폐기장 소각 46분 전</strong>
-          <span>여섯 해 전에 사망한 노동자들의 구조 요청이 폐기장에서 송신되고 있다. M-07은 중앙국의 소각 명령을 거부하고 목소리의 근원을 향한다.</span>
+          <strong>감찰 기록 04-11 · 4막 28구역 · 첫 플레이 목표 7시간 15분</strong>
+          <span>여섯 해 전에 사망한 노동자들의 구조 요청이 폐기장에서 송신된다. 한서린은 지워진 과거와 2,418명의 기억 생존자를 쫓아 중앙국의 가장 오래된 거짓말 속으로 들어간다.</span>
         </div>
         <div class="stage-strip" aria-label="전체 스테이지">
           <span><b>STAGE 01</b> 작전 4호 · 백야 폐기장</span>
-          <span><b>STAGE 02</b> 검은 공장 · 기억 세척</span>
-          <span><b>STAGE 03</b> 지하 피난선 · 새벽 송신</span>
+          <span><b>STAGE 02</b> 검은 공장 · 타오르는 심장</span>
+          <span><b>STAGE 03</b> 기억 성당 · 거짓된 합창</span>
+          <span><b>STAGE 04</b> 새벽 송신탑 · 마지막 증언</span>
         </div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
@@ -42,7 +43,10 @@
           <div><kbd>E</kbd><span>탄환 소거 버스트</span></div>
           <div><kbd>R</kbd><span>체크포인트 복귀</span></div>
         </div>
-        <button id="start-button" type="button">작전 시작</button>
+        <div class="campaign-actions">
+          <button id="start-button" type="button">새 작전</button>
+          <button id="continue-button" type="button" hidden disabled>이어하기</button>
+        </div>
         <p class="tip">아래로 샷건을 쏘면 반동으로 상승합니다. 발도 적중과 탄환 튕겨내기로 강화탄 3칸을 충전하세요.</p>
       </section>
 
@@ -53,7 +57,7 @@
       </section>
 
       <section id="end-screen" class="overlay">
-        <div class="eyebrow">PROTOTYPE COMPLETE</div>
+        <div class="eyebrow">CAMPAIGN COMPLETE</div>
         <h2>새벽 송신 완료</h2>
         <p id="result-text">임무 기록을 정리하는 중…</p>
         <button id="restart-button" type="button">처음부터 다시</button>

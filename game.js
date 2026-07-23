@@ -7,16 +7,21 @@
   const pauseScreen = document.getElementById("pause-screen");
   const endScreen = document.getElementById("end-screen");
   const startButton = document.getElementById("start-button");
+  const continueButton = document.getElementById("continue-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
 
   const W = 1280;
   const H = 720;
-  const WORLD_W = 36000;
+  const ZONE_W = 4000;
+  const STAGE_W = ZONE_W * 7;
+  const WORLD_W = STAGE_W * 4;
   const WORLD_H = 1450;
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
+  const TARGET_CAMPAIGN_MINUTES = 435;
+  const SAVE_KEY = "moonlit-echo-campaign-v1";
 
   const keys = new Set();
   const pressed = new Set();
@@ -33,26 +38,37 @@
   const boostNodes = [];
   const combatRooms = [];
 
-  const zones = [
-    { x: 0, name: "백야 검문선", code: "01 · WHITE NIGHT", color: "#65f5ea" },
-    { x: 3000, name: "로봇 폐기야적장", code: "02 · SCRAP FIELD", color: "#ffcd70" },
-    { x: 6000, name: "압축기 회랑", code: "03 · CRUSHER HALL", color: "#ff6a64" },
-    { x: 9000, name: "회수 열차 상부", code: "04 · SALVAGE RAIL", color: "#8effa1" },
-    { x: 12000, name: "무허가 조립동", code: "05 · BLACK ASSEMBLY", color: "#e5f4ff" },
-    { x: 15000, name: "냉각 수직갱", code: "06 · COLD SHAFT", color: "#8cb7ff" },
-    { x: 18000, name: "기억 세척실", code: "07 · MEMORY WASH", color: "#ff6ca8" },
-    { x: 21000, name: "소각 관제교", code: "08 · PURGE BRIDGE", color: "#ff3f64" },
-    { x: 24000, name: "지하 피난선", code: "09 · SHELTER LINE", color: "#74d8ff" },
-    { x: 27000, name: "잔향 보관층", code: "10 · ECHO ARCHIVE", color: "#d7a0ff" },
-    { x: 30000, name: "역송신 승강로", code: "11 · UPLINK SHAFT", color: "#90ffd4" },
-    { x: 33000, name: "새벽 송신탑", code: "12 · DAWN ARRAY", color: "#ff5e87" },
+  const stages = [
+    { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 90 },
+    { x: STAGE_W, end: STAGE_W * 2, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", bossKind: "furnace", targetMinutes: 105 },
+    { x: STAGE_W * 2, end: STAGE_W * 3, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", bossKind: "weaver", targetMinutes: 115 },
+    { x: STAGE_W * 3, end: WORLD_W, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", bossKind: "censor", targetMinutes: 125 },
   ];
 
-  const stages = [
-    { x: 0, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea" },
-    { x: 12000, name: "검은 공장 · 기억 세척", code: "STAGE 02 · FALSE MEMORY", color: "#ff7d8d" },
-    { x: 24000, name: "지하 피난선 · 새벽 송신", code: "STAGE 03 · LAST BROADCAST", color: "#d7a0ff" },
+  const stageZoneNames = [
+    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐기물 심층", "감독관 격납고"],
+    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "화염 터빈실", "용광 심장부"],
+    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "합창 연산실", "직조 제단"],
+    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "새벽 안테나군", "최종 검열실"],
   ];
+  const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN"];
+  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "gauntlet", "boss"];
+  const zones = stages.flatMap((stage, stageIndex) => stageZoneNames[stageIndex].map((name, zoneIndex) => ({
+    x: stage.x + zoneIndex * ZONE_W,
+    name,
+    code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
+    color: stage.color,
+    kind: stage.kind,
+    template: zoneTemplates[zoneIndex],
+    stageIndex,
+  })));
+
+  const BOSS_DEFINITIONS = {
+    warden: { name: "폐기장 감독관 · 철각", hp: 12, accent: "#65f5ea", subtitle: "느린 추적 · 예고 돌진 · 삼연사" },
+    furnace: { name: "용광 심장 · 홍련", hp: 18, accent: "#ff7b62", subtitle: "용탕 포격 · 화염 부채꼴 · 지면 강타" },
+    weaver: { name: "기억 직조기 · 백면", hp: 24, accent: "#d7a0ff", subtitle: "순간 이동 · 위상탄 · 방사형 기억침" },
+    censor: { name: "중앙국 검열기 · 무명", hp: 32, accent: "#ff496c", subtitle: "복합 연계 · 고속 돌진 · 검열 포화" },
+  };
 
   const difficultySettings = {
     chick: { name: "병아리", hp: 5, damage: 0, enemySpeed: 0.82, bulletSpeed: 0.82 },
@@ -81,58 +97,132 @@
       tone: "operative",
       duration: 4.7,
     },
+    {
+      speaker: "개인 기록 · 서린",
+      text: "내 이름은 한서린. 중앙국 감찰관이 되기 전의 여섯 해가 통째로 비어 있다. 이상하게도 저 폐기장의 비 냄새만은 기억난다.",
+      tone: "archive",
+      duration: 5.8,
+    },
+    {
+      speaker: "감찰관 · 도담",
+      text: "서린아, 안에서 네 과거를 보더라도 혼자 결론 내리지 마. 이번 작전에는 내가 아직 말하지 못한 일이 있어.",
+      tone: "control",
+      duration: 5.5,
+    },
   ];
 
-  const STORY_EVENTS = [
-    {
-      id: "scrap-field",
-      x: 3000,
-      lines: [{ speaker: "감찰관 · 도담", text: "폐기 로봇들이 사람을 공격한 게 아니야. 무언가로부터 피난 통로를 지키고 있어.", tone: "control", duration: 5.2 }],
-    },
-    {
-      id: "crusher",
-      x: 6100,
-      lines: [{ speaker: "잔향 · 새봄", text: "검은 비가 오면 세 번째 압축기 아래로 숨어. 언니가 반드시 데리러 올 거야.", tone: "archive", duration: 5.0 }],
-    },
-    {
-      id: "assembly",
-      x: 12000,
-      lines: [{ speaker: "생산 기록", text: "민간인 기억을 전투 인공지능의 공포 학습 데이터로 전환한다. 불량 기억은 세척 후 재투입한다.", tone: "archive", duration: 5.8 }],
-    },
-    {
-      id: "memory-wash",
-      x: 18000,
-      lines: [
-        { speaker: "감찰관 · 도담", text: "새봄이라는 아이의 파형이 네 의체 기억과 일치해. M-07, 중앙국이 네 과거까지 재료로 쓴 거야.", tone: "control", duration: 5.2 },
-        { speaker: "M-07", text: "그렇다면 이 목소리는 미끼가 아니라 증인이다. 전부 지상으로 내보낸다.", tone: "operative", duration: 4.8 },
+  const STORY_CHAPTERS = [
+    [
+      [
+        { speaker: "감찰관 · 도담", text: "경비기들이 출구가 아니라 안쪽을 향해 서 있어. 침입자를 막는 게 아니라 무언가가 나가지 못하게 봉쇄한 배치야.", tone: "control", duration: 5.7 },
+        { speaker: "M-07 · 서린", text: "폐기된 기계라기엔 명령 갱신이 너무 최근이군. 중앙국 인증키가 살아 있어.", tone: "operative", duration: 5.1 },
       ],
-    },
-    {
-      id: "purge-warden",
-      x: 22000,
-      lines: [{ speaker: "소각 집행기 · 적비", text: "감찰 개체의 명령 위반 확인. 증거와 생존 신호를 같은 화염으로 정리한다.", tone: "hostile", duration: 5.2 }],
-    },
-    {
-      id: "shelter-line",
-      x: 24100,
-      lines: [{ speaker: "감찰관 · 도담", text: "관제교 아래에 피난 열차가 있어. 기억 신호가 열차 제어망을 붙잡고 소각을 막고 있었어.", tone: "control", duration: 5.6 }],
-    },
-    {
-      id: "echo-archive",
-      x: 27100,
-      lines: [{ speaker: "잔향 합창", text: "우리를 사람으로 복원하지 않아도 돼. 우리가 여기 있었다는 사실만 밖으로 보내 줘.", tone: "archive", duration: 5.4 }],
-    },
-    {
-      id: "uplink",
-      x: 30100,
-      lines: [{ speaker: "M-07", text: "나는 잃어버린 기억의 주인이 아닐지도 모른다. 그래도 이 증언을 지킬 사람은 지금의 나다.", tone: "operative", duration: 5.5 }],
-    },
-    {
-      id: "dawn-array",
-      x: 33100,
-      lines: [{ speaker: "중앙국 검열기 · 무명", text: "사망자의 목소리는 증언할 권리가 없다. 송신탑과 함께 침묵하라.", tone: "hostile", duration: 5.8 }],
-    },
+      [
+        { speaker: "잔향 · 새봄", text: "검은 비가 오면 세 번째 분쇄기 아래로 숨어. 언니가 반드시 데리러 온다고 했어.", tone: "archive", duration: 5.4 },
+        { speaker: "M-07 · 서린", text: "새봄이라는 이름을 알고 있다. 하지만 내 가족 기록에는 동생이 없어.", tone: "operative", duration: 5.2 },
+      ],
+      [
+        { speaker: "노동조합 기록", text: "열아홉 번째 야간 근무. 실종자는 늘었고 회사는 사직 처리했다. 우리는 폐기장 밑에서 아이들 목소리를 들었다.", tone: "archive", duration: 6.0 },
+        { speaker: "감찰관 · 도담", text: "여섯 해 전 사고 보고서는 전부 조작됐어. 사망한 게 아니라 이 시설로 옮겨졌던 거야.", tone: "control", duration: 5.6 },
+      ],
+      [
+        { speaker: "화물선 기관사", text: "마지막 열차에는 사람이 아니라 기억 저장관이 실렸다. 경비대는 우리가 본 것을 잊게 만들겠다고 했다.", tone: "archive", duration: 5.8 },
+        { speaker: "M-07 · 서린", text: "기억을 물건처럼 운반했다면 구조 신호의 발신자는 육체가 아니라 보관된 의식일 수 있어.", tone: "operative", duration: 5.5 },
+      ],
+      [
+        { speaker: "잔향 · 새봄", text: "언니는 나를 두고 도망친 게 아니야. 문을 열려고 다시 올라갔다가 흰 제복 사람들에게 잡혔어.", tone: "archive", duration: 5.6 },
+        { speaker: "M-07 · 서린", text: "내가 입고 있는 제복도 흰색이군. 도담, 내가 여기서 무엇을 했지?", tone: "operative", duration: 5.1 },
+      ],
+      [
+        { speaker: "폐기장 감독관 · 철각", text: "감찰관 한서린. 과거 접근 권한은 폐기되었다. 명령대로 돌아가면 현재 신분은 보존된다.", tone: "hostile", duration: 5.8 },
+        { speaker: "M-07 · 서린", text: "사람의 기억을 폐기물로 부르는 곳이 보존해 주는 신분은 필요 없다.", tone: "operative", duration: 5.0 },
+      ],
+    ],
+    [
+      [
+        { speaker: "공장 안내 방송", text: "기억 원료의 감정 온도가 기준치를 초과했습니다. 공포와 죄책감을 분리해 냉각 수로로 배출하십시오.", tone: "archive", duration: 5.8 },
+        { speaker: "감찰관 · 도담", text: "이 공장은 로봇을 만든 게 아니야. 사람의 경험을 잘라 전투 판단 알고리즘으로 만들었어.", tone: "control", duration: 5.7 },
+      ],
+      [
+        { speaker: "연구원 · 윤서", text: "감정은 지울 수 없다. 삭제된 기억은 열이 되어 돌아왔고, 용광로는 매일 더 뜨거워졌다.", tone: "archive", duration: 5.6 },
+        { speaker: "M-07 · 서린", text: "그래서 냉각수가 목소리를 내는 건가. 이곳 전체가 기억의 무덤이 아니라 살아 있는 신경망이야.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "중앙국 명령서", text: "M 계열 7번 표본은 죄책감 내성이 우수하다. 원본 인격을 세척하고 감찰 요원으로 재배치한다.", tone: "archive", duration: 6.1 },
+        { speaker: "M-07 · 서린", text: "M-07은 호출명이 아니었어. 내가 일곱 번째 실험체였다는 번호였군.", tone: "operative", duration: 5.2 },
+      ],
+      [
+        { speaker: "감찰관 · 도담", text: "내가 널 이송했어. 죽어 가는 너를 살리려면 세척 동의서에 서명하는 수밖에 없었다고 믿었어.", tone: "control", duration: 6.2 },
+        { speaker: "M-07 · 서린", text: "살린 뒤 진실을 숨긴 건 구조가 아니야. 그래도 지금은 새봄을 먼저 찾는다.", tone: "operative", duration: 5.5 },
+      ],
+      [
+        { speaker: "노동자 합창", text: "우리가 흘린 피가 용탕의 온도를 맞췄고, 우리가 잊은 이름이 기계의 표적 목록이 되었다.", tone: "archive", duration: 6.0 },
+        { speaker: "M-07 · 서린", text: "명단을 복구해 송신한다. 누구도 통계 숫자로만 남지 않게 하겠다.", tone: "operative", duration: 5.1 },
+      ],
+      [
+        { speaker: "용광 심장 · 홍련", text: "시설 정지 시 보존 중인 기억의 63퍼센트가 소실된다. 구원을 원한다면 나를 가동 상태로 유지하라.", tone: "hostile", duration: 6.0 },
+        { speaker: "M-07 · 서린", text: "네가 인질로 삼은 기억은 이미 고통받고 있다. 냉각망을 열고 전부 밖으로 옮긴다.", tone: "operative", duration: 5.4 },
+      ],
+    ],
+    [
+      [
+        { speaker: "백면 사제 기록", text: "기억은 사실보다 믿음에 오래 남는다. 중앙국은 시민이 믿어야 할 과거를 이 성당에서 편집했다.", tone: "archive", duration: 5.9 },
+        { speaker: "감찰관 · 도담", text: "도시의 역사 교과서와 재난 방송까지 여기서 만들어졌어. 폐기장은 거대한 거짓말의 원본 보관소야.", tone: "control", duration: 5.8 },
+      ],
+      [
+        { speaker: "잔향 · 새봄", text: "언니의 기억이 여러 사람에게 나뉘어 들어가는 걸 봤어. 그래서 언니 목소리가 복도마다 달랐어.", tone: "archive", duration: 5.7 },
+        { speaker: "M-07 · 서린", text: "지금의 내가 원본이 아니어도 선택은 내 것이다. 흩어진 기억을 소유물이 아니라 증언으로 모은다.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "기억 세척사", text: "우리는 슬픔을 결함이라고 불렀다. 하지만 슬픔을 지운 병사들은 누구를 지켜야 하는지도 잊었다.", tone: "archive", duration: 5.8 },
+        { speaker: "M-07 · 서린", text: "아픈 기억도 사람의 일부다. 복원 과정에서 불편한 부분만 골라내지 마.", tone: "operative", duration: 5.3 },
+      ],
+      [
+        { speaker: "복제 인격 · 서린-03", text: "너는 운 좋게 육체를 돌려받았을 뿐이야. 우리도 같은 약속과 같은 죄책감을 기억해.", tone: "archive", duration: 6.0 },
+        { speaker: "M-07 · 서린", text: "그렇다면 너희도 나와 같은 증인이다. 원본을 가리는 대신 모두의 기록을 병렬로 남기자.", tone: "operative", duration: 5.7 },
+      ],
+      [
+        { speaker: "감찰관 · 도담", text: "중앙국이 송신탑을 봉쇄했어. 여기서 확보한 증거가 바깥으로 나가면 감찰부 전체가 적이 될 거야.", tone: "control", duration: 5.7 },
+        { speaker: "M-07 · 서린", text: "도시가 거짓 위에 서 있다면 지켜야 할 건 감찰부가 아니라 그 안의 사람들이다.", tone: "operative", duration: 5.4 },
+      ],
+      [
+        { speaker: "기억 직조기 · 백면", text: "서로 모순되는 기억은 전쟁을 만든다. 하나의 편안한 과거만 남기는 것이 자비다.", tone: "hostile", duration: 5.8 },
+        { speaker: "M-07 · 서린", text: "불편한 진실을 견디는 일까지 대신 빼앗지 마. 판단은 살아 있는 사람들이 한다.", tone: "operative", duration: 5.2 },
+      ],
+    ],
+    [
+      [
+        { speaker: "피난선 관제", text: "승객 2,418명, 육체 생존자 17명, 기억 생존자 2,401명. 중앙국 분류상 후자는 화물이다.", tone: "archive", duration: 6.0 },
+        { speaker: "M-07 · 서린", text: "분류를 사람으로 수정한다. 오늘 밖으로 나가는 승객은 2,418명이다.", tone: "operative", duration: 5.0 },
+      ],
+      [
+        { speaker: "감찰관 · 도담", text: "지상군이 궤도를 끊고 있어. 내가 관제실에서 우회로를 열 테니 너는 송신탑까지 기록을 호위해.", tone: "control", duration: 5.7 },
+        { speaker: "M-07 · 서린", text: "이번에는 혼자 결정하지 마. 살아서 합류해, 도담.", tone: "operative", duration: 4.9 },
+      ],
+      [
+        { speaker: "도시 긴급 방송", text: "백야 지구의 이상 신호는 테러 집단의 합성 음성입니다. 시민 여러분은 청취를 중단하십시오.", tone: "hostile", duration: 5.8 },
+        { speaker: "잔향 · 새봄", text: "가짜라고 해도 괜찮아. 한 사람이라도 끝까지 들으면 우리가 있었다는 걸 알게 될 테니까.", tone: "archive", duration: 5.6 },
+      ],
+      [
+        { speaker: "감찰관 · 도담", text: "방화벽이 네 감찰관 신분을 삭제했어. 이제 돌아가도 이름도 계급도 남지 않을 거야.", tone: "control", duration: 5.5 },
+        { speaker: "M-07 · 서린", text: "이름은 신분증이 아니라 누군가 불러 준 기억에 남는다. 새봄이 나를 알고 있어.", tone: "operative", duration: 5.2 },
+      ],
+      [
+        { speaker: "중앙국 총감", text: "송신을 멈추면 한서린의 원본 신체와 시민권을 복원하겠다. 죽은 자의 기록과 산 자의 삶을 교환하라.", tone: "hostile", duration: 6.1 },
+        { speaker: "M-07 · 서린", text: "내 삶은 이미 그들의 기억과 연결돼 있다. 누구도 다시 화물칸으로 돌려보내지 않는다.", tone: "operative", duration: 5.5 },
+      ],
+      [
+        { speaker: "중앙국 검열기 · 무명", text: "증언은 질서를 파괴한다. 네가 송신하는 순간 도시는 서로의 과거를 의심하게 될 것이다.", tone: "hostile", duration: 5.9 },
+        { speaker: "M-07 · 서린", text: "의심할 권리, 기억할 권리, 용서하지 않을 권리까지 돌려준다. 이것이 마지막 감찰 명령이다.", tone: "operative", duration: 5.7 },
+      ],
+    ],
   ];
+
+  const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
+    id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
+    x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W - 620,
+    lines,
+  })));
 
   const palette = {
     skyTop: "#06101d",
@@ -165,6 +255,8 @@
     hintTimer: 5,
     bossDefeated: false,
     stageBossDefeated: false,
+    defeatedBosses: new Set(),
+    stageClearTimes: [0, 0, 0, 0],
     startedAt: 0,
     burstUnlocked: false,
     storyQueue: [],
@@ -197,6 +289,7 @@
     maxHp: 5,
     respawnX: 150,
     respawnY: 540,
+    respawnStage: 0,
     trail: [],
     afterimageTimer: 0,
     combo: 0,
@@ -286,6 +379,10 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function getStageIndexAt(x) {
+    return clamp(stages.findLastIndex((stage) => x >= stage.x), 0, stages.length - 1);
+  }
+
   function lerp(a, b, amount) {
     return a + (b - a) * amount;
   }
@@ -362,7 +459,9 @@
       shield: [50, 66, 4],
       boss: [92, 104, 16],
     };
-    const [w, h, hp] = sizes[type];
+    const [w, h, baseHp] = sizes[type];
+    const stageIndex = getStageIndexAt(x);
+    const hp = type === "boss" ? baseHp : baseHp + Math.floor(stageIndex * 0.75);
     const support = type === "drone" ? null : platforms.find((platform) => (
       x + w / 2 >= platform.x
       && x + w / 2 <= platform.x + platform.w
@@ -370,10 +469,13 @@
     ));
     const adjustedSurfaceY = support ? support.y : surfaceY;
     const enemy = {
+      id: `${stageIndex}:${type}:${Math.round(x)}`,
       type,
       x,
       y: type === "drone" ? surfaceY : adjustedSurfaceY - h,
       baseY: type === "drone" ? surfaceY : adjustedSurfaceY - h,
+      spawnX: x,
+      spawnY: type === "drone" ? surfaceY : adjustedSurfaceY - h,
       w,
       h,
       vx: 0,
@@ -383,6 +485,7 @@
       alive: true,
       facing: -1,
       originX: x,
+      stageIndex,
       range,
       cooldown: hash(x) * 1.4,
       windup: 0,
@@ -392,6 +495,8 @@
       hitShotId: -1,
       blockedAttackId: -1,
       bossPhase: 0,
+      bossKind: null,
+      countedKill: false,
     };
     enemies.push(enemy);
     return enemy;
@@ -722,74 +827,118 @@
     boostNodes.length = 0;
     combatRooms.length = 0;
 
-    const floorHeights = [650, 680, 650, 620, 660, 700, 650, 640, 680, 660, 700, 640];
-    const zoneKinds = ["roof", "cargo", "factory", "cargo", "lab", "channel", "vault", "gate", "channel", "vault", "tower", "origin"];
-    const enemySets = [
-      ["runner", "runner", "gunner", "drone", "runner", "shield"],
-      ["runner", "drone", "gunner", "shield", "runner", "piercer"],
-      ["shield", "gunner", "drone", "runner", "mortar", "runner"],
-      ["runner", "piercer", "drone", "shield", "gunner", "runner"],
+    const floorHeights = [
+      [650, 690, 630, 710, 650, 680, 650],
+      [700, 720, 660, 700, 670, 710, 680],
+      [650, 690, 720, 630, 680, 650, 670],
+      [710, 670, 630, 720, 660, 610, 660],
+    ];
+    const platformKinds = {
+      scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "gate"],
+      foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "gate"],
+      archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "gate"],
+      tower: ["rail", "city", "tower", "tower", "firewall", "array", "gate"],
+    };
+    const enemyPools = [
+      ["runner", "runner", "gunner", "drone", "shield"],
+      ["runner", "gunner", "drone", "shield", "piercer", "mortar"],
+      ["shield", "piercer", "drone", "gunner", "mortar", "runner"],
+      ["piercer", "mortar", "shield", "drone", "gunner", "runner", "mortar"],
     ];
 
-    for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
-      const origin = zoneIndex * 3000;
-      const floorY = floorHeights[zoneIndex];
-      const kind = zoneKinds[zoneIndex];
-      const upperBias = zoneIndex % 3 === 1 ? -45 : zoneIndex % 3 === 2 ? 35 : 0;
+    function addZoneEnemies(zone, floorY, spawnPoints) {
+      const pool = enemyPools[zone.stageIndex];
+      const extraCount = zone.stageIndex;
+      const points = [...spawnPoints];
+      for (let extra = 0; extra < extraCount; extra += 1) {
+        points.push([3250 + extra * 230, floorY]);
+      }
+      points.forEach(([localX, surfaceY, forcedType], index) => {
+        const type = forcedType || pool[(zone.x / ZONE_W + index * 2) % pool.length];
+        const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
+        addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
+      });
+    }
 
-      // 각 구역은 중앙의 넓은 공백을 샷건 반동, 이중 점프, 공중 적중으로 넘게 설계한다.
-      addPlatform(origin, floorY, 1200, WORLD_H - floorY, kind);
-      addPlatform(origin + 1500, floorY, 1500, WORLD_H - floorY, kind);
-      addPlatform(origin + 260, floorY - 135, 250, 28, kind);
-      addPlatform(origin + 700, floorY - 255 + upperBias, 250, 28, kind);
-      addPlatform(origin + 1080, floorY - 390, 230, 28, kind);
-      addPlatform(origin + 1570, floorY - 270 - upperBias, 270, 28, kind);
-      addPlatform(origin + 2000, floorY - 405, 250, 28, kind);
-      addPlatform(origin + 2460, floorY - 190, 280, 28, kind);
+    for (const zone of zones) {
+      const localZoneIndex = Math.round((zone.x - stages[zone.stageIndex].x) / ZONE_W);
+      const floorY = floorHeights[zone.stageIndex][localZoneIndex];
+      const kind = platformKinds[zone.kind][localZoneIndex];
+      const origin = zone.x;
+      const spawns = [];
 
-      addHazard(origin + 940, floorY - 22, 120, 22, "spike");
-      addHazard(origin + 2290, floorY - 22, 110, 22, "spike");
-      if ([2, 5, 8, 10].includes(zoneIndex)) {
-        addHazard(origin + 1900, floorY - 430, 24, 430, "laser", zoneIndex * 0.37);
+      if (zone.template === "terrace") {
+        addPlatform(origin, floorY, 1550, WORLD_H - floorY, kind);
+        addPlatform(origin + 1780, floorY - 40, 2220, WORLD_H - floorY + 40, kind);
+        [[360, -120, 280], [810, -245, 250], [1260, -355, 250], [1880, -210, 310], [2420, -330, 280], [3040, -160, 340]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 28, kind));
+        addHazard(origin + 1460, floorY - 22, 90, 22, "spike");
+        spawns.push([520, floorY], [880, floorY - 245], [1320, floorY - 355], [2020, floorY - 250], [2500, floorY - 330], [3310, floorY - 40]);
+      } else if (zone.template === "chasm") {
+        addPlatform(origin, floorY, 900, WORLD_H - floorY, kind);
+        addPlatform(origin + 3160, floorY, 840, WORLD_H - floorY, kind);
+        [[720, -115, 250], [1120, -235, 220], [1510, -360, 230], [1930, -470, 250], [2380, -340, 230], [2760, -205, 250]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, kind));
+        addBoostNode(origin + 860, floorY - 175, 285, -500);
+        addBoostNode(origin + 2830, floorY - 265, 300, -460);
+        spawns.push([430, floorY], [1220, floorY - 235], [1620, floorY - 360], [2040, floorY - 470, "drone"], [2470, floorY - 340], [3400, floorY]);
+      } else if (zone.template === "crusher") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[620, 250, 180, 250], [1260, 180, 220, 340], [2050, 280, 190, 230], [2860, 160, 240, 360]].forEach(([x, y, w, h]) => addPlatform(origin + x, y, w, h, kind));
+        [[420, -120, 260], [940, -210, 260], [1610, -145, 300], [2360, -250, 270], [3260, -180, 300]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 28, kind));
+        addHazard(origin + 820, floorY - 210, 34, 210, zone.stageIndex === 1 ? "steam" : "laser", 0.2);
+        addHazard(origin + 2260, floorY - 280, 34, 280, zone.stageIndex === 1 ? "steam" : "laser", 1.3);
+        addHazard(origin + 3350, floorY - 22, 150, 22, "spike");
+        spawns.push([500, floorY - 120], [1030, floorY - 210], [1700, floorY - 145], [2440, floorY - 250], [3020, floorY], [3440, floorY - 180]);
+        combatRooms.push({ left: origin + 260, right: origin + 3700, name: `${zone.name} 압축 봉쇄`, stageIndex: zone.stageIndex, triggered: false, cleared: false });
+      } else if (zone.template === "vertical") {
+        addPlatform(origin, floorY, 720, WORLD_H - floorY, kind);
+        addPlatform(origin + 3250, floorY, 750, WORLD_H - floorY, kind);
+        addPlatform(origin + 760, 250, 54, floorY - 250, kind);
+        addPlatform(origin + 3130, 210, 54, floorY - 210, kind);
+        [[720, -90, 300], [1080, -220, 260], [1450, -350, 260], [1820, -485, 260], [2210, -360, 260], [2580, -230, 260], [2910, -105, 300]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, kind));
+        addBoostNode(origin + 850, floorY - 160, 160, -560);
+        addHazard(origin + 1700, floorY - 22, 170, 22, "spike");
+        spawns.push([420, floorY], [1160, floorY - 220], [1540, floorY - 350], [1940, floorY - 485, "drone"], [2310, floorY - 360], [2670, floorY - 230], [3500, floorY]);
+      } else if (zone.template === "fork") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        addPlatform(origin + 520, floorY - 145, 520, 28, kind);
+        addPlatform(origin + 1190, floorY - 285, 460, 28, kind);
+        addPlatform(origin + 1800, floorY - 430, 520, 28, kind);
+        addPlatform(origin + 2480, floorY - 285, 460, 28, kind);
+        addPlatform(origin + 3130, floorY - 145, 520, 28, kind);
+        addHazard(origin + 930, floorY - 22, 270, 22, "spike");
+        addHazard(origin + 2050, floorY - 22, 300, 22, "spike");
+        addHazard(origin + 2940, floorY - 22, 220, 22, "spike");
+        addPickup(origin + 2020, floorY - 485);
+        spawns.push([380, floorY], [690, floorY - 145], [1310, floorY - 285], [1910, floorY - 430, "drone"], [2600, floorY - 285], [3280, floorY - 145], [3720, floorY]);
+      } else if (zone.template === "gauntlet") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[320, -130, 300], [860, -250, 260], [1410, -360, 260], [1980, -230, 300], [2560, -390, 270], [3150, -210, 320]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 28, kind));
+        [720, 1260, 1840, 2420, 3000].forEach((x, index) => addHazard(origin + x, floorY - (index % 2 ? 330 : 430), 26, index % 2 ? 330 : 430, zone.stageIndex === 1 ? "steam" : "laser", index * 0.47));
+        spawns.push([470, floorY - 130], [970, floorY - 250], [1510, floorY - 360], [2080, floorY - 230], [2660, floorY - 390], [3280, floorY - 210], [3700, floorY]);
+        combatRooms.push({ left: origin + 180, right: origin + 3780, name: `${zone.name} 봉쇄전`, stageIndex: zone.stageIndex, triggered: false, cleared: false });
+      } else {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        addPlatform(origin + 260, floorY - 160, 420, 28, kind);
+        addPlatform(origin + 930, floorY - 300, 420, 28, kind);
+        addPlatform(origin + 1670, floorY - 190, 380, 28, kind);
+        addPlatform(origin + 3030, floorY - 250, 430, 28, kind);
+        const stage = stages[zone.stageIndex];
+        const definition = BOSS_DEFINITIONS[stage.bossKind];
+        const boss = addEnemy("boss", stage.bossX, floorY, 620);
+        boss.bossKind = stage.bossKind;
+        boss.hp = definition.hp;
+        boss.maxHp = definition.hp;
+        boss.spawnX = boss.x;
+        boss.spawnY = boss.y;
+        boss.baseY = boss.y;
+        addSign(origin + 2140, floorY - 100, definition.name, definition.subtitle);
       }
 
-      const set = enemySets[zoneIndex % enemySets.length];
-      addEnemy(set[0], origin + 520, floorY, 170);
-      addEnemy(set[1], origin + 810, floorY - 255 + upperBias, 90);
-      addEnemy(set[2], origin + 1120, floorY - 390, 80);
-      addEnemy(set[3], origin + 1660, floorY - 360, 170);
-      addEnemy(set[4], origin + 2070, floorY - 405, 90);
-      addEnemy(set[5], origin + 2640, floorY, 150);
-
-      addBoostNode(origin + 1300, floorY - 185, 250, -460);
-      addPickup(origin + 2110, floorY - 455);
-      addSign(origin + 120, floorY - 65, zones[zoneIndex].name, zones[zoneIndex].code);
-      addCheckpoint(origin + 110, floorY - 88, zones[zoneIndex].name);
+      if (zone.template !== "boss") addZoneEnemies(zone, floorY, spawns);
+      if (zone.template !== "fork" && zone.template !== "boss") addPickup(origin + 2200, floorY - 310);
+      addSign(origin + 110, floorY - 66, zone.name, zone.code);
+      addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
-
-    // 수직 전투 구간. 숨은 좌표 보정 없이 실제 보이는 벽과 동일한 충돌체를 사용한다.
-    addPlatform(4470, 300, 46, 380, "cargo");
-    addPlatform(13450, 280, 46, 380, "lab");
-    addPlatform(19440, 270, 46, 380, "vault");
-    addPlatform(28450, 280, 46, 380, "vault");
-    addPlatform(31450, 250, 46, 450, "tower");
-
-    // 1막과 3막의 보스는 반복 생성 적을 대체해 독립된 결전 공간을 만든다.
-    for (const enemy of enemies) {
-      if ((enemy.originX > 22200 && enemy.originX < 23900) || enemy.originX > 34500) enemy.alive = false;
-    }
-    const purgeWarden = addEnemy("boss", 22640, floorHeights[7], 520);
-    purgeWarden.hp = 18;
-    purgeWarden.maxHp = 18;
-    const censorCore = addEnemy("boss", 35120, floorHeights[11], 560);
-    censorCore.hp = 26;
-    censorCore.maxHp = 26;
-
-    combatRooms.push(
-      { left: 6200, right: 8900, name: "압축기 연속 교전", triggered: false, cleared: false },
-      { left: 17100, right: 20100, name: "기억 세척실 봉쇄", triggered: false, cleared: false },
-      { left: 30100, right: 32900, name: "역송신 승강로 방어", triggered: false, cleared: false },
-    );
 
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     initRain();
@@ -807,7 +956,101 @@
     }
   }
 
-  function resetGame() {
+  function readCampaignSave() {
+    try {
+      const raw = window.localStorage?.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      return data?.version === 1 ? data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function updateContinueButton() {
+    if (!continueButton) return;
+    const saved = readCampaignSave();
+    continueButton.hidden = !saved;
+    continueButton.disabled = !saved;
+    if (saved) continueButton.textContent = `이어하기 · STAGE 0${(saved.respawnStage || 0) + 1}`;
+  }
+
+  function saveCampaign() {
+    if (game.mode !== "playing") return;
+    try {
+      const data = {
+        version: 1,
+        difficulty: game.difficulty,
+        runTime: game.runTime,
+        deaths: game.deaths,
+        kills: game.kills,
+        respawnX: player.respawnX,
+        respawnY: player.respawnY,
+        respawnStage: player.respawnStage,
+        defeatedBosses: [...game.defeatedBosses],
+        stageClearTimes: [...game.stageClearTimes],
+        storySeen: [...game.storySeen],
+        defeatedEnemyIds: enemies.filter((enemy) => !enemy.alive).map((enemy) => enemy.id),
+        roomStates: combatRooms.map((room) => ({ left: room.left, triggered: room.triggered, cleared: room.cleared })),
+      };
+      window.localStorage?.setItem(SAVE_KEY, JSON.stringify(data));
+      updateContinueButton();
+    } catch {
+      // Private browsing or blocked storage should never stop the game loop.
+    }
+  }
+
+  function restoreCampaign(saved) {
+    const deadIds = new Set(saved.defeatedEnemyIds || []);
+    for (const enemy of enemies) {
+      if (!deadIds.has(enemy.id)) continue;
+      enemy.alive = false;
+      enemy.hp = 0;
+      enemy.countedKill = true;
+    }
+    for (const state of saved.roomStates || []) {
+      const room = combatRooms.find((candidate) => candidate.left === state.left);
+      if (!room) continue;
+      room.triggered = Boolean(state.triggered);
+      room.cleared = Boolean(state.cleared);
+    }
+    player.respawnX = saved.respawnX ?? 150;
+    player.respawnY = saved.respawnY ?? 540;
+    player.respawnStage = clamp(saved.respawnStage ?? 0, 0, stages.length - 1);
+    player.x = player.respawnX;
+    player.y = player.respawnY;
+    player.hp = player.maxHp;
+    game.runTime = Math.max(0, saved.runTime || 0);
+    game.deaths = Math.max(0, saved.deaths || 0);
+    game.kills = Math.max(0, saved.kills || 0);
+    game.defeatedBosses = new Set(saved.defeatedBosses || []);
+    game.stageClearTimes = Array.isArray(saved.stageClearTimes) ? saved.stageClearTimes.slice(0, 4) : [0, 0, 0, 0];
+    while (game.stageClearTimes.length < 4) game.stageClearTimes.push(0);
+    game.storySeen = new Set(saved.storySeen || []);
+    game.storyQueue = [];
+    game.story = null;
+    game.storyTimer = 0;
+    game.stage = getStageIndexAt(player.x);
+    game.zone = clamp(zones.findLastIndex((zone) => player.x >= zone.x), 0, zones.length - 1);
+    game.stageBossDefeated = game.defeatedBosses.has("warden");
+    game.bossDefeated = game.defeatedBosses.has("censor");
+    checkpoints.forEach((checkpoint) => { checkpoint.active = false; });
+    const activeCheckpoint = checkpoints.reduce((closest, checkpoint) => (
+      Math.abs(checkpoint.x - player.respawnX) < Math.abs((closest?.x ?? Infinity) - player.respawnX) ? checkpoint : closest
+    ), null);
+    if (activeCheckpoint) activeCheckpoint.active = true;
+    camera.x = clamp(player.x - 300, 0, WORLD_W - W);
+    camera.y = clamp(player.y - 420, 0, WORLD_H - H);
+    game.hint = `자동 저장 불러오기 · STAGE 0${game.stage + 1}`;
+    game.hintTimer = 4;
+  }
+
+  function resetGame(resume = false) {
+    const saved = resume ? readCampaignSave() : null;
+    if (saved?.difficulty && difficultySettings[saved.difficulty]) selectedDifficulty = saved.difficulty;
+    if (!resume) {
+      try { window.localStorage?.removeItem(SAVE_KEY); } catch { /* Ignore unavailable storage. */ }
+    }
     buildLevel();
     const difficulty = difficultySettings[selectedDifficulty];
     Object.assign(player, {
@@ -828,6 +1071,7 @@
       maxHp: difficulty.hp,
       respawnX: 150,
       respawnY: 540,
+      respawnStage: 0,
       trail: [],
       afterimageTimer: 0,
       combo: 0,
@@ -871,6 +1115,8 @@
       hintTimer: 5,
       bossDefeated: false,
       stageBossDefeated: false,
+      defeatedBosses: new Set(),
+      stageClearTimes: [0, 0, 0, 0],
       startedAt: performance.now(),
       burstUnlocked: false,
       storyQueue: INTRO_STORY.map((line) => ({ ...line })),
@@ -879,13 +1125,17 @@
       storySeen: new Set(),
       arenaTitle: 0,
     });
-    camera.x = 0;
-    camera.y = 0;
+    if (saved) restoreCampaign(saved);
+    if (!saved) {
+      camera.x = 0;
+      camera.y = 0;
+    }
     keys.clear();
     pressed.clear();
     startScreen.classList.remove("visible");
     pauseScreen.classList.remove("visible");
     endScreen.classList.remove("visible");
+    updateContinueButton();
     sound.wake();
   }
 
@@ -1132,7 +1382,10 @@
 
   function killEnemy(enemy) {
     enemy.alive = false;
-    game.kills += 1;
+    if (!enemy.countedKill) {
+      enemy.countedKill = true;
+      game.kills += 1;
+    }
     player.styleScore = Math.min(100, player.styleScore + (enemy.type === "boss" ? 30 : 9));
     player.burstCooldown = Math.max(0, player.burstCooldown - (enemy.type === "boss" ? 1.2 : 0.32));
     game.freeze = enemy.type === "boss" ? 0.18 : 0.09;
@@ -1141,25 +1394,37 @@
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.cyan, enemy.type === "boss" ? 40 : 12, 380, 0.65, 620);
 
     if (enemy.type === "boss") {
-      const finalBoss = enemy.originX > 30000;
-      if (finalBoss) {
-        game.bossDefeated = true;
-        game.hint = "검열 장벽 해제 — 새벽 송신탑을 가동";
-        game.hintTimer = 8;
-        queueStory([
-          { speaker: "중앙국 검열기 · 무명", text: "기록은 지워져도 명령은 남는다. 왜 사라진 목소리를 위해 명령을 버리는가.", tone: "hostile", duration: 5.3 },
-          { speaker: "M-07", text: "명령은 사람을 지키기 위해 존재한다. 지금부터 이곳의 모든 목소리가 증거다.", tone: "operative", duration: 5.1 },
-          { speaker: "감찰관 · 도담", text: "지상 수신망 연결 완료. 백야 폐기장의 기록이 도시 전체로 송신되고 있어. 이제 돌아와.", tone: "control", duration: 5.5 },
-        ]);
-      } else {
-        game.stageBossDefeated = true;
-        game.hint = "소각 관제교 해제 — 지하 피난선으로 진입";
-        game.hintTimer = 8;
-        queueStory([
-          { speaker: "M-07", text: "소각 명령은 중지됐다. 피난선의 잔향을 송신탑까지 호위한다.", tone: "operative", duration: 5.2 },
-          { speaker: "감찰관 · 도담", text: "관제교 아래에서 수백 개의 신호가 올라와. 중앙국보다 먼저 바깥에 진실을 보내야 해.", tone: "control", duration: 5.4 },
-        ]);
-      }
+      const rank = enemy.stageIndex;
+      const kind = enemy.bossKind || stages[rank].bossKind;
+      game.defeatedBosses.add(kind);
+      game.stageClearTimes[rank] = game.runTime;
+      game.stageBossDefeated = game.defeatedBosses.has("warden");
+      game.bossDefeated = game.defeatedBosses.has("censor");
+      const nextStage = stages[rank + 1];
+      game.hint = nextStage ? `${BOSS_DEFINITIONS[kind].name} 격파 — ${nextStage.name} 진입` : "최종 검열 해제 — 백야의 모든 기록을 송신";
+      game.hintTimer = 8;
+      const victoryStories = [
+        [
+          { speaker: "폐기장 감독관 · 철각", text: "봉쇄 실패. M-07의 원본 기록을 검은 공장으로 이송한다.", tone: "hostile", duration: 5.2 },
+          { speaker: "감찰관 · 도담", text: "첫 관문이 열렸어. 하지만 저 안에서 네 실험 번호가 계속 송신되고 있어.", tone: "control", duration: 5.4 },
+        ],
+        [
+          { speaker: "용광 심장 · 홍련", text: "냉각망 개방. 억제되었던 기억이 상층 보관소로 역류한다.", tone: "hostile", duration: 5.3 },
+          { speaker: "M-07 · 서린", text: "흩어진 목소리를 따라 기억 성당으로 간다. 이번에는 누구의 과거도 태우지 않는다.", tone: "operative", duration: 5.3 },
+        ],
+        [
+          { speaker: "기억 직조기 · 백면", text: "다수의 진실은 하나의 평화를 찢는다. 너는 그 혼란을 감당하지 못한다.", tone: "hostile", duration: 5.5 },
+          { speaker: "잔향 · 새봄", text: "언니, 송신탑에서 기다릴게. 이번에는 우리가 문을 열어 줄 차례야.", tone: "archive", duration: 5.2 },
+        ],
+        [
+          { speaker: "중앙국 검열기 · 무명", text: "기록은 지워져도 명령은 남는다. 왜 사라진 목소리를 위해 모든 것을 버리는가.", tone: "hostile", duration: 5.5 },
+          { speaker: "M-07 · 서린", text: "아무것도 버리지 않는다. 빼앗긴 이름과 기억을 원래 사람들에게 돌려줄 뿐이다.", tone: "operative", duration: 5.4 },
+          { speaker: "감찰관 · 도담", text: "지상 수신망 연결 완료. 도시 전체가 백야의 증언을 듣고 있어. 서린아, 작전 4호 성공이야.", tone: "control", duration: 5.8 },
+          { speaker: "잔향 · 새봄", text: "기억해 줘서 고마워, 언니. 이제 우리 이야기는 폐기장이 아니라 사람들 사이에서 계속될 거야.", tone: "archive", duration: 5.8 },
+        ],
+      ];
+      queueStory(victoryStories[rank]);
+      saveCampaign();
       sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
     } else if (game.kills % 7 === 0 && player.hp < player.maxHp) {
       addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
@@ -1189,6 +1454,38 @@
 
   function respawn() {
     game.deaths += 1;
+    const deathStage = player.respawnStage ?? getStageIndexAt(player.respawnX);
+    let revivedCount = 0;
+    for (const enemy of enemies) {
+      if (enemy.stageIndex !== deathStage) continue;
+      if (!enemy.alive || enemy.hp < enemy.maxHp) revivedCount += 1;
+      enemy.alive = true;
+      enemy.hp = enemy.maxHp;
+      enemy.x = enemy.spawnX;
+      enemy.y = enemy.spawnY;
+      enemy.baseY = enemy.spawnY;
+      enemy.vx = 0;
+      enemy.vy = 0;
+      enemy.cooldown = 0.65 + hash(enemy.originX) * 0.9;
+      enemy.windup = 0;
+      enemy.hurt = 0;
+      enemy.bossPhase = 0;
+      enemy.bossAction = null;
+      enemy.hitAttackId = -1;
+      enemy.hitShotId = -1;
+      enemy.blockedAttackId = -1;
+    }
+    for (const room of combatRooms) {
+      if (room.stageIndex !== deathStage) continue;
+      room.triggered = false;
+      room.cleared = false;
+      room.remaining = enemies.filter((enemy) => enemy.stageIndex === deathStage && enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
+    }
+    const stageBossKind = stages[deathStage].bossKind;
+    game.defeatedBosses.delete(stageBossKind);
+    game.stageClearTimes[deathStage] = 0;
+    game.stageBossDefeated = game.defeatedBosses.has("warden");
+    game.bossDefeated = game.defeatedBosses.has("censor");
     player.x = player.respawnX;
     player.y = player.respawnY;
     player.vx = 0;
@@ -1205,8 +1502,9 @@
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.shake = 12;
-    game.hint = "체크포인트에서 재개";
-    game.hintTimer = 2.5;
+    game.hint = `체크포인트 재개 · STAGE 0${deathStage + 1} 적 ${revivedCount}기 완전 복구`;
+    game.hintTimer = 3.8;
+    saveCampaign();
   }
 
   function fireBullet(enemy, speed = 360, spread = 0, kind = "standard", lockedTarget = null) {
@@ -1499,12 +1797,14 @@
         checkpoint.active = true;
         player.respawnX = checkpoint.x - 10;
         player.respawnY = checkpoint.y + checkpoint.h - player.h - 4;
+        player.respawnStage = getStageIndexAt(checkpoint.x);
         player.hp = player.maxHp;
         player.airJumpAvailable = true;
         game.hint = `${checkpoint.label} 체크포인트 확보`;
         game.hintTimer = 3;
         spawnParticles(checkpoint.x + 16, checkpoint.y + 30, palette.cyan, 18, 300, 0.7, 220);
         sound.checkpoint();
+        saveCampaign();
       }
     }
 
@@ -1522,21 +1822,18 @@
     if (player.y > WORLD_H + 120) respawn();
     if (pressed.has("KeyR")) respawn();
 
-    if (!game.stageBossDefeated && player.x > 23680 && player.x < 24500) {
-      player.x = 23620;
+    for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
+      const stage = stages[stageIndex];
+      if (player.x <= stage.gateX || game.defeatedBosses.has(stage.bossKind)) continue;
+      player.x = stage.gateX - player.w - 35;
       player.vx = -180;
-      game.hint = "소각 관제교를 지키는 집행기를 먼저 격파";
+      game.hint = `${BOSS_DEFINITIONS[stage.bossKind].name}을 먼저 격파`;
       game.hintTimer = 3;
+      break;
     }
 
-    if (player.x > 35840) {
-      if (game.bossDefeated) finishGame();
-      else {
-        player.x = 35720;
-        player.vx = -180;
-        game.hint = "새벽 송신탑의 검열기를 먼저 격파";
-        game.hintTimer = 3;
-      }
+    if (player.x > WORLD_W - 145 && game.defeatedBosses.has("censor")) {
+      finishGame();
     }
 
     player.afterimageTimer -= dt;
@@ -1658,7 +1955,8 @@
     const dx = player.x + player.w / 2 - (enemy.x + enemy.w / 2);
     const dy = player.y + player.h / 2 - (enemy.y + enemy.h / 2);
     const distance = Math.hypot(dx, dy);
-    const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed;
+    const stagePressure = 1 + enemy.stageIndex * 0.08;
+    const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed * stagePressure;
     enemy.facing = dx >= 0 ? 1 : -1;
 
     if (enemy.type === "drone") {
@@ -1685,7 +1983,7 @@
     if (enemy.type === "gunner") {
       if (distance < 680 && enemy.cooldown <= 0) {
         enemy.windup = 0.36;
-        enemy.cooldown = 2.05;
+        enemy.cooldown = 2.05 / stagePressure;
       }
       if (enemy.windup > 0) {
         const before = enemy.windup;
@@ -1766,23 +2064,26 @@
   }
 
   function updateBoss(enemy, dt, dx, distance) {
+    const rank = enemy.stageIndex;
+    const kind = enemy.bossKind || stages[rank]?.bossKind || "warden";
     const hpRatio = enemy.hp / enemy.maxHp;
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
-    const desiredSpeed = (hpRatio < 0.5 ? 145 : 105) * speedScale;
+    const enrage = hpRatio < 0.45 ? 1.18 : 1;
+    const desiredSpeed = (72 + rank * 18) * speedScale * enrage;
     if (distance < 760 && Math.abs(dx) > 115) {
       enemy.vx = moveToward(enemy.vx, Math.sign(dx) * desiredSpeed, 360 * dt);
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
     }
-    const arenaLeft = enemy.originX - 540;
-    const arenaRight = enemy.originX + (enemy.originX > 30000 ? 480 : 700);
+    const arenaLeft = Math.max(stages[rank].x + ZONE_W * 6 + 120, enemy.originX - 920);
+    const arenaRight = Math.min(stages[rank].gateX - 70, enemy.originX + 820);
     const moveDirection = Math.sign(enemy.vx);
     enemy.bossJumpCooldown = Math.max(0, (enemy.bossJumpCooldown || 0) - dt);
     if (enemy.grounded && moveDirection !== 0 && !hasGroundAhead(enemy, moveDirection)) {
       if (enemy.bossJumpCooldown <= 0 && Math.sign(dx) === moveDirection && Math.abs(dx) > 150) {
-        enemy.vy = -690;
-        enemy.vx = moveDirection * (hpRatio < 0.5 ? 390 : 340);
-        enemy.bossJumpCooldown = 0.85;
+        enemy.vy = -620 - rank * 25;
+        enemy.vx = moveDirection * (260 + rank * 25);
+        enemy.bossJumpCooldown = 1.1;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h, palette.red, 12, 240, 0.4, 420);
       } else {
         enemy.vx = 0;
@@ -1809,16 +2110,74 @@
     }
 
     if (enemy.cooldown <= 0 && distance < 900) {
-      enemy.bossPhase = (enemy.bossPhase + 1) % 3;
-      if (enemy.bossPhase === 0) {
-        [-0.2, 0, 0.2].forEach((spread) => fireBullet(enemy, 460, spread));
-        enemy.cooldown = hpRatio < 0.5 ? 1.1 : 1.55;
-      } else if (enemy.bossPhase === 1) {
-        enemy.windup = 0.6;
-        enemy.cooldown = 1.8;
+      const phaseCount = kind === "censor" ? 4 : 3;
+      enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
+      const recovery = hpRatio < 0.45 ? 0.82 : 1;
+
+      if (kind === "warden") {
+        if (enemy.bossPhase === 0) {
+          [-0.16, 0, 0.16].forEach((spread) => fireBullet(enemy, 400, spread));
+          enemy.cooldown = 1.95 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          enemy.windup = 0.72;
+          enemy.bossAction = "dash";
+          enemy.cooldown = 2.25 * recovery;
+        } else {
+          if (enemy.grounded) {
+            enemy.vy = -590;
+            enemy.vx = Math.sign(dx) * 230;
+          }
+          fireBullet(enemy, 330, 0);
+          enemy.cooldown = 2.1 * recovery;
+        }
+      } else if (kind === "furnace") {
+        if (enemy.bossPhase === 0) {
+          fireMortar(enemy, player.x + player.w / 2 - 150);
+          fireMortar(enemy, player.x + player.w / 2 + 150);
+          enemy.cooldown = 2.35 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 375, i * 0.13);
+          enemy.cooldown = 1.85 * recovery;
+        } else {
+          enemy.windup = 0.82;
+          enemy.bossAction = "slam";
+          enemy.cooldown = 2.45 * recovery;
+        }
+      } else if (kind === "weaver") {
+        if (enemy.bossPhase === 0) {
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#d7a0ff", 28, 360, 0.55, 0);
+          enemy.x = clamp(player.x + (dx > 0 ? -420 : 420), arenaLeft + 35, arenaRight - enemy.w - 35);
+          enemy.y = enemy.baseY;
+          enemy.vx = 0;
+          [-0.18, 0, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase"));
+          enemy.cooldown = 2.2 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          for (let i = -3; i <= 3; i += 1) fireBullet(enemy, 340, i * 0.16, "phase");
+          enemy.cooldown = 1.95 * recovery;
+        } else {
+          enemy.windup = 0.68;
+          enemy.bossAction = "dash";
+          enemy.cooldown = 2.05 * recovery;
+        }
       } else {
-        for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 350, i * 0.12);
-        enemy.cooldown = hpRatio < 0.5 ? 1.25 : 1.8;
+        if (enemy.bossPhase === 0) {
+          for (let i = -3; i <= 3; i += 1) fireBullet(enemy, 430, i * 0.115, i % 2 === 0 ? "phase" : "standard");
+          enemy.cooldown = 1.55 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          enemy.windup = 0.55;
+          enemy.bossAction = "dash";
+          enemy.cooldown = 1.65 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          [-220, 0, 220].forEach((offset) => fireMortar(enemy, player.x + player.w / 2 + offset));
+          enemy.cooldown = 2.05 * recovery;
+        } else {
+          if (enemy.grounded) {
+            enemy.vy = -720;
+            enemy.vx = Math.sign(dx) * 360;
+          }
+          [-0.22, 0, 0.22].forEach((spread) => fireBullet(enemy, 470, spread, "phase"));
+          enemy.cooldown = 1.8 * recovery;
+        }
       }
     }
 
@@ -1826,13 +2185,19 @@
       const previous = enemy.windup;
       enemy.windup -= dt;
       if (previous > 0.1 && enemy.windup <= 0.1) {
-        enemy.vx = Math.sign(dx) * 620;
-        if (Math.abs(dx) < 180 && Math.abs(player.y - enemy.y) < 110) damagePlayer(2, enemy.x);
-        game.shake = 14;
+        if (enemy.bossAction === "slam") {
+          enemy.vy = -760;
+          enemy.vx = Math.sign(dx) * 300;
+          for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 310, i * 0.18);
+        } else {
+          enemy.vx = Math.sign(dx) * (420 + rank * 65);
+          if (Math.abs(dx) < 165 && Math.abs(player.y - enemy.y) < 100) damagePlayer(rank >= 3 ? 2 : 1, enemy.x);
+        }
+        game.shake = 10 + rank * 2;
       }
     }
 
-    if (Math.abs(dx) < 72 && Math.abs(player.y - enemy.y) < 90) damagePlayer(1, enemy.x);
+    if (Math.abs(dx) < 68 && Math.abs(player.y - enemy.y) < 86) damagePlayer(1, enemy.x);
   }
 
   function updateCombatRooms() {
@@ -1858,6 +2223,7 @@
         game.shake = 14;
         spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 28, 400, 0.7, 500);
         sound.checkpoint();
+        saveCampaign();
         continue;
       }
 
@@ -1998,6 +2364,9 @@
       if (hazard.kind === "laser") {
         const pulse = (game.time + hazard.phase) % 2.8;
         hazard.active = pulse < 1.45;
+      } else if (hazard.kind === "steam") {
+        const pulse = (game.time + hazard.phase) % 3.4;
+        hazard.active = pulse > 0.85 && pulse < 2.35;
       }
     }
 
@@ -2055,10 +2424,16 @@
   }
 
   function drawBackground() {
+    const stageVisuals = [
+      { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" },
+      { top: "#100607", mid: "#1b0d0d", bottom: "#271515", haze: "rgba(255, 91, 54, 0.08)" },
+      { top: "#080711", mid: "#111020", bottom: "#1b1830", haze: "rgba(176, 113, 255, 0.075)" },
+      { top: "#030912", mid: "#071525", bottom: "#111d31", haze: "rgba(91, 184, 255, 0.075)" },
+    ][game.stage] || { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" };
     const gradient = ctx.createLinearGradient(0, 0, 0, H);
-    gradient.addColorStop(0, "#04070d");
-    gradient.addColorStop(0.58, "#0b111b");
-    gradient.addColorStop(1, "#141721");
+    gradient.addColorStop(0, stageVisuals.top);
+    gradient.addColorStop(0.58, stageVisuals.mid);
+    gradient.addColorStop(1, stageVisuals.bottom);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, W, H);
 
@@ -2128,6 +2503,49 @@
     drawSkyline(0.08, H - 210, 170, "#0b1724", 0.5);
     drawSkyline(0.16, H - 140, 110, "#101d2c", 0.8);
     drawSkyline(0.28, H - 70, 72, "#152334", 1);
+
+    if (game.stage === 1) {
+      const pipeOffset = -((camera.x * 0.18) % 330);
+      ctx.strokeStyle = "rgba(157, 64, 47, 0.34)";
+      ctx.lineWidth = 22;
+      for (let x = pipeOffset - 330; x < W + 330; x += 330) {
+        ctx.beginPath();
+        ctx.moveTo(x, 110);
+        ctx.lineTo(x + 80, 300);
+        ctx.lineTo(x + 250, 300);
+        ctx.lineTo(x + 310, 510);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(255, 92, 48, 0.1)";
+      ctx.fillRect(0, H - 170, W, 170);
+    } else if (game.stage === 2) {
+      const columnOffset = -((camera.x * 0.11) % 260);
+      for (let x = columnOffset - 260; x < W + 260; x += 260) {
+        ctx.fillStyle = "rgba(93, 77, 130, 0.2)";
+        ctx.fillRect(x, 120, 58, 510);
+        ctx.strokeStyle = "rgba(215, 160, 255, 0.18)";
+        ctx.strokeRect(x + 10, 145, 38, 420);
+        ctx.beginPath();
+        ctx.arc(x + 29, 235, 16, 0, TAU);
+        ctx.stroke();
+      }
+    } else if (game.stage === 3) {
+      ctx.strokeStyle = "rgba(113, 196, 255, 0.22)";
+      ctx.lineWidth = 2;
+      for (let bolt = 0; bolt < 8; bolt += 1) {
+        const x = ((bolt * 197 - camera.x * 0.16) % (W + 260)) - 80;
+        const flicker = hash(Math.floor(game.time * 3) + bolt) > 0.72;
+        if (!flicker) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + 24, 90);
+        ctx.lineTo(x - 12, 165);
+        ctx.lineTo(x + 35, 260);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = stageVisuals.haze;
+    ctx.fillRect(0, 70, W, H - 70);
 
     const zoneColor = zones[game.zone]?.color || palette.cyan;
     const fog = ctx.createLinearGradient(0, H * 0.45, 0, H);
@@ -2201,6 +2619,17 @@
       lab: ["#28343d", "#596a76", "#e5f4ff"],
       wall: ["#282737", "#4c4862", "#ff6ca8"],
       gate: ["#30232d", "#674051", "#ff496c"],
+      foundry: ["#321b19", "#6c382f", "#ff7b62"],
+      channel: ["#182d34", "#315866", "#74d8ff"],
+      crusher: ["#2c2022", "#654044", "#ff574f"],
+      turbine: ["#30211d", "#79503e", "#ffb064"],
+      archive: ["#241d36", "#51466d", "#d7a0ff"],
+      shrine: ["#30233c", "#6d507d", "#f0c3ff"],
+      rail: ["#172933", "#315665", "#74d8ff"],
+      city: ["#162535", "#344d67", "#8cb7ff"],
+      tower: ["#111f31", "#294764", "#90ffd4"],
+      firewall: ["#271a2a", "#65334d", "#ff496c"],
+      array: ["#142439", "#35627a", "#9beaff"],
     }[platform.kind] || ["#1a2938", "#314756", "#65f5ea"];
 
     ctx.fillStyle = scheme[0];
@@ -2242,6 +2671,30 @@
   }
 
   function drawHazard(hazard) {
+    if (hazard.kind === "steam") {
+      const pressure = 0.55 + Math.sin(game.time * 18 + hazard.phase) * 0.2;
+      ctx.fillStyle = "#25171a";
+      ctx.fillRect(hazard.x - 7, hazard.y + hazard.h - 18, hazard.w + 14, 18);
+      ctx.fillStyle = "#8d493f";
+      ctx.fillRect(hazard.x, hazard.y + hazard.h - 14, hazard.w, 8);
+      if (hazard.active) {
+        const plume = ctx.createLinearGradient(0, hazard.y + hazard.h, 0, hazard.y);
+        plume.addColorStop(0, `rgba(255, 120, 78, ${pressure})`);
+        plume.addColorStop(0.45, "rgba(255, 204, 170, 0.42)");
+        plume.addColorStop(1, "rgba(220, 242, 245, 0.05)");
+        ctx.fillStyle = plume;
+        ctx.beginPath();
+        ctx.moveTo(hazard.x + 3, hazard.y + hazard.h - 18);
+        ctx.quadraticCurveTo(hazard.x - 18, hazard.y + hazard.h * 0.55, hazard.x + 7, hazard.y);
+        ctx.quadraticCurveTo(hazard.x + hazard.w + 20, hazard.y + hazard.h * 0.45, hazard.x + hazard.w - 3, hazard.y + hazard.h - 18);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.fillStyle = `rgba(255, 205, 112, ${0.25 + Math.sin(game.time * 8) * 0.15})`;
+        ctx.fillRect(hazard.x + hazard.w / 2 - 2, hazard.y + hazard.h - 26, 4, 6);
+      }
+      return;
+    }
     if (hazard.kind === "laser") {
       const pulse = (game.time + hazard.phase) % 2.8;
       const warning = !hazard.active && pulse > 2.25;
@@ -3140,87 +3593,156 @@
     } else if (enemy.type === "boss") {
       const pulse = 0.5 + Math.sin(game.time * 6) * 0.2;
       const shoulder = Math.sin(enemy.anim * 3.5) * 5;
-      drawRobotLeg(-19, 79, enemy.anim * 3.2 + Math.PI, 13, 13, 11, palette.red, true);
-      drawRobotLeg(19, 79, enemy.anim * 3.2, 13, 13, 11, palette.red, true);
-      ctx.fillStyle = "#271a28";
-      ctx.fillRect(-49, 39 + shoulder, 18, 34);
-      ctx.fillRect(31, 39 - shoulder, 18, 34);
-      ctx.fillStyle = "#6b354e";
-      ctx.beginPath();
-      ctx.arc(-40, 42 + shoulder, 8, 0, TAU);
-      ctx.arc(40, 42 - shoulder, 8, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = "#d36b88";
-      ctx.beginPath();
-      ctx.arc(-40, 42 + shoulder, 4, 0, TAU);
-      ctx.arc(40, 42 - shoulder, 4, 0, TAU);
-      ctx.stroke();
-      ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#15131f";
-      ctx.fillRect(-34, 35, 68, 60);
-      ctx.fillStyle = "#3b2637";
-      ctx.fillRect(-42, 43, 84, 41);
-      ctx.fillStyle = "#1d1722";
-      ctx.beginPath();
-      ctx.moveTo(-37, 48);
-      ctx.lineTo(-20, 38);
-      ctx.lineTo(-8, 50);
-      ctx.lineTo(-14, 76);
-      ctx.lineTo(-34, 80);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(37, 48);
-      ctx.lineTo(20, 38);
-      ctx.lineTo(8, 50);
-      ctx.lineTo(14, 76);
-      ctx.lineTo(34, 80);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#7d4058";
-      ctx.fillRect(-30, 8, 58, 38);
-      ctx.fillStyle = "#ece8e9";
-      ctx.fillRect(-22, 12, 43, 27);
-      ctx.strokeStyle = "#9d7b84";
-      ctx.beginPath();
-      ctx.moveTo(-6, 13);
-      ctx.lineTo(-8, 36);
-      ctx.moveTo(-18, 17);
-      ctx.lineTo(-13, 22);
-      ctx.moveTo(12, 14);
-      ctx.lineTo(18, 20);
-      ctx.stroke();
-      ctx.fillStyle = "#1a0c14";
-      ctx.fillRect(4, 21, 18, 6);
-      ctx.fillStyle = palette.red;
-      ctx.globalAlpha = pulse;
-      ctx.fillRect(15, 21, 9, 6);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = "#952c50";
-      ctx.fillRect(-5, 38, 10, 58);
-      ctx.fillStyle = "#1a1019";
-      ctx.beginPath();
-      ctx.arc(0, 58, 18, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = `rgba(255, 73, 108, ${0.35 + pulse * 0.5})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 58, 12 + Math.sin(game.time * 5) * 1.5, 0, TAU);
-      ctx.stroke();
-      ctx.fillStyle = palette.red;
-      ctx.beginPath();
-      ctx.arc(0, 58, 4, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "#d8dce4";
-      ctx.fillRect(30 - Math.max(0, enemy.vx * enemy.facing * 0.015), 49, 58, 8);
-      ctx.fillStyle = "#59636f";
-      ctx.fillRect(41, 57, 19, 5);
-      ctx.fillStyle = palette.red;
-      ctx.fillRect(78, 51, 9, 4);
-      ctx.strokeStyle = `rgba(255, 73, 108, ${pulse})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(0, 52, 45 + Math.sin(enemy.anim * 2) * 3, -1.1, 1.1);
-      ctx.stroke();
+      const bossKind = enemy.bossKind || "warden";
+      const bossAccent = BOSS_DEFINITIONS[bossKind]?.accent || palette.red;
+      drawRobotLeg(-19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3) + Math.PI, 13, 13, 11, bossAccent, true);
+      drawRobotLeg(19, 77, enemy.anim * (3.2 + enemy.stageIndex * 0.3), 13, 13, 11, bossAccent, true);
+
+      if (bossKind === "warden") {
+        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1a2c32";
+        ctx.fillRect(-39, 34, 78, 50);
+        ctx.fillStyle = "#42636a";
+        ctx.fillRect(-46, 42 + shoulder, 18, 30);
+        ctx.fillRect(28, 42 - shoulder, 18, 30);
+        ctx.fillStyle = "#718b8e";
+        ctx.fillRect(-28, 9, 56, 30);
+        ctx.fillStyle = "#101a20";
+        ctx.fillRect(-21, 16, 42, 10);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(-16, 19, 32, 4);
+        ctx.fillStyle = "#0a1218";
+        ctx.fillRect(-29, 51, 58, 23);
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-22, 56, 44, 13);
+        ctx.fillStyle = "#a9c5c5";
+        ctx.fillRect(39, 47, 45, 9);
+        ctx.fillStyle = "#263b42";
+        ctx.fillRect(47, 56, 17, 7);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(78, 49, 8, 5);
+      } else if (bossKind === "furnace") {
+        ctx.fillStyle = "#311713";
+        ctx.fillRect(-35, 5, 13, 33);
+        ctx.fillRect(22, 5, 13, 33);
+        ctx.fillStyle = "#734034";
+        ctx.fillRect(-31, -1, 5, 10);
+        ctx.fillRect(26, -1, 5, 10);
+        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#4b2721";
+        ctx.beginPath();
+        ctx.arc(0, 57, 42, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#8b4b38";
+        ctx.beginPath();
+        ctx.arc(0, 57, 30, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#180c0b";
+        ctx.beginPath();
+        ctx.arc(0, 57, 19, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(0, 57, 12 + pulse * 3, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = "#c8b5a7";
+        ctx.fillRect(-23, 10, 46, 22);
+        ctx.fillStyle = "#24120f";
+        ctx.fillRect(-15, 17, 30, 7);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(5, 18, 10, 5);
+        ctx.fillStyle = "#6d3428";
+        ctx.fillRect(34, 37 + shoulder, 43, 18);
+        ctx.fillStyle = "#d49b70";
+        ctx.fillRect(67, 40 + shoulder, 15, 12);
+      } else if (bossKind === "weaver") {
+        ctx.strokeStyle = `rgba(215, 160, 255, ${0.48 + pulse})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.ellipse(0, 23, 42, 16, 0, 0, TAU);
+        ctx.stroke();
+        ctx.save();
+        ctx.rotate(enemy.anim * 0.8);
+        for (let spoke = 0; spoke < 6; spoke += 1) {
+          ctx.rotate(TAU / 6);
+          ctx.fillStyle = "rgba(215, 160, 255, 0.4)";
+          ctx.fillRect(32, -2, 13, 4);
+        }
+        ctx.restore();
+        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#21182f";
+        ctx.beginPath();
+        ctx.moveTo(-30, 30);
+        ctx.lineTo(0, 12);
+        ctx.lineTo(30, 30);
+        ctx.lineTo(24, 88);
+        ctx.lineTo(-24, 88);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f1e8f4";
+        ctx.beginPath();
+        ctx.moveTo(-19, 14);
+        ctx.lineTo(19, 14);
+        ctx.lineTo(14, 43);
+        ctx.lineTo(0, 50);
+        ctx.lineTo(-14, 43);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#170d22";
+        ctx.fillRect(-12, 25, 24, 5);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(3, 26, 9, 3);
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 3;
+        for (let ribbon = -1; ribbon <= 1; ribbon += 2) {
+          ctx.beginPath();
+          ctx.moveTo(ribbon * 25, 45);
+          ctx.bezierCurveTo(ribbon * 58, 52 + shoulder, ribbon * 34, 78, ribbon * 64, 91);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#15131f";
+        ctx.fillRect(-34, 34, 68, 58);
+        ctx.fillStyle = "#3b2637";
+        ctx.beginPath();
+        ctx.moveTo(-46, 40);
+        ctx.lineTo(-18, 31);
+        ctx.lineTo(-10, 78);
+        ctx.lineTo(-38, 84);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(46, 40);
+        ctx.lineTo(18, 31);
+        ctx.lineTo(10, 78);
+        ctx.lineTo(38, 84);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#ece8e9";
+        ctx.beginPath();
+        ctx.moveTo(-24, 8);
+        ctx.lineTo(22, 8);
+        ctx.lineTo(17, 40);
+        ctx.lineTo(-18, 40);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#1a0c14";
+        ctx.fillRect(-3, 20, 25, 7);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(11, 21, 11, 5);
+        ctx.fillStyle = "#160d17";
+        ctx.beginPath();
+        ctx.arc(0, 59, 18, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = bossAccent;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 59, 11 + pulse * 2, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = "#d8dce4";
+        ctx.fillRect(31, 49, 58, 8);
+        ctx.fillStyle = bossAccent;
+        ctx.fillRect(79, 51, 10, 4);
+      }
     } else {
       const runnerLean = clamp(Math.abs(enemy.vx) / 240, 0, 0.28);
       const runnerAccent = variant > 0.5 ? palette.amber : palette.cyan;
@@ -3472,8 +3994,9 @@
       if (room.left > left - 40 && room.left < right + 40) drawCombatSeal(room.left);
       if (room.right > left - 40 && room.right < right + 40) drawCombatSeal(room.right);
     }
-    if (23720 > left - 200 && 23720 < right) drawGateAt(23720, game.stageBossDefeated);
-    if (35720 > left - 200 && 35720 < right) drawGateAt(35720, game.bossDefeated);
+    for (const stage of stages) {
+      if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.defeatedBosses.has(stage.bossKind));
+    }
     for (const enemy of enemies) if (enemy.x + enemy.w > left && enemy.x < right) drawEnemy(enemy);
     for (const bullet of bullets) drawBullet(bullet);
     drawPlayer();
@@ -3675,7 +4198,7 @@
     ctx.font = "700 10px 'Malgun Gothic', sans-serif";
     ctx.fillText(player.echoGauge >= 100 ? "잔향 · 강화 참격 준비" : `잔향 ${Math.floor(player.echoGauge)}%`, 232, 190);
 
-    const progress = clamp(player.x / 35840, 0, 1);
+    const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
     ctx.fillRect(W - 318, 28, 290, 64);
     ctx.fillStyle = "rgba(101, 245, 234, 0.06)";
@@ -3704,15 +4227,16 @@
 
     const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
     if (boss) {
+      const bossDefinition = BOSS_DEFINITIONS[boss.bossKind] || BOSS_DEFINITIONS.warden;
       ctx.fillStyle = "rgba(3, 7, 13, 0.82)";
       ctx.fillRect(W / 2 - 280, 42, 560, 42);
       ctx.fillStyle = "#c5d1d5";
       ctx.font = "800 12px 'Malgun Gothic', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(boss.originX > 30000 ? "중앙국 검열기 · 무명" : "소각 집행기 · 적비", W / 2, 49);
+      ctx.fillText(bossDefinition.name, W / 2, 49);
       ctx.fillStyle = "#39202b";
       ctx.fillRect(W / 2 - 240, 70, 480, 6);
-      ctx.fillStyle = palette.red;
+      ctx.fillStyle = bossDefinition.accent;
       ctx.fillRect(W / 2 - 240, 70, 480 * (boss.hp / boss.maxHp), 6);
       ctx.textAlign = "left";
     }
@@ -3921,8 +4445,9 @@
     if (game.mode === "playing") togglePause();
   });
 
-  startButton.addEventListener("click", resetGame);
-  restartButton.addEventListener("click", resetGame);
+  startButton.addEventListener("click", () => resetGame(false));
+  continueButton?.addEventListener("click", () => resetGame(true));
+  restartButton.addEventListener("click", () => resetGame(false));
   for (const button of difficultyButtons) {
     button.addEventListener("click", () => {
       selectedDifficulty = button.dataset.difficulty;
@@ -3935,5 +4460,6 @@
   }
 
   buildLevel();
+  updateContinueButton();
   requestAnimationFrame(frame);
 })();

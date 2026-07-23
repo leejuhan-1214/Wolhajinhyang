@@ -155,8 +155,8 @@ h2 {
 
 .stage-strip {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  width: min(680px, 82vw);
+  grid-template-columns: repeat(4, 1fr);
+  width: min(820px, 88vw);
   margin: -9px auto 16px;
   border: 1px solid rgba(101, 245, 234, 0.2);
   background: rgba(5, 14, 25, 0.72);
@@ -188,6 +188,16 @@ h2 {
   gap: 6px;
   width: min(680px, 82vw);
   margin: -8px auto 13px;
+}
+
+.campaign-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.campaign-actions button[hidden] {
+  display: none;
 }
 
 .difficulty-select > span {
