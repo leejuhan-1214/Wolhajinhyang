@@ -2353,10 +2353,13 @@
     ctx.scale(facing, 1);
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
-    const running = player.grounded && speedRatio > 0.08;
+    const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
+    const running = runBlend > 0.04;
     const walling = !player.grounded && (player.wallLeft || player.wallRight);
     const stride = Math.sin(player.runCycle);
-    const bob = running ? Math.abs(Math.sin(player.runCycle * 2)) * 2.2 : Math.sin(game.time * 2.4) * 0.65;
+    const bob = running
+      ? Math.abs(Math.sin(player.runCycle * 2)) * (1.1 + runBlend * 1.35)
+      : Math.sin(game.time * 2.4) * 0.65;
     const squashX = 1 + player.squash * 0.42;
     const squashY = 1 - player.squash * 0.52;
     const lean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
@@ -2383,53 +2386,92 @@
       return;
     }
 
-    function drawLimb(px, py, length, width, angle, color, foot = false) {
+    function drawPixelSegment(x1, y1, x2, y2, width, color, highlight) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.hypot(dx, dy);
       ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(angle);
+      ctx.translate(Math.round(x1), Math.round(y1));
+      ctx.rotate(Math.atan2(dx, dy));
+      ctx.fillStyle = "#07101a";
+      ctx.fillRect(-width / 2 - 1, -1, width + 2, Math.ceil(length) + 2);
       ctx.fillStyle = color;
-      ctx.fillRect(-width / 2, 0, width, length);
-      ctx.fillStyle = "rgba(146, 190, 202, 0.18)";
-      ctx.fillRect(-width / 2 + 1, 1, 2, length - 2);
-      ctx.fillStyle = "#314456";
-      ctx.fillRect(-width / 2 + 1, length * 0.48, width - 2, 3);
-      ctx.fillStyle = "#09131e";
-      ctx.beginPath();
-      ctx.arc(0, length * 0.54, width * 0.42, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(101, 245, 234, 0.42)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(0, length * 0.54, Math.max(1.5, width * 0.22), 0, TAU);
-      ctx.stroke();
-      if (foot) {
-        ctx.fillStyle = "#07101a";
-        ctx.fillRect(-width / 2 - 1, length - 1, width + 7, 5);
-        ctx.fillStyle = palette.cyan;
-        ctx.fillRect(width / 2 + 3, length, 3, 2);
-        ctx.fillStyle = "#536c79";
-        ctx.fillRect(-width / 2, length - 2, width - 1, 2);
-      }
+      ctx.fillRect(-width / 2, 0, width, Math.ceil(length));
+      ctx.fillStyle = highlight;
+      ctx.fillRect(-width / 2 + 1, 1, 2, Math.max(2, Math.floor(length) - 2));
+      ctx.fillStyle = "rgba(5, 10, 17, 0.48)";
+      ctx.fillRect(width / 2 - 2, 2, 2, Math.max(2, Math.floor(length) - 3));
       ctx.restore();
     }
 
-    let backLeg = running ? stride * 0.72 : 0.05;
-    let frontLeg = running ? -stride * 0.72 : -0.05;
-    if (!player.grounded) {
-      if (walling) {
-        backLeg = -0.58;
-        frontLeg = 0.68;
-      } else if (player.vy < 0) {
-        backLeg = -0.42;
-        frontLeg = 0.48;
-      } else {
-        backLeg = 0.24;
-        frontLeg = -0.28;
+    function drawJointedLimb(px, py, upperLength, lowerLength, width, upperAngle, kneeBend, color, foot = false, hand = false) {
+      const kneeX = px + Math.sin(upperAngle) * upperLength;
+      const kneeY = py + Math.cos(upperAngle) * upperLength;
+      const lowerAngle = upperAngle - kneeBend;
+      const endX = kneeX + Math.sin(lowerAngle) * lowerLength;
+      const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
+      drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)");
+      drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(4, width - 1), color, "rgba(151, 207, 216, 0.18)");
+      ctx.fillStyle = "#07101a";
+      ctx.beginPath();
+      ctx.arc(Math.round(kneeX), Math.round(kneeY), width * 0.62, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#40596a";
+      ctx.fillRect(Math.round(kneeX - width * 0.44), Math.round(kneeY - width * 0.34), Math.ceil(width * 0.88), Math.ceil(width * 0.68));
+      ctx.fillStyle = empowered ? palette.amber : palette.cyan;
+      ctx.fillRect(Math.round(kneeX - 1), Math.round(kneeY - 1), 2, 2);
+      if (foot) {
+        const toeLift = player.grounded ? 0 : clamp(-player.vy / 700, -0.35, 0.35);
+        ctx.save();
+        ctx.translate(Math.round(endX), Math.round(endY));
+        ctx.rotate(toeLift);
+        ctx.fillStyle = "#06101a";
+        ctx.fillRect(-3, -2, 13, 7);
+        ctx.fillStyle = "#263c4b";
+        ctx.fillRect(-1, -1, 9, 4);
+        ctx.fillStyle = "#657d88";
+        ctx.fillRect(0, 2, 8, 1);
+        ctx.fillStyle = empowered ? palette.amber : palette.cyan;
+        ctx.fillRect(8, 0, 3, 2);
+        ctx.restore();
+      } else if (hand) {
+        ctx.fillStyle = "#0a141e";
+        ctx.fillRect(Math.round(endX - 3), Math.round(endY - 2), 7, 6);
+        ctx.fillStyle = "#8ca1aa";
+        ctx.fillRect(Math.round(endX + 1), Math.round(endY - 1), 2, 3);
       }
+      return { x: endX, y: endY, angle: lowerAngle };
     }
 
-    drawLimb(-6, -18, 21, 7, backLeg, "#101a28", true);
-    drawLimb(6, -18, 21, 8, frontLeg, "#172638", true);
+    function legPose(phase, layer) {
+      if (walling) {
+        return layer === "back"
+          ? { upper: -0.72, knee: -0.88 }
+          : { upper: 0.82, knee: 1.12 };
+      }
+      if (!player.grounded && player.vy < -60) {
+        return layer === "back"
+          ? { upper: -0.38, knee: -0.18 }
+          : { upper: 0.78, knee: 1.18 };
+      }
+      if (!player.grounded) {
+        return layer === "back"
+          ? { upper: 0.28, knee: 0.76 }
+          : { upper: -0.38, knee: -0.72 };
+      }
+      const swing = Math.sin(phase);
+      const swingLift = Math.max(0, swing);
+      const landingBend = player.squash * 0.8;
+      return {
+        upper: swing * 0.7 * runBlend + (layer === "back" ? -0.04 : 0.04),
+        knee: (0.12 + swingLift * 0.9 + landingBend) * runBlend + (1 - runBlend) * 0.16,
+      };
+    }
+
+    const backPose = legPose(player.runCycle + Math.PI, "back");
+    const frontPose = legPose(player.runCycle, "front");
+    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, "#0c1825", true);
+    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, "#172b3c", true);
 
     // 등에 고정된 전술 신호 장치와 작은 안테나.
     ctx.fillStyle = "#0a131f";
@@ -2525,7 +2567,35 @@
     ctx.arc(2, -31, 2.4, 0, TAU);
     ctx.fill();
 
-    drawLimb(-10, -38, 17, 5, running ? -stride * 0.42 : 0.3, "#152638");
+    // Pixel-scale fabric seams, fasteners, and field gear keep the human silhouette readable.
+    ctx.strokeStyle = "rgba(151, 196, 205, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-7, -39);
+    ctx.lineTo(-3, -34);
+    ctx.lineTo(-4, -25);
+    ctx.moveTo(7, -38);
+    ctx.lineTo(5, -26);
+    ctx.moveTo(-11, -31);
+    ctx.lineTo(-6, -30);
+    ctx.stroke();
+    ctx.fillStyle = "#0b141f";
+    ctx.fillRect(-14, -23, 7, 7);
+    ctx.fillRect(7, -23, 7, 7);
+    ctx.fillStyle = "#4c6774";
+    ctx.fillRect(-12, -21, 4, 2);
+    ctx.fillRect(8, -21, 4, 2);
+    ctx.fillStyle = "#c2d1d3";
+    ctx.fillRect(-1, -25, 3, 4);
+    ctx.fillStyle = empowered ? palette.amber : palette.red;
+    ctx.fillRect(0, -24, 1, 2);
+    ctx.fillStyle = "#6e8790";
+    ctx.fillRect(-9, -18, 3, 2);
+    ctx.fillRect(-4, -18, 3, 2);
+    ctx.fillRect(5, -18, 3, 2);
+
+    const rearArm = running ? -stride * 0.48 * runBlend + 0.14 : 0.28;
+    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, -0.42, "#152638", false, true);
 
     ctx.fillStyle = "#8da0aa";
     ctx.fillRect(-10, -57, 19, 16);
@@ -2561,11 +2631,29 @@
     ctx.fillRect(-6, -44, 3, 2);
     ctx.fillRect(3, -44, 3, 2);
 
+    // Hair, jaw shadow, eye, nose, and a tiny comms implant are drawn as individual pixels.
+    ctx.fillStyle = "#263842";
+    ctx.fillRect(-10, -57, 12, 3);
+    ctx.fillRect(-11, -55, 4, 5);
+    ctx.fillStyle = "#c9d6d4";
+    ctx.fillRect(-8, -48, 3, 4);
+    ctx.fillStyle = "#738c92";
+    ctx.fillRect(-6, -44, 12, 2);
+    ctx.fillStyle = "#101923";
+    ctx.fillRect(1, -50, 3, 2);
+    ctx.fillRect(7, -47, 2, 1);
+    ctx.fillStyle = "#d68678";
+    ctx.fillRect(4, -45, 3, 1);
+    ctx.fillStyle = palette.cyan;
+    ctx.fillRect(-12, -49, 2, 2);
+    ctx.fillStyle = "#506873";
+    ctx.fillRect(-10, -46, 2, 3);
+
     let armAngle = running ? stride * 0.42 : -0.15;
     if (!player.grounded) armAngle = -0.48;
     if (attacking) armAngle = -2.15 + attackProgress * 4.15 + player.attackDir.y * 0.72;
 
-    drawLimb(10, -38, 17, 6, armAngle, "#294459");
+    drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0 : 0.38, "#294459", false, !attacking);
     if (attacking) {
       ctx.save();
       ctx.translate(10, -38);
@@ -2779,6 +2867,62 @@
     else ctx.rotate(clamp(enemy.vx * enemy.facing / 900, -0.08, 0.1));
     if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
 
+    function drawRobotSegment(x1, y1, x2, y2, width, shell, accent) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.hypot(dx, dy);
+      ctx.save();
+      ctx.translate(Math.round(x1), Math.round(y1));
+      ctx.rotate(Math.atan2(dx, dy));
+      ctx.fillStyle = "#070c13";
+      ctx.fillRect(-width / 2 - 1, -1, width + 2, Math.ceil(length) + 2);
+      ctx.fillStyle = shell;
+      ctx.fillRect(-width / 2, 0, width, Math.ceil(length));
+      ctx.fillStyle = "rgba(220, 239, 240, 0.24)";
+      ctx.fillRect(-width / 2 + 1, 1, 2, Math.max(2, Math.floor(length) - 2));
+      ctx.fillStyle = accent;
+      ctx.fillRect(width / 2 - 2, 2, 2, Math.max(2, Math.floor(length) - 4));
+      ctx.restore();
+    }
+
+    function drawRobotLeg(hipX, hipY, phase, upperLength, lowerLength, width, accent, heavy = false) {
+      const gait = Math.sin(phase);
+      const strideAmount = (heavy ? 0.34 : 0.58) * movingRatio;
+      const upperAngle = gait * strideAmount;
+      const kneeLift = Math.max(0, gait) * movingRatio;
+      const kneeBend = (heavy ? 0.12 : 0.18) + kneeLift * (heavy ? 0.48 : 0.82);
+      const kneeX = hipX + Math.sin(upperAngle) * upperLength;
+      const kneeY = hipY + Math.cos(upperAngle) * upperLength;
+      const shinAngle = upperAngle - kneeBend;
+      const footX = kneeX + Math.sin(shinAngle) * lowerLength;
+      const footY = kneeY + Math.cos(shinAngle) * lowerLength;
+      const rearShell = heavy ? "#241b26" : "#111c29";
+      const frontShell = heavy ? "#5b3448" : "#324b5b";
+      drawRobotSegment(hipX, hipY, kneeX, kneeY, width, rearShell, accent);
+      drawRobotSegment(kneeX, kneeY, footX, footY, Math.max(5, width - 1), frontShell, accent);
+      ctx.fillStyle = "#080e16";
+      ctx.beginPath();
+      ctx.arc(Math.round(kneeX), Math.round(kneeY), width * 0.72, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(Math.round(kneeX), Math.round(kneeY), Math.max(2, width * 0.38), 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(174, 209, 214, 0.46)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(hipX), Math.round(hipY));
+      ctx.lineTo(Math.round(kneeX + width * 0.65), Math.round(kneeY));
+      ctx.stroke();
+      ctx.fillStyle = "#070d15";
+      ctx.fillRect(Math.round(footX - 4), Math.round(footY - 2), heavy ? 17 : 13, heavy ? 8 : 6);
+      ctx.fillStyle = heavy ? "#75435b" : "#506b79";
+      ctx.fillRect(Math.round(footX - 1), Math.round(footY - 1), heavy ? 13 : 9, 3);
+      ctx.fillStyle = accent;
+      ctx.fillRect(Math.round(footX + (heavy ? 10 : 7)), Math.round(footY), 3, 2);
+    }
+
     if (enemy.type === "drone") {
       const rotor = Math.sin(enemy.anim * 26) * 7;
       ctx.strokeStyle = "rgba(163, 215, 222, 0.52)";
@@ -2834,9 +2978,9 @@
       const isPiercer = enemy.type === "piercer";
       const isMortar = enemy.type === "mortar";
       const recoil = enemy.windup > 0 ? Math.sin(enemy.windup * 35) * 3 : 0;
-      ctx.fillStyle = "#111a26";
-      ctx.fillRect(-15 + locomotion * movingRatio * 3, 48, 10, 10);
-      ctx.fillRect(5 - locomotion * movingRatio * 3, 48, 10, 10);
+      const gunnerAccent = isMortar ? palette.red : isPiercer ? "#79dfff" : palette.amber;
+      drawRobotLeg(-7, 40, enemy.anim * 6 + Math.PI, 9, 9, 7, gunnerAccent, isMortar);
+      drawRobotLeg(7, 40, enemy.anim * 6, 9, 9, 7, gunnerAccent, isMortar);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : isMortar ? "#382b36" : isPiercer ? "#1b3443" : "#202d3b";
       ctx.beginPath();
       ctx.moveTo(-19, 19);
@@ -2912,6 +3056,8 @@
         ctx.fill();
       }
     } else if (enemy.type === "shield") {
+      drawRobotLeg(-8, 48, enemy.anim * 5 + Math.PI, 10, 9, 8, palette.amber, true);
+      drawRobotLeg(7, 48, enemy.anim * 5, 10, 9, 8, palette.amber, true);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#282b37";
       ctx.beginPath();
       ctx.moveTo(-18, 19);
@@ -2991,12 +3137,11 @@
       ctx.lineTo(13 + shieldPush, 58);
       ctx.closePath();
       ctx.stroke();
-      ctx.fillStyle = "#121925";
-      ctx.fillRect(-13 + locomotion * 2, 58, 10, 8);
-      ctx.fillRect(4 - locomotion * 2, 58, 10, 8);
     } else if (enemy.type === "boss") {
       const pulse = 0.5 + Math.sin(game.time * 6) * 0.2;
       const shoulder = Math.sin(enemy.anim * 3.5) * 5;
+      drawRobotLeg(-19, 79, enemy.anim * 3.2 + Math.PI, 13, 13, 11, palette.red, true);
+      drawRobotLeg(19, 79, enemy.anim * 3.2, 13, 13, 11, palette.red, true);
       ctx.fillStyle = "#271a28";
       ctx.fillRect(-49, 39 + shoulder, 18, 34);
       ctx.fillRect(31, 39 - shoulder, 18, 34);
@@ -3076,20 +3221,11 @@
       ctx.beginPath();
       ctx.arc(0, 52, 45 + Math.sin(enemy.anim * 2) * 3, -1.1, 1.1);
       ctx.stroke();
-      ctx.fillStyle = "#16111b";
-      ctx.fillRect(-30, 94, 19, 10);
-      ctx.fillRect(12, 94, 19, 10);
     } else {
       const runnerLean = clamp(Math.abs(enemy.vx) / 240, 0, 0.28);
-      const step = locomotion * 5 * movingRatio;
-      ctx.fillStyle = "#111925";
-      ctx.fillRect(-13 + step, 44, 9, 8);
-      ctx.fillRect(5 - step, 44, 9, 8);
-      ctx.fillStyle = "#4d6876";
-      ctx.beginPath();
-      ctx.arc(-8 + step, 43, 3, 0, TAU);
-      ctx.arc(9 - step, 43, 3, 0, TAU);
-      ctx.fill();
+      const runnerAccent = variant > 0.5 ? palette.amber : palette.cyan;
+      drawRobotLeg(-6, 38, enemy.anim * 10 + Math.PI, 8, 9, 6, runnerAccent);
+      drawRobotLeg(6, 38, enemy.anim * 10, 8, 9, 6, runnerAccent);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1d2b39";
       ctx.beginPath();
       ctx.moveTo(-17, 20);
@@ -3165,6 +3301,27 @@
       ctx.arc(-11, badgeY - 11, 1.3, 0, TAU);
       ctx.arc(11, badgeY - 11, 1.3, 0, TAU);
       ctx.fill();
+
+      const serviceY = enemy.type === "boss" ? 72 : enemy.type === "shield" ? 46 : 32;
+      const serviceSpan = enemy.type === "boss" ? 25 : 12;
+      ctx.strokeStyle = "rgba(118, 181, 193, 0.38)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-serviceSpan, serviceY - 7);
+      ctx.lineTo(-serviceSpan + 5, serviceY - 2);
+      ctx.lineTo(serviceSpan - 5, serviceY - 4);
+      ctx.lineTo(serviceSpan, serviceY + 1);
+      ctx.stroke();
+      ctx.fillStyle = "#090f17";
+      ctx.fillRect(-serviceSpan, serviceY, 4, 3);
+      ctx.fillRect(serviceSpan - 4, serviceY, 4, 3);
+      ctx.fillStyle = enemy.type === "boss" ? palette.red : palette.cyan;
+      ctx.fillRect(-serviceSpan + 1, serviceY + 1, 2, 1);
+      ctx.fillRect(serviceSpan - 3, serviceY + 1, 2, 1);
+      ctx.fillStyle = "rgba(221, 235, 236, 0.66)";
+      ctx.fillRect(-7, serviceY + 5, 2, 2);
+      ctx.fillRect(-2, serviceY + 5, 2, 2);
+      ctx.fillRect(3, serviceY + 5, 2, 2);
     }
     if (damageRatio > 0.2) {
       ctx.strokeStyle = `rgba(255, 205, 112, ${0.34 + damageRatio * 0.42})`;
