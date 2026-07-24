@@ -162,45 +162,56 @@ h2 {
   background: rgba(5, 14, 25, 0.72);
 }
 
-.stage-strip span {
+.stage-card {
+  min-width: 0;
   padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: #aebfc7;
-  font-size: 11px;
+  font: 700 11px/1.2 "Malgun Gothic", sans-serif;
   letter-spacing: 0.03em;
+  clip-path: none;
+  box-shadow: none;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
 
-.stage-strip span + span {
+.stage-card + .stage-card {
   border-left: 1px solid rgba(101, 245, 234, 0.16);
 }
 
-.stage-code {
+.stage-card b {
   display: block;
-  width: 100%;
-  min-width: 0;
   margin-bottom: 3px;
-  padding: 0;
   color: var(--cyan);
-  background: none;
-  border: 0;
-  border-radius: 0;
   font: 800 9px/1 monospace;
   letter-spacing: 0.12em;
-  cursor: pointer;
-  clip-path: none;
-  box-shadow: none;
-  transition: color 120ms ease, text-shadow 120ms ease;
 }
 
-.stage-code:hover,
-.stage-code:focus-visible {
+.stage-card:hover,
+.stage-card:focus-visible {
   color: #fff0b0;
-  text-shadow: 0 0 10px rgba(255, 205, 112, 0.65);
+  background: rgba(101, 245, 234, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(101, 245, 234, 0.32);
   filter: none;
-  transform: none;
+  transform: translateY(-1px);
   outline: none;
 }
 
-.stage-strip em {
+.stage-card:hover b,
+.stage-card:focus-visible b,
+.stage-card.sequence-hit b {
+  color: #fff0b0;
+  text-shadow: 0 0 10px rgba(255, 205, 112, 0.65);
+}
+
+.stage-card.sequence-hit {
+  background: rgba(255, 205, 112, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 205, 112, 0.58);
+}
+
+.stage-card em {
   display: block;
   margin-top: 5px;
   color: #718f9b;
@@ -232,6 +243,13 @@ h2 {
 
 .admin-status[hidden] {
   display: none;
+}
+
+.admin-status.pending {
+  color: #d9f7f2;
+  background: rgba(8, 24, 35, 0.94);
+  border-color: rgba(101, 245, 234, 0.5);
+  box-shadow: 0 0 18px rgba(101, 245, 234, 0.13);
 }
 
 .overlay.admin-enabled h1 {
@@ -405,7 +423,7 @@ button:focus-visible {
     font-size: 8px;
   }
 
-  .stage-strip span {
+  .stage-card {
     padding: 5px;
     font-size: 9px;
   }

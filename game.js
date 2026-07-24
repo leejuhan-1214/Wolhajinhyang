@@ -5707,7 +5707,18 @@
     } else {
       adminSequenceProgress = stageNumber === ADMIN_SEQUENCE[0] ? 1 : 0;
     }
-    if (adminSequenceProgress < ADMIN_SEQUENCE.length) return false;
+    sound.wake();
+    if (adminSequenceProgress < ADMIN_SEQUENCE.length) {
+      if (adminStatus) {
+        adminStatus.hidden = adminSequenceProgress === 0;
+        adminStatus.classList.add("pending");
+        adminStatus.textContent = adminSequenceProgress > 0
+          ? `관리자 인증 ${adminSequenceProgress}/4 · 스테이지 카드를 계속 클릭`
+          : "";
+      }
+      if (adminSequenceProgress > 0) sound.tone(320 + adminSequenceProgress * 90, 0.07, "square", 0.018, 1.08);
+      return false;
+    }
 
     adminModeUnlocked = true;
     adminSequenceProgress = 0;
@@ -5715,10 +5726,10 @@
     startScreen.classList.add("admin-enabled");
     if (adminStatus) {
       adminStatus.hidden = false;
+      adminStatus.classList.remove("pending");
       adminStatus.textContent = "ADMIN MODE 활성화 · 적 공격/접촉 피해 없음 · 구역 및 스테이지 봉쇄 해제";
     }
     startButton.textContent = "관리자 작전 시작";
-    sound.wake();
     sound.tone(740, 0.12, "square", 0.035, 0.82);
     setTimeout(() => sound.tone(1040, 0.18, "sine", 0.035, 1.05), 90);
     return true;
@@ -5770,7 +5781,11 @@
   continueButton?.addEventListener("click", () => resetGame(true));
   restartButton.addEventListener("click", () => resetGame(false));
   for (const button of stageCodeButtons) {
-    button.addEventListener("click", () => registerAdminSequence(button.dataset.adminStage));
+    button.addEventListener("click", () => {
+      button.classList.add("sequence-hit");
+      setTimeout(() => button.classList.remove("sequence-hit"), 180);
+      registerAdminSequence(button.dataset.adminStage);
+    });
   }
   for (const button of difficultyButtons) {
     button.addEventListener("click", () => {
