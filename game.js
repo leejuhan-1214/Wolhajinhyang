@@ -490,6 +490,7 @@
     vy: 0,
     facing: 1,
     grounded: false,
+    landingImpactArmed: false,
     coyote: 0,
     jumpBuffer: 0,
     airJumpAvailable: true,
@@ -1430,6 +1431,7 @@
       vy: 0,
       facing: 1,
       grounded: false,
+      landingImpactArmed: false,
       coyote: 0,
       jumpBuffer: 0,
       airJumpAvailable: true,
@@ -1505,6 +1507,7 @@
     });
     if (saved) restoreCampaign(saved);
     if (!saved) {
+      if (checkpoints[0]) setRespawnCheckpoint(checkpoints[0], 0);
       camera.x = 0;
       camera.y = 0;
     }
@@ -1678,6 +1681,7 @@
     player.vx -= aim.x * horizontalRecoil;
     player.vy -= aim.y * verticalRecoil;
     if (!player.grounded && aim.y > 0.25) player.vy = Math.min(player.vy, -410 - aim.y * 170);
+    if (!player.grounded) player.landingImpactArmed = true;
     player.facing = aim.x >= 0 ? 1 : -1;
     player.squash = 0.18;
     game.shake = overcharged ? 22 : 13;
@@ -1833,25 +1837,31 @@
 
   function killEnemy(enemy) {
     enemy.alive = false;
+    const deathCenterX = enemy.x + enemy.w / 2;
+    const deathCenterY = enemy.y + enemy.h / 2;
+    const deathIsNearPlayer = Math.abs(deathCenterX - (player.x + player.w / 2)) < W
+      && Math.abs(deathCenterY - (player.y + player.h / 2)) < H;
     if (!enemy.countedKill) {
       enemy.countedKill = true;
       game.kills += 1;
     }
     player.styleScore = Math.min(100, player.styleScore + (enemy.type === "boss" ? 30 : 9));
     player.burstCooldown = Math.max(0, player.burstCooldown - (enemy.type === "boss" ? 1.2 : 0.32));
-    game.freeze = enemy.type === "boss" ? 0.18 : 0.09;
-    game.shake = enemy.type === "boss" ? 22 : 13;
-    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.red, enemy.type === "boss" ? 50 : 22, 520, 0.8, 920);
-    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.cyan, enemy.type === "boss" ? 40 : 12, 380, 0.65, 620);
+    if (deathIsNearPlayer) {
+      game.freeze = enemy.type === "boss" ? 0.18 : 0.09;
+      game.shake = enemy.type === "boss" ? 22 : 13;
+      spawnParticles(deathCenterX, deathCenterY, palette.red, enemy.type === "boss" ? 50 : 22, 520, 0.8, 920);
+      spawnParticles(deathCenterX, deathCenterY, palette.cyan, enemy.type === "boss" ? 40 : 12, 380, 0.65, 620);
+    }
 
     const clearedZoneIndex = getZoneIndexAt(enemy.originX);
     if (getZoneRemaining(clearedZoneIndex) === 0 && enemy.type !== "boss") {
       game.hint = `${zones[clearedZoneIndex].name} 확보 · 다음 구역 개방`;
       game.hintTimer = 3.2;
       player.hp = Math.min(player.maxHp, player.hp + 1);
-      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.cyan, 24, 360, 0.7, 420);
+      if (deathIsNearPlayer) spawnParticles(deathCenterX, deathCenterY, palette.cyan, 24, 360, 0.7, 420);
       saveCampaign();
-      sound.checkpoint();
+      if (deathIsNearPlayer) sound.checkpoint();
     }
 
     if (enemy.type === "boss") {
@@ -1893,7 +1903,7 @@
       ];
       queueStory(victoryStories[rank]);
       saveCampaign();
-      sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
+      if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
     } else if (game.kills % 7 === 0 && player.hp < player.maxHp) {
       addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
     }
@@ -2001,6 +2011,7 @@
     player.vx = 0;
     player.vy = 0;
     player.grounded = false;
+    player.landingImpactArmed = false;
     player.hp = player.maxHp;
     player.invincible = 1.2;
     player.airJumpAvailable = true;
@@ -2350,6 +2361,7 @@
       player.vy = -690;
       player.facing = wallDirection;
       player.airJumpAvailable = true;
+      player.landingImpactArmed = true;
       player.jumpBuffer = 0;
       player.squash = -0.13;
       spawnParticles(player.x + (player.wallLeft ? 0 : player.w), player.y + player.h / 2, palette.cyan, 10, 220, 0.35, 360);
@@ -2358,6 +2370,7 @@
       player.vy = -715;
       player.grounded = false;
       player.coyote = 0;
+      player.landingImpactArmed = true;
       player.jumpBuffer = 0;
       player.squash = -0.16;
       spawnParticles(player.x + player.w / 2, player.y + player.h, "#a8d8df", 7, 130, 0.28, 300);
@@ -2365,6 +2378,7 @@
     } else if (player.jumpBuffer > 0 && !player.grounded && player.airJumpAvailable) {
       player.vy = -675;
       player.airJumpAvailable = false;
+      player.landingImpactArmed = true;
       player.jumpBuffer = 0;
       player.squash = -0.12;
       spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 13, 240, 0.4, 260);
@@ -2385,10 +2399,13 @@
     resolvePlayerCollision(dt);
 
     player.runCycle += Math.abs(player.vx) * dt * 0.052;
-    if (player.grounded && !wasGrounded && impactVelocity > 260) {
-      player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
-      game.shake = Math.max(game.shake, Math.min(7, impactVelocity / 120));
-      spawnParticles(player.x + player.w / 2, player.y + player.h, "#8aa7ad", 9, 145, 0.34, 260);
+    if (player.grounded && !wasGrounded) {
+      if (player.landingImpactArmed && impactVelocity > 260) {
+        player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
+        game.shake = Math.max(game.shake, Math.min(7, impactVelocity / 120));
+        spawnParticles(player.x + player.w / 2, player.y + player.h, "#8aa7ad", 9, 145, 0.34, 260);
+      }
+      player.landingImpactArmed = false;
     }
     if (player.grounded && Math.abs(player.vx) > 105 && player.stepTimer <= 0) {
       player.stepTimer = 0.12 + 48 / Math.abs(player.vx);
