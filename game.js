@@ -10,6 +10,7 @@
   const continueButton = document.getElementById("continue-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
+  const adminStatus = document.getElementById("admin-status");
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
 
   const W = 1280;
@@ -120,6 +121,9 @@
     weapon: { name: "인간흉기", hp: 1, damage: 99, enemySpeed: 1.24, bulletSpeed: 1.2 },
   };
   let selectedDifficulty = "cadet";
+  const ADMIN_SEQUENCE = ["Digit1", "Digit2", "Digit1", "Digit4"];
+  let adminSequenceProgress = 0;
+  let adminModeUnlocked = false;
 
   const INTRO_STORY = [
     {
@@ -449,6 +453,7 @@
     kills: 0,
     totalEnemies: 0,
     difficulty: "cadet",
+    adminMode: false,
     stage: 0,
     stageTitle: 4.4,
     zone: 0,
@@ -653,8 +658,10 @@
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
       constrainEnemyToLockdown(enemy);
-      if (!Number.isFinite(enemy.y) || enemy.y > WORLD_H + 100 || enemy.y < -enemy.h - 260) {
+      if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
         recoverEnemyToHome(enemy);
+      } else if (enemy.y > WORLD_H + 100) {
+        killEnemy(enemy);
       }
     }
   }
@@ -1471,6 +1478,7 @@
       deaths: 0,
       kills: 0,
       difficulty: selectedDifficulty,
+      adminMode: adminModeUnlocked,
       stage: 0,
       stageTitle: 4.4,
       zone: 0,
@@ -1891,7 +1899,7 @@
   }
 
   function damagePlayer(amount = 1, sourceX = player.x) {
-    if (player.invincible > 0 || game.mode !== "playing") return;
+    if (game.adminMode || player.invincible > 0 || game.mode !== "playing") return;
     const difficulty = difficultySettings[game.difficulty];
     const appliedDamage = difficulty.damage >= 99 ? player.hp : amount * difficulty.damage;
     player.hp = Math.max(difficulty.damage === 0 ? 1 : 0, player.hp - appliedDamage);
@@ -2436,27 +2444,29 @@
     if (player.y > WORLD_H + 120) respawn();
     if (pressed.has("KeyR")) respawn();
 
-    for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
-      const lockedZone = zones[zoneIndex];
-      const zoneBoundary = lockedZone.x + ZONE_W - 48;
-      if (player.x + player.w <= zoneBoundary) break;
-      const zoneRemaining = getZoneRemaining(zoneIndex);
-      if (zoneRemaining === 0) continue;
-      player.x = zoneBoundary - player.w;
-      player.vx = Math.min(0, player.vx);
-      game.hint = `${lockedZone.name} 봉쇄 · 남은 적 ${zoneRemaining}기`;
-      game.hintTimer = Math.max(game.hintTimer, 1.2);
-      break;
-    }
+    if (!game.adminMode) {
+      for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+        const lockedZone = zones[zoneIndex];
+        const zoneBoundary = lockedZone.x + ZONE_W - 48;
+        if (player.x + player.w <= zoneBoundary) break;
+        const zoneRemaining = getZoneRemaining(zoneIndex);
+        if (zoneRemaining === 0) continue;
+        player.x = zoneBoundary - player.w;
+        player.vx = Math.min(0, player.vx);
+        game.hint = `${lockedZone.name} 봉쇄 · 남은 적 ${zoneRemaining}기`;
+        game.hintTimer = Math.max(game.hintTimer, 1.2);
+        break;
+      }
 
-    for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
-      const stage = stages[stageIndex];
-      if (player.x <= stage.gateX || game.defeatedBosses.has(stage.bossKind)) continue;
-      player.x = stage.gateX - player.w - 35;
-      player.vx = -180;
-      game.hint = `${BOSS_DEFINITIONS[stage.bossKind].name}을 먼저 격파`;
-      game.hintTimer = 3;
-      break;
+      for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
+        const stage = stages[stageIndex];
+        if (player.x <= stage.gateX || game.defeatedBosses.has(stage.bossKind)) continue;
+        player.x = stage.gateX - player.w - 35;
+        player.vx = -180;
+        game.hint = `${BOSS_DEFINITIONS[stage.bossKind].name}을 먼저 격파`;
+        game.hintTimer = 3;
+        break;
+      }
     }
 
     if (player.x > WORLD_W - 145 && game.defeatedBosses.has("echo")) {
@@ -2536,8 +2546,10 @@
     } else {
       enemy.stuckTimer = Math.max(0, (enemy.stuckTimer || 0) - dt * 2);
     }
-    if (!Number.isFinite(enemy.y) || enemy.y > WORLD_H + 100 || enemy.y < -enemy.h - 260) {
+    if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
       recoverEnemyToHome(enemy);
+    } else if (enemy.y > WORLD_H + 100) {
+      killEnemy(enemy);
     }
   }
 
@@ -2563,6 +2575,7 @@
   }
 
   function resolvePlayerEnemyOverlap() {
+    if (game.adminMode) return;
     for (const enemy of enemies) {
       if (!enemy.alive || enemy.type === "drone" || !overlaps(player, enemy)) continue;
       const playerCenter = player.x + player.w / 2;
@@ -2588,6 +2601,22 @@
     enemy.anim += dt;
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
+    if (game.adminMode) {
+      enemy.windup = 0;
+      enemy.bossAction = "idle";
+      enemy.targetX = null;
+      enemy.targetY = null;
+      enemy.cooldown = Math.max(enemy.cooldown, 0.8);
+      if (enemy.type === "drone") {
+        enemy.vx = 0;
+        enemy.y = enemy.baseY + Math.sin(enemy.anim * 1.4) * 12;
+        constrainEnemyToLockdown(enemy);
+      } else {
+        enemy.vx = moveToward(enemy.vx, 0, 620 * dt);
+        moveEnemyPhysics(enemy, dt);
+      }
+      return;
+    }
     const dx = player.x + player.w / 2 - (enemy.x + enemy.w / 2);
     const dy = player.y + player.h / 2 - (enemy.y + enemy.h / 2);
     const distance = Math.hypot(dx, dy);
@@ -2740,14 +2769,8 @@
       enemy.vx = Math.min(0, enemy.vx);
     }
     if (enemy.y > enemy.baseY + enemy.h + 260) {
-      enemy.x = clamp(enemy.originX, arenaLeft + 40, arenaRight - enemy.w - 40);
-      enemy.y = enemy.baseY;
-      enemy.vx = 0;
-      enemy.vy = 0;
-      enemy.grounded = false;
-      enemy.bossJumpCooldown = 0.65;
-      game.shake = Math.max(game.shake, 12);
-      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h, palette.red, 18, 320, 0.55, 600);
+      killEnemy(enemy);
+      return;
     }
 
     if (enemy.cooldown <= 0 && distance < 900) {
@@ -2878,6 +2901,7 @@
   }
 
   function updateCombatRooms() {
+    if (game.adminMode) return;
     for (const room of combatRooms) {
       if (!room.triggered && player.x > room.left + 90 && player.x < room.right) {
         room.triggered = true;
@@ -4934,19 +4958,21 @@
     for (const checkpoint of checkpoints) if (checkpoint.x > left && checkpoint.x < right) drawCheckpoint(checkpoint);
     for (const pickup of pickups) if (pickup.x > left && pickup.x < right) drawPickup(pickup);
     for (const node of boostNodes) if (node.x > left && node.x < right) drawBoostNode(node);
-    for (const room of combatRooms) {
-      if (!room.triggered || room.cleared) continue;
-      if (room.left > left - 40 && room.left < right + 40) drawCombatSeal(room.left);
-      if (room.right > left - 40 && room.right < right + 40) drawCombatSeal(room.right);
-    }
-    for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
-      const zone = zones[zoneIndex];
-      if (zone.template === "boss" || getZoneRemaining(zoneIndex) === 0) continue;
-      const boundary = zone.x + ZONE_W - 48;
-      if (boundary > left - 40 && boundary < right + 40) drawCombatSeal(boundary);
+    if (!game.adminMode) {
+      for (const room of combatRooms) {
+        if (!room.triggered || room.cleared) continue;
+        if (room.left > left - 40 && room.left < right + 40) drawCombatSeal(room.left);
+        if (room.right > left - 40 && room.right < right + 40) drawCombatSeal(room.right);
+      }
+      for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+        const zone = zones[zoneIndex];
+        if (zone.template === "boss" || getZoneRemaining(zoneIndex) === 0) continue;
+        const boundary = zone.x + ZONE_W - 48;
+        if (boundary > left - 40 && boundary < right + 40) drawCombatSeal(boundary);
+      }
     }
     for (const stage of stages) {
-      if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.defeatedBosses.has(stage.bossKind));
+      if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.adminMode || game.defeatedBosses.has(stage.bossKind));
     }
     for (const enemy of enemies) if (enemy.x + enemy.w > left && enemy.x < right) drawEnemy(enemy);
     for (const bullet of bullets) drawBullet(bullet);
@@ -5359,6 +5385,17 @@
     ctx.save();
     ctx.textBaseline = "top";
 
+    if (game.adminMode) {
+      ctx.fillStyle = "rgba(8, 15, 22, 0.9)";
+      ctx.fillRect(W / 2 - 178, 98, 356, 30);
+      ctx.fillStyle = palette.amber;
+      ctx.fillRect(W / 2 - 178, 98, 4, 30);
+      ctx.font = "900 11px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 108);
+      ctx.textAlign = "left";
+    }
+
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
     ctx.fillRect(28, 28, 320, 194);
     const hudSweep = 30 + ((game.time * 34) % 190);
@@ -5470,9 +5507,9 @@
     ctx.fillStyle = zones[game.zone].color;
     ctx.fillRect(W - 295, 77, 250 * progress, 3);
     const hudZoneRemaining = getZoneRemaining(game.zone);
-    ctx.fillStyle = hudZoneRemaining > 0 ? palette.red : palette.cyan;
+    ctx.fillStyle = game.adminMode ? palette.amber : hudZoneRemaining > 0 ? palette.red : palette.cyan;
     ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-    ctx.fillText(hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
+    ctx.fillText(game.adminMode ? "관리자 권한 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
     ctx.textAlign = "left";
 
     const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
@@ -5662,6 +5699,31 @@
     }
   }
 
+  function registerAdminSequence(code) {
+    if (game.mode !== "menu" || adminModeUnlocked) return false;
+    const normalizedCode = code.startsWith("Numpad") ? `Digit${code.slice(-1)}` : code;
+    if (normalizedCode === ADMIN_SEQUENCE[adminSequenceProgress]) {
+      adminSequenceProgress += 1;
+    } else {
+      adminSequenceProgress = normalizedCode === ADMIN_SEQUENCE[0] ? 1 : 0;
+    }
+    if (adminSequenceProgress < ADMIN_SEQUENCE.length) return false;
+
+    adminModeUnlocked = true;
+    adminSequenceProgress = 0;
+    game.adminMode = true;
+    startScreen.classList.add("admin-enabled");
+    if (adminStatus) {
+      adminStatus.hidden = false;
+      adminStatus.textContent = "ADMIN MODE 활성화 · 적 공격/접촉 피해 없음 · 구역 및 스테이지 봉쇄 해제";
+    }
+    startButton.textContent = "관리자 작전 시작";
+    sound.wake();
+    sound.tone(740, 0.12, "square", 0.035, 0.82);
+    setTimeout(() => sound.tone(1040, 0.18, "sine", 0.035, 1.05), 90);
+    return true;
+  }
+
   function updatePointer(event) {
     const bounds = canvas.getBoundingClientRect();
     pointer.screenX = clamp((event.clientX - bounds.left) * (W / bounds.width), 0, W);
@@ -5684,8 +5746,9 @@
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
-    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyR"];
+    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyR", "Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"];
     if (handled.includes(event.code)) event.preventDefault();
+    if (game.mode === "menu") registerAdminSequence(event.code);
     if (!keys.has(event.code)) pressed.add(event.code);
     keys.add(event.code);
 

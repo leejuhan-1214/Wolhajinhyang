@@ -199,6 +199,26 @@ h2 {
   margin: -8px auto 13px;
 }
 
+.admin-status {
+  width: min(680px, 82vw);
+  margin: -5px auto 12px;
+  padding: 8px 14px;
+  color: #081019;
+  background: linear-gradient(90deg, #ffcd70, #8ff8e9);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 24px rgba(255, 205, 112, 0.24);
+  font: 900 11px/1.35 "Malgun Gothic", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.admin-status[hidden] {
+  display: none;
+}
+
+.overlay.admin-enabled h1 {
+  filter: drop-shadow(0 0 18px rgba(255, 205, 112, 0.24));
+}
+
 .campaign-actions {
   display: flex;
   justify-content: center;
