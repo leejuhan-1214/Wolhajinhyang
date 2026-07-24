@@ -1845,11 +1845,12 @@
     return true;
   }
 
-  function killEnemy(enemy) {
+  function killEnemy(enemy, { silent = false } = {}) {
     enemy.alive = false;
     const deathCenterX = enemy.x + enemy.w / 2;
     const deathCenterY = enemy.y + enemy.h / 2;
-    const deathIsNearPlayer = Math.abs(deathCenterX - (player.x + player.w / 2)) < W
+    const deathIsNearPlayer = !silent
+      && Math.abs(deathCenterX - (player.x + player.w / 2)) < W
       && Math.abs(deathCenterY - (player.y + player.h / 2)) < H;
     if (!enemy.countedKill) {
       enemy.countedKill = true;
@@ -3055,6 +3056,21 @@
     camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.008, dt));
   }
 
+  function cullEnemiesOutsideVerticalView() {
+    const viewLeft = camera.x;
+    const viewRight = camera.x + W;
+    const viewTop = camera.y;
+    const viewBottom = camera.y + H;
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      const horizontallyVisible = enemy.x + enemy.w > viewLeft && enemy.x < viewRight;
+      if (!horizontallyVisible) continue;
+      const leftAboveScreen = enemy.y + enemy.h <= viewTop;
+      const fellBelowScreen = enemy.y >= viewBottom;
+      if (leftAboveScreen || fellBelowScreen) killEnemy(enemy, { silent: true });
+    }
+  }
+
   function update(dt) {
     game.time += dt;
     for (const drop of rain) {
@@ -3114,6 +3130,7 @@
     enforceEnemyLockdowns();
     updateParticles(dt);
     updateCamera(dt);
+    cullEnemiesOutsideVerticalView();
 
     let startedCutscene = false;
     for (const event of CUTSCENE_EVENTS) {
