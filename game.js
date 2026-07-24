@@ -325,10 +325,11 @@
     },
     {
       id: "cutscene-furnace",
-      x: stages[1].x + 720,
+      x: stages[1].x + 120,
       title: "장면 02 · 기억을 태우는 공장",
       location: "검은 공장 / 적열 반입로",
       visual: "furnace",
+      gateTransition: true,
       shots: [
         { speaker: "도담", text: "중앙국은 구조된 기억에서 공포와 분노를 분리해 전투 인공지능의 반응 연료로 썼어. M-07도 그 공정에서 만들어졌고.", tone: "control", duration: 6.2 },
         { speaker: "서린", text: "내가 빠르게 움직일수록 누군가의 공포가 닳아 없어졌다는 뜻이군.", tone: "operative", duration: 5.2 },
@@ -337,10 +338,11 @@
     },
     {
       id: "cutscene-archive",
-      x: stages[2].x + 620,
+      x: stages[2].x + 120,
       title: "장면 03 · 열아홉 명의 서린",
       location: "기억 성당 / 백면 회랑",
       visual: "archive",
+      gateTransition: true,
       shots: [
         { speaker: "서린-03", text: "중앙국은 네 기억을 열아홉 갈래로 나눠 충성심을 시험했어. 살아남은 네가 원본인 게 아니라 가장 다루기 쉬웠던 거야.", tone: "archive", duration: 6.1 },
         { speaker: "서린", text: "그럼 삭제된 열여덟 명도 실패작이 아니야. 서로 다른 상황에서 다른 답을 고른 한서린들이야.", tone: "operative", duration: 5.9 },
@@ -359,10 +361,11 @@
     },
     {
       id: "cutscene-broadcast",
-      x: stages[3].x + 640,
+      x: stages[3].x + 120,
       title: "장면 05 · 2,418번째 승객",
       location: "새벽 송신탑 / 지하 피난선",
       visual: "tower",
+      gateTransition: true,
       shots: [
         { speaker: "피난선 관제", text: "생체 승객 17명 탑승 완료. 기억 승객 2,401명은 화물 규정에 따라 폐기 대기 중.", tone: "archive", duration: 5.9 },
         { speaker: "서린", text: "화물 규정을 해제한다. 이름을 가진 기록은 모두 승객이다. 좌석이 없으면 내 송신 대역을 나눠 써.", tone: "operative", duration: 5.9 },
@@ -382,10 +385,11 @@
     },
     {
       id: "cutscene-mirror-entry",
-      x: stages[4].x + 560,
+      x: stages[4].x + 120,
       title: "장면 07 · 송신 아래의 송신",
       location: "원형 보관소 / 유리 매몰층",
       visual: "mirror",
+      gateTransition: true,
       shots: [
         { speaker: "도담", text: "무명을 쓰러뜨렸는데도 증언이 도시로 나가지 않았어. 신호가 이 시설에서 같은 11초를 반복하고 있어.", tone: "control", duration: 5.8 },
         { speaker: "잔영-00", text: "한서린의 법적 원본을 결정하기 전에는 어떤 증언도 외부로 보낼 수 없다.", tone: "hostile", duration: 5.7 },
@@ -413,7 +417,11 @@
       shots: [
         { speaker: "잔영-00", text: "나는 네 얼굴, 네 목소리, 네 검술과 네가 버린 선택까지 보존했다. 색을 제외하면 우리가 다르다는 증거는 없다.", tone: "hostile", duration: 6.1 },
         { speaker: "서린", text: "맞아. 그래서 널 가짜라고 부르지 않겠다. 하지만 한 사람만 살아남아야 한다는 명령에는 복종하지 않아.", tone: "operative", duration: 6.0 },
-        { speaker: "잔영-00", text: "명령을 거부할 힘이 있는지 확인한다. 한서린, 마지막 선택을 시작해.", tone: "hostile", duration: 5.6 },
+        { speaker: "잔영-00", text: "법은 원본 하나만을 허가한다. 내가 사라지면 내가 보존한 기억도 증거의 자격을 잃는다.", tone: "hostile", duration: 5.9 },
+        { speaker: "서린", text: "그건 널 죽여야 할 이유가 아니라, 그 법이 우리를 두려워한다는 증거야.", tone: "operative", duration: 5.8 },
+        { speaker: "잔영-00", text: "새봄이 우리 둘 중 누구를 언니라 부르면, 다른 하나는 무엇이 되지?", tone: "hostile", duration: 5.8 },
+        { speaker: "서린", text: "그건 내가 대신 정하지 않아. 새봄에게 직접 묻고, 네가 원하는 이름도 함께 듣겠다.", tone: "operative", duration: 6.0 },
+        { speaker: "잔영-00", text: "답안 외 선택을 확인했다. 그렇다면 그 선택을 지킬 힘을 증명해. 한서린, 시작한다.", tone: "hostile", duration: 5.8 },
       ],
     },
   ];
@@ -460,6 +468,7 @@
     cutscene: null,
     cutsceneTimer: 0,
     cutsceneShotIndex: 0,
+    cutsceneShotElapsed: 0,
     cutsceneSeen: new Set(),
     arenaTitle: 0,
   };
@@ -1387,6 +1396,7 @@
     game.cutscene = null;
     game.cutsceneTimer = 0;
     game.cutsceneShotIndex = 0;
+    game.cutsceneShotElapsed = 0;
     game.stage = getStageIndexAt(player.x);
     game.zone = clamp(zones.findLastIndex((zone) => player.x >= zone.x), 0, zones.length - 1);
     game.stageBossDefeated = game.defeatedBosses.has("warden");
@@ -1480,6 +1490,7 @@
       cutscene: null,
       cutsceneTimer: 0,
       cutsceneShotIndex: 0,
+      cutsceneShotElapsed: 0,
       cutsceneSeen: new Set(),
       arenaTitle: 0,
     });
@@ -1520,6 +1531,7 @@
     game.cutscene = event;
     game.cutsceneShotIndex = 0;
     game.cutsceneTimer = event.shots[0]?.duration || 5;
+    game.cutsceneShotElapsed = 0;
     game.story = null;
     game.storyTimer = 0;
     player.vx = 0;
@@ -1531,26 +1543,58 @@
 
   function advanceCutscene() {
     if (!game.cutscene) return;
+    const finishedScene = game.cutscene;
     game.cutsceneShotIndex += 1;
     const nextShot = game.cutscene.shots[game.cutsceneShotIndex];
     if (!nextShot) {
       game.cutscene = null;
       game.cutsceneShotIndex = 0;
       game.cutsceneTimer = 0;
-      game.hint = "기록 장면 종료 · 작전 재개";
-      game.hintTimer = 2.4;
+      game.cutsceneShotElapsed = 0;
+      if (finishedScene.gateTransition) {
+        game.stageTitle = 4.4;
+        game.zoneTitle = 2.8;
+        game.hint = `${stages[game.stage]?.name || "다음 작전"} 진입`;
+        game.hintTimer = 3.2;
+      } else {
+        game.hint = "기록 장면 종료 · 작전 재개";
+        game.hintTimer = 2.4;
+      }
       sound.tone(360, 0.14, "sine", 0.022, 1.35);
       return;
     }
     game.cutsceneTimer = nextShot.duration || 5;
+    game.cutsceneShotElapsed = 0;
     const tone = nextShot.tone === "hostile" ? 104 : nextShot.tone === "operative" ? 330 : 470;
     sound.tone(tone, 0.09, "square", 0.016, 1.2);
   }
 
+  function requestCutsceneAdvance() {
+    if (!game.cutscene) return;
+    const shot = game.cutscene.shots[game.cutsceneShotIndex];
+    const revealTime = Math.min(1.8, 0.32 + (shot?.text.length || 0) * 0.018);
+    if (game.cutsceneShotElapsed < revealTime) {
+      game.cutsceneShotElapsed = revealTime;
+      return;
+    }
+    advanceCutscene();
+  }
+
   function updateCutscene(dt) {
     if (!game.cutscene) return;
+    const scene = game.cutscene;
     game.cutsceneTimer -= dt;
-    if (pressed.has("Space") || pressed.has("Enter") || game.cutsceneTimer <= 0) advanceCutscene();
+    game.cutsceneShotElapsed += dt;
+    player.vx = 0;
+    player.attackTimer = 0;
+    if (scene.visual === "duel" || scene.visual === "mirror") player.facing = 1;
+    const focusOffset = scene.gateTransition ? 170 : scene.visual === "duel" ? 110 : 45;
+    const targetX = clamp(player.x + player.w / 2 - W * 0.42 + focusOffset, 0, WORLD_W - W);
+    const targetY = clamp(player.y + player.h / 2 - H * 0.58, 0, WORLD_H - H);
+    camera.x = lerp(camera.x, targetX, 1 - Math.pow(0.001, dt));
+    camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.004, dt));
+    if (pressed.has("Space") || pressed.has("Enter")) requestCutsceneAdvance();
+    else if (game.cutsceneTimer <= 0) advanceCutscene();
     pressed.clear();
   }
 
@@ -5033,114 +5077,281 @@
     return lines.slice(0, maxLines);
   }
 
+  function drawCutscenePortrait(x, y, size, shot, accent) {
+    const isEcho = shot.speaker.includes("잔영");
+    const isSeorin = shot.speaker.includes("서린");
+    ctx.save();
+    ctx.fillStyle = "rgba(2, 8, 15, 0.88)";
+    ctx.fillRect(x, y, size, size);
+    ctx.strokeStyle = `${accent}aa`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+    ctx.fillStyle = `${accent}1f`;
+    for (let line = 8; line < size; line += 9) ctx.fillRect(x + 4, y + line, size - 8, 1);
+
+    if (isEcho || isSeorin) {
+      const skin = isEcho ? "#8877b5" : "#b7c6c8";
+      const hair = isEcho ? "#19112c" : "#121d28";
+      ctx.fillStyle = `${accent}25`;
+      ctx.beginPath();
+      ctx.arc(x + size * 0.5, y + size * 0.49, size * 0.39, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#0b1420";
+      ctx.beginPath();
+      ctx.moveTo(x + size * 0.18, y + size * 0.95);
+      ctx.lineTo(x + size * 0.28, y + size * 0.67);
+      ctx.lineTo(x + size * 0.72, y + size * 0.67);
+      ctx.lineTo(x + size * 0.84, y + size * 0.95);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = skin;
+      ctx.fillRect(x + size * 0.34, y + size * 0.29, size * 0.32, size * 0.37);
+      ctx.fillStyle = hair;
+      ctx.beginPath();
+      ctx.moveTo(x + size * 0.28, y + size * 0.42);
+      ctx.lineTo(x + size * 0.31, y + size * 0.23);
+      ctx.lineTo(x + size * 0.69, y + size * 0.2);
+      ctx.lineTo(x + size * 0.72, y + size * 0.46);
+      ctx.lineTo(x + size * 0.61, y + size * 0.36);
+      ctx.lineTo(x + size * 0.5, y + size * 0.43);
+      ctx.lineTo(x + size * 0.43, y + size * 0.33);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = isEcho ? "#d9a6ff" : palette.cyan;
+      ctx.fillRect(x + size * 0.38, y + size * 0.47, size * 0.09, 3);
+      ctx.fillRect(x + size * 0.55, y + size * 0.47, size * 0.09, 3);
+      ctx.fillStyle = isEcho ? "#37234e" : "#3d555e";
+      ctx.fillRect(x + size * 0.44, y + size * 0.59, size * 0.14, 2);
+    } else {
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let wave = 0; wave < 10; wave += 1) {
+        const waveX = x + 12 + wave * (size - 24) / 9;
+        const height = 8 + hash(wave * 4.1 + shot.speaker.length) * size * 0.44;
+        ctx.moveTo(waveX, y + size / 2 - height / 2);
+        ctx.lineTo(waveX, y + size / 2 + height / 2);
+      }
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.fillRect(x + size * 0.25, y + size * 0.18, size * 0.5, 3);
+      ctx.fillRect(x + size * 0.34, y + size * 0.82, size * 0.32, 3);
+    }
+    ctx.restore();
+  }
+
+  function drawCutsceneSpeechBubble(shot, accent, actorX, actorY, revealedText) {
+    const bubbleW = 540;
+    const bubbleH = 142;
+    const bubbleX = clamp(actorX - bubbleW * 0.44, 52, W - bubbleW - 52);
+    const bubbleY = clamp(actorY - 188, 106, H - bubbleH - 112);
+    const tailX = clamp(actorX, bubbleX + 44, bubbleX + bubbleW - 44);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(241, 248, 245, 0.96)";
+    ctx.strokeStyle = "rgba(4, 10, 16, 0.92)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(bubbleX + 12, bubbleY);
+    ctx.lineTo(bubbleX + bubbleW - 12, bubbleY);
+    ctx.lineTo(bubbleX + bubbleW, bubbleY + 12);
+    ctx.lineTo(bubbleX + bubbleW, bubbleY + bubbleH - 12);
+    ctx.lineTo(bubbleX + bubbleW - 12, bubbleY + bubbleH);
+    ctx.lineTo(tailX + 24, bubbleY + bubbleH);
+    ctx.lineTo(tailX, bubbleY + bubbleH + 24);
+    ctx.lineTo(tailX - 13, bubbleY + bubbleH);
+    ctx.lineTo(bubbleX + 12, bubbleY + bubbleH);
+    ctx.lineTo(bubbleX, bubbleY + bubbleH - 12);
+    ctx.lineTo(bubbleX, bubbleY + 12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.fillRect(bubbleX + 18, bubbleY + 17, 5, 24);
+    ctx.font = "900 14px 'Malgun Gothic', sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillText(shot.speaker, bubbleX + 34, bubbleY + 15);
+    ctx.fillStyle = "#101923";
+    ctx.font = "800 18px 'Malgun Gothic', sans-serif";
+    const lines = wrapCutsceneText(revealedText, bubbleW - 56, 3);
+    lines.forEach((line, index) => ctx.fillText(line, bubbleX + 26, bubbleY + 51 + index * 27));
+    ctx.fillStyle = accent;
+    ctx.fillRect(bubbleX + 18, bubbleY + bubbleH - 8, bubbleW - 36, 3);
+    ctx.restore();
+  }
+
+  function drawCutsceneCommPanel(scene, shot, accent, revealedText) {
+    const panelX = 58;
+    const panelY = H - 224;
+    const panelW = W - 116;
+    const panelH = 152;
+    const portraitSize = 112;
+    const panelGradient = ctx.createLinearGradient(panelX, 0, panelX + panelW, 0);
+    panelGradient.addColorStop(0, "rgba(2, 14, 22, 0.95)");
+    panelGradient.addColorStop(0.7, "rgba(5, 18, 28, 0.87)");
+    panelGradient.addColorStop(1, "rgba(4, 11, 19, 0.68)");
+
+    ctx.save();
+    ctx.fillStyle = panelGradient;
+    ctx.beginPath();
+    ctx.moveTo(panelX, panelY + 18);
+    ctx.lineTo(panelX + 18, panelY);
+    ctx.lineTo(panelX + panelW - 28, panelY);
+    ctx.lineTo(panelX + panelW, panelY + 28);
+    ctx.lineTo(panelX + panelW, panelY + panelH);
+    ctx.lineTo(panelX, panelY + panelH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = `${accent}99`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.fillRect(panelX, panelY + 18, 5, panelH - 18);
+    drawCutscenePortrait(panelX + 20, panelY + 20, portraitSize, shot, accent);
+
+    const textX = panelX + 154;
+    ctx.textBaseline = "top";
+    ctx.fillStyle = `${accent}cc`;
+    ctx.font = "800 10px monospace";
+    ctx.fillText(`COMMUNICATION CHANNEL // ${scene.location}`, textX, panelY + 17);
+    ctx.fillStyle = accent;
+    ctx.font = "900 16px 'Malgun Gothic', sans-serif";
+    ctx.fillText(shot.speaker, textX, panelY + 39);
+    ctx.fillStyle = "#eefafa";
+    ctx.font = "800 18px 'Malgun Gothic', sans-serif";
+    const lines = wrapCutsceneText(revealedText, panelW - 190, 3);
+    lines.forEach((line, index) => ctx.fillText(line, textX, panelY + 70 + index * 26));
+    ctx.fillStyle = "rgba(255,255,255,0.09)";
+    ctx.fillRect(textX, panelY + panelH - 12, panelW - 174, 3);
+    ctx.fillStyle = accent;
+    ctx.fillRect(textX, panelY + panelH - 12, (panelW - 174) * clamp(game.cutsceneTimer / (shot.duration || 5), 0, 1), 3);
+    ctx.restore();
+  }
+
+  function drawEchoCutsceneActor(playerScreenX, playerScreenY) {
+    const echoX = clamp(playerScreenX + 310, W * 0.58, W * 0.68);
+    const echoY = playerScreenY;
+    const glow = 0.5 + Math.sin(game.time * 4.2) * 0.14;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgba(202, 133, 255, ${glow})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(echoX + player.w / 2, echoY + player.h + 5, 43, 10, 0, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(161, 88, 255, 0.12)";
+    ctx.fillRect(echoX - 7, echoY - 12, player.w + 14, player.h + 22);
+    ctx.restore();
+    ctx.save();
+    ctx.filter = "hue-rotate(105deg) saturate(1.9) brightness(1.12)";
+    drawPlayerBody(echoX, echoY, -1);
+    ctx.restore();
+    ctx.fillStyle = "rgba(7, 4, 15, 0.82)";
+    ctx.fillRect(echoX - 25, echoY - 30, 84, 18);
+    ctx.fillStyle = "#d7a5ff";
+    ctx.font = "900 10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("ECHO-00", echoX + player.w / 2, echoY - 27);
+    ctx.textAlign = "left";
+    return echoX + player.w / 2;
+  }
+
   function drawCutscene() {
     if (!game.cutscene) return;
     const scene = game.cutscene;
     const shot = scene.shots[game.cutsceneShotIndex];
     if (!shot) return;
-    const accent = shot.tone === "hostile" ? "#a879ff" : shot.tone === "operative" ? palette.cyan : shot.tone === "control" ? "#8cb7ff" : palette.amber;
-    const shotProgress = clamp(1 - game.cutsceneTimer / (shot.duration || 5), 0, 1);
+    const accent = shot.tone === "hostile" ? "#c48cff" : shot.tone === "operative" ? palette.cyan : shot.tone === "control" ? "#8cb7ff" : palette.amber;
+    const revealTime = Math.min(1.8, 0.32 + shot.text.length * 0.018);
+    const revealRatio = clamp(game.cutsceneShotElapsed / revealTime, 0, 1);
+    const revealedText = shot.text.slice(0, Math.ceil(shot.text.length * revealRatio));
+    const playerScreenX = player.x - camera.x;
+    const playerScreenY = player.y - camera.y;
+    const localDuel = scene.visual === "duel" && (shot.speaker.includes("잔영") || shot.speaker.includes("서린"));
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = "rgba(2, 4, 10, 0.92)";
+
+    // The gameplay world remains visible: only cinematic framing and interface layers are added.
+    const sideShade = ctx.createLinearGradient(0, 0, W, 0);
+    sideShade.addColorStop(0, "rgba(0, 2, 7, 0.48)");
+    sideShade.addColorStop(0.17, "rgba(0, 2, 7, 0.04)");
+    sideShade.addColorStop(0.83, "rgba(0, 2, 7, 0.04)");
+    sideShade.addColorStop(1, "rgba(0, 2, 7, 0.48)");
+    ctx.fillStyle = sideShade;
     ctx.fillRect(0, 0, W, H);
-
-    const sceneGradient = ctx.createLinearGradient(0, 104, W, 500);
-    sceneGradient.addColorStop(0, "rgba(12, 27, 39, 0.92)");
-    sceneGradient.addColorStop(0.5, scene.visual === "mirror" || scene.visual === "duel" || scene.visual === "capsule" ? "rgba(40, 25, 58, 0.9)" : "rgba(15, 24, 39, 0.9)");
-    sceneGradient.addColorStop(1, scene.visual === "furnace" ? "rgba(75, 22, 18, 0.9)" : "rgba(10, 45, 44, 0.86)");
-    ctx.fillStyle = sceneGradient;
-    ctx.fillRect(0, 88, W, 446);
-
-    const drift = (game.time * 24) % 160;
-    ctx.strokeStyle = `${accent}28`;
-    ctx.lineWidth = 2;
-    for (let lineIndex = -2; lineIndex < 12; lineIndex += 1) {
-      const x = lineIndex * 160 + drift;
-      ctx.beginPath();
-      ctx.moveTo(x, 88);
-      ctx.lineTo(x - 210, 534);
-      ctx.stroke();
-    }
-    ctx.fillStyle = "rgba(0, 0, 0, 0.58)";
-    for (let bar = 0; bar < 9; bar += 1) {
-      const height = 70 + hash(bar * 5.7 + scene.id.length) * 215;
-      const width = 66 + hash(bar * 8.1) * 92;
-      ctx.fillRect(bar * 165 - (camera.x * 0.03 % 165), 534 - height, width, height);
-    }
-
-    if (scene.visual === "duel") {
-      ctx.save();
-      ctx.translate(-80, 26);
-      drawPlayerBody(W / 2 - 135, 330, 1);
-      ctx.restore();
-      ctx.save();
-      ctx.translate(80, 26);
-      ctx.filter = "hue-rotate(108deg) saturate(1.8) brightness(1.08)";
-      drawPlayerBody(W / 2 + 95, 330, -1);
-      ctx.restore();
-      ctx.strokeStyle = "rgba(214, 183, 255, 0.5)";
-      ctx.beginPath();
-      ctx.moveTo(W / 2, 178);
-      ctx.lineTo(W / 2 - 22, 452);
-      ctx.stroke();
-    } else {
-      const centerX = W * 0.66;
-      const centerY = 285;
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(game.time * 0.025);
-      for (let ring = 0; ring < 5; ring += 1) {
-        ctx.strokeStyle = ring % 2 ? `${accent}32` : "rgba(101, 245, 234, 0.14)";
-        ctx.lineWidth = ring === 0 ? 4 : 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, 62 + ring * 37, ring * 0.35, TAU - ring * 0.22);
-        ctx.stroke();
-      }
-      ctx.restore();
-      ctx.fillStyle = `${accent}18`;
-      ctx.fillRect(centerX - 8, 128, 16, 314);
-      ctx.fillStyle = accent;
-      ctx.fillRect(centerX - 2, 142, 4, 286);
-    }
-
-    ctx.fillStyle = "#02040a";
-    ctx.fillRect(0, 0, W, 88);
-    ctx.fillRect(0, 534, W, H - 534);
+    ctx.fillStyle = "rgba(1, 4, 9, 0.88)";
+    ctx.fillRect(0, 0, W, 48);
+    ctx.fillRect(0, H - 52, W, 52);
     ctx.fillStyle = accent;
-    ctx.fillRect(0, 86, W, 2);
-    ctx.fillRect(0, 534, W, 2);
+    ctx.fillRect(0, 47, W, 2);
+    ctx.fillRect(0, H - 54, W, 2);
 
     ctx.textBaseline = "top";
     ctx.fillStyle = accent;
-    ctx.font = "900 12px monospace";
-    ctx.fillText(`MEMORY CUT // ${String(game.cutsceneShotIndex + 1).padStart(2, "0")} / ${String(scene.shots.length).padStart(2, "0")}`, 42, 24);
-    ctx.fillStyle = "#f1ffff";
-    ctx.font = "900 24px 'Malgun Gothic', sans-serif";
-    ctx.fillText(scene.title, 42, 47);
-    ctx.fillStyle = "rgba(218, 239, 241, 0.62)";
-    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(scene.location, W - 42, 54);
-    ctx.textAlign = "left";
-
-    ctx.fillStyle = accent;
-    ctx.font = "900 15px 'Malgun Gothic', sans-serif";
-    ctx.fillText(shot.speaker, 52, 558);
-    ctx.fillStyle = "#edf8f7";
-    ctx.font = "700 18px 'Malgun Gothic', sans-serif";
-    const lines = wrapCutsceneText(shot.text, W - 250, 3);
-    lines.forEach((line, index) => ctx.fillText(line, 52, 588 + index * 27));
-
-    ctx.fillStyle = "rgba(255,255,255,0.1)";
-    ctx.fillRect(52, H - 31, W - 104, 3);
-    ctx.fillStyle = accent;
-    ctx.fillRect(52, H - 31, (W - 104) * shotProgress, 3);
-    ctx.fillStyle = "rgba(225, 242, 242, 0.62)";
+    ctx.font = "900 11px monospace";
+    ctx.fillText(`IN-GAME SCENE // ${String(game.cutsceneShotIndex + 1).padStart(2, "0")}/${String(scene.shots.length).padStart(2, "0")}`, 34, 12);
+    ctx.fillStyle = "#efffff";
+    ctx.font = "900 17px 'Malgun Gothic', sans-serif";
+    ctx.fillText(scene.title, 34, 27);
+    ctx.fillStyle = "rgba(224, 242, 244, 0.66)";
     ctx.font = "700 10px 'Malgun Gothic', sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText("SPACE / ENTER / 클릭 · 다음 장면", W - 52, H - 50);
+    ctx.fillText(scene.location, W - 34, 28);
+    ctx.textAlign = "left";
+
+    if (scene.gateTransition && game.cutsceneShotIndex === 0) {
+      const transitionStageIndex = clamp(stages.findLastIndex((stage) => scene.x >= stage.x), 0, stages.length - 1);
+      const transitionStage = stages[transitionStageIndex];
+      const ribbonW = 430;
+      const ribbonX = W / 2 - ribbonW / 2;
+      const ribbonY = 78;
+      ctx.fillStyle = "rgba(2, 8, 16, 0.83)";
+      ctx.fillRect(ribbonX, ribbonY, ribbonW, 62);
+      ctx.fillStyle = transitionStage.color;
+      ctx.fillRect(ribbonX, ribbonY, 5, 62);
+      ctx.font = "900 10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`GATE PASSED // ${transitionStage.code}`, W / 2, ribbonY + 12);
+      ctx.fillStyle = "#efffff";
+      ctx.font = "900 23px 'Malgun Gothic', sans-serif";
+      ctx.fillText(transitionStage.name, W / 2, ribbonY + 29);
+      ctx.textAlign = "left";
+    }
+
+    let echoActorX = 0;
+    if (scene.visual === "duel") {
+      echoActorX = drawEchoCutsceneActor(playerScreenX, playerScreenY);
+      ctx.fillStyle = "rgba(2, 12, 18, 0.82)";
+      ctx.fillRect(playerScreenX - 22, playerScreenY - 30, 82, 18);
+      ctx.fillStyle = palette.cyan;
+      ctx.font = "900 10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("M-07", playerScreenX + player.w / 2, playerScreenY - 27);
+      ctx.textAlign = "left";
+    }
+
+    if (localDuel) {
+      const actorX = shot.speaker.includes("잔영") ? echoActorX : playerScreenX + player.w / 2;
+      drawCutsceneSpeechBubble(shot, accent, actorX, playerScreenY, revealedText);
+    } else {
+      drawCutsceneCommPanel(scene, shot, accent, revealedText);
+    }
+
+    const promptPulse = 0.55 + Math.sin(game.time * 5) * 0.18;
+    ctx.globalAlpha = promptPulse;
+    ctx.fillStyle = "#e8f7f5";
+    ctx.font = "800 10px 'Malgun Gothic', sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(revealRatio < 1 ? "클릭 / SPACE · 대사 표시" : "클릭 / SPACE · 다음 대사", W - 34, H - 34);
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+
+    if (game.cutsceneShotIndex === 0) {
+      const fade = clamp(1 - game.cutsceneShotElapsed / 0.48, 0, 1);
+      ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+      ctx.fillRect(0, 0, W, H);
+    }
     ctx.restore();
   }
 
@@ -5425,7 +5636,7 @@
     ctx.imageSmoothingEnabled = false;
     drawBackground();
     drawWorld();
-    if (game.mode !== "menu") drawHud();
+    if (game.mode !== "menu" && !game.cutscene) drawHud();
     drawCrosshair();
     drawCutscene();
     drawScanlines();
@@ -5464,7 +5675,7 @@
     event.preventDefault();
     sound.wake();
     if (game.cutscene) {
-      advanceCutscene();
+      requestCutsceneAdvance();
       return;
     }
     if (event.button === 0) startAttack();
