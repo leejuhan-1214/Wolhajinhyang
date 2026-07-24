@@ -12,6 +12,7 @@
   const resultText = document.getElementById("result-text");
   const adminStatus = document.getElementById("admin-status");
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
+  const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
 
   const W = 1280;
   const H = 720;
@@ -121,7 +122,7 @@
     weapon: { name: "인간흉기", hp: 1, damage: 99, enemySpeed: 1.24, bulletSpeed: 1.2 },
   };
   let selectedDifficulty = "cadet";
-  const ADMIN_SEQUENCE = ["Digit1", "Digit2", "Digit1", "Digit4"];
+  const ADMIN_SEQUENCE = ["1", "2", "1", "4"];
   let adminSequenceProgress = 0;
   let adminModeUnlocked = false;
 
@@ -5699,13 +5700,12 @@
     }
   }
 
-  function registerAdminSequence(code) {
+  function registerAdminSequence(stageNumber) {
     if (game.mode !== "menu" || adminModeUnlocked) return false;
-    const normalizedCode = code.startsWith("Numpad") ? `Digit${code.slice(-1)}` : code;
-    if (normalizedCode === ADMIN_SEQUENCE[adminSequenceProgress]) {
+    if (stageNumber === ADMIN_SEQUENCE[adminSequenceProgress]) {
       adminSequenceProgress += 1;
     } else {
-      adminSequenceProgress = normalizedCode === ADMIN_SEQUENCE[0] ? 1 : 0;
+      adminSequenceProgress = stageNumber === ADMIN_SEQUENCE[0] ? 1 : 0;
     }
     if (adminSequenceProgress < ADMIN_SEQUENCE.length) return false;
 
@@ -5746,9 +5746,8 @@
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
-    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyR", "Digit1", "Digit2", "Digit3", "Digit4", "Numpad1", "Numpad2", "Numpad3", "Numpad4"];
+    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyR"];
     if (handled.includes(event.code)) event.preventDefault();
-    if (game.mode === "menu") registerAdminSequence(event.code);
     if (!keys.has(event.code)) pressed.add(event.code);
     keys.add(event.code);
 
@@ -5770,6 +5769,9 @@
   startButton.addEventListener("click", () => resetGame(false));
   continueButton?.addEventListener("click", () => resetGame(true));
   restartButton.addEventListener("click", () => resetGame(false));
+  for (const button of stageCodeButtons) {
+    button.addEventListener("click", () => registerAdminSequence(button.dataset.adminStage));
+  }
   for (const button of difficultyButtons) {
     button.addEventListener("click", () => {
       selectedDifficulty = button.dataset.difficulty;

@@ -173,12 +173,31 @@ h2 {
   border-left: 1px solid rgba(101, 245, 234, 0.16);
 }
 
-.stage-strip b {
+.stage-code {
   display: block;
+  width: 100%;
+  min-width: 0;
   margin-bottom: 3px;
+  padding: 0;
   color: var(--cyan);
+  background: none;
+  border: 0;
+  border-radius: 0;
   font: 800 9px/1 monospace;
   letter-spacing: 0.12em;
+  cursor: pointer;
+  clip-path: none;
+  box-shadow: none;
+  transition: color 120ms ease, text-shadow 120ms ease;
+}
+
+.stage-code:hover,
+.stage-code:focus-visible {
+  color: #fff0b0;
+  text-shadow: 0 0 10px rgba(255, 205, 112, 0.65);
+  filter: none;
+  transform: none;
+  outline: none;
 }
 
 .stage-strip em {
