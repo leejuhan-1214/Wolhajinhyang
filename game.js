@@ -1282,7 +1282,6 @@
         [1060, 1760, 2470, 3180].forEach((x, index) => {
           addHazard(origin + x, floorY - (index % 2 ? 360 : 500), 24, index % 2 ? 360 : 500, "laser", index * 0.61 + localZoneIndex * 0.23);
         });
-        addEnemy(localZoneIndex % 2 ? "piercer" : "drone", origin + 1480, ridge - 90, 250);
         addEnemy(localZoneIndex % 2 ? "mortar" : "shield", origin + 2860, floorY, 250);
         if (localZoneIndex === 1 || localZoneIndex === 4) {
           combatRooms.push({
@@ -1294,6 +1293,17 @@
             cleared: false,
           });
         }
+      }
+
+      if (zone.stageIndex === 4) {
+        const recoveryOffsets = {
+          0: 720,
+          2: 3680,
+          4: 3700,
+          6: 720,
+        };
+        const recoveryOffset = recoveryOffsets[localZoneIndex];
+        if (recoveryOffset !== undefined) addPickup(origin + recoveryOffset, floorY - 62, "repair");
       }
 
       if (zone.template !== "boss") addZoneEnemies(zone, floorY, spawns);
