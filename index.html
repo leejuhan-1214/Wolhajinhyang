@@ -8,14 +8,14 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=1.3.7" />
+    <link rel="stylesheet" href="styles.css?v=1.4.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">IN-WORLD CINEMATIC CAMPAIGN · v1.3.7</div>
+        <div class="eyebrow">IN-WORLD CINEMATIC CAMPAIGN · v1.4.0</div>
         <h1>월하잔향</h1>
         <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
@@ -66,8 +66,25 @@
         <p class="tip">2,418명의 이름과 서로 다른 한서린들의 선택이 도시 전체에 도착했다. 이제 원본은 한 사람이 아니라 함께 보존된 증언이다.</p>
       </section>
 
+      <section id="admin-spawn-panel" class="admin-spawn-panel" aria-label="관리자 적 생성 패널" hidden>
+        <header>
+          <div><small>ADMIN ENTITY CATALOG</small><strong>현재 위치에 생성할 적 선택</strong></div>
+          <button id="admin-spawn-close" type="button" aria-label="적 생성 패널 닫기">×</button>
+        </header>
+        <div class="admin-enemy-grid">
+          <button type="button" data-admin-spawn="runner"><i class="enemy-token runner"></i><b>돌격병</b><span>근접 추격</span></button>
+          <button type="button" data-admin-spawn="gunner"><i class="enemy-token gunner"></i><b>사수</b><span>제압 사격</span></button>
+          <button type="button" data-admin-spawn="piercer"><i class="enemy-token piercer"></i><b>관통병</b><span>직선 탄환</span></button>
+          <button type="button" data-admin-spawn="mortar"><i class="enemy-token mortar"></i><b>박격포병</b><span>곡사 폭발</span></button>
+          <button type="button" data-admin-spawn="drone"><i class="enemy-token drone"></i><b>감시 드론</b><span>공중 기체</span></button>
+          <button type="button" data-admin-spawn="shield"><i class="enemy-token shield"></i><b>방패병</b><span>전면 방어</span></button>
+          <button type="button" data-admin-spawn="boss"><i class="enemy-token boss"></i><b>현재 막 보스</b><span>보스 개체</span></button>
+        </div>
+        <p><kbd>X</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 생성된 적은 관리자 모드에서 공격하지 않습니다.</p>
+      </section>
+
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-    <script src="game.js?v=1.3.7"></script>
+    <script src="game.js?v=1.4.0"></script>
   </body>
 </html>

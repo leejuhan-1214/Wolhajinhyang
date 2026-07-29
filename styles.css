@@ -379,6 +379,133 @@ button:focus-visible {
   display: none;
 }
 
+.admin-spawn-panel {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 12;
+  width: min(1060px, calc(100% - 28px));
+  padding: 12px 14px 10px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 205, 112, 0.72);
+  background: linear-gradient(180deg, rgba(7, 14, 25, 0.98), rgba(8, 20, 31, 0.94));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.62), 0 0 26px rgba(255, 205, 112, 0.13);
+  clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%, 0 12px);
+}
+
+.admin-spawn-panel[hidden] { display: none; }
+
+.admin-spawn-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+.admin-spawn-panel header div { display: grid; gap: 2px; }
+
+.admin-spawn-panel small {
+  color: var(--amber);
+  font: 800 9px/1 monospace;
+  letter-spacing: 0.18em;
+}
+
+.admin-spawn-panel header strong { color: #f3ffff; font-size: 14px; }
+
+#admin-spawn-close {
+  min-width: 34px;
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border-color: rgba(255, 205, 112, 0.55);
+  background: rgba(35, 25, 25, 0.86);
+  color: #ffe1a0;
+  font-size: 20px;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.admin-enemy-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.admin-enemy-grid button {
+  min-width: 0;
+  min-height: 82px;
+  padding: 8px 5px 7px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border-color: rgba(101, 245, 234, 0.28);
+  background: rgba(13, 27, 42, 0.88);
+  color: #dffefe;
+  box-shadow: none;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.admin-enemy-grid button:hover,
+.admin-enemy-grid button:focus-visible {
+  border-color: var(--amber);
+  background: rgba(54, 48, 38, 0.94);
+}
+
+.admin-enemy-grid b { font-size: 10px; }
+.admin-enemy-grid span { color: #77919d; font: 700 8px/1.1 "Malgun Gothic", sans-serif; }
+
+.enemy-token {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 31px;
+  border: 2px solid #91a8b2;
+  background: linear-gradient(90deg, #263845 0 30%, #91a8b2 30% 42%, #344b59 42% 72%, #172633 72%);
+  box-shadow: inset 0 0 0 3px #111b25;
+}
+
+.enemy-token::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: -8px;
+  width: 15px;
+  height: 9px;
+  border: 2px solid #9eb2ba;
+  background: #17232d;
+  box-shadow: inset 7px 2px 0 #ff496c;
+}
+
+.enemy-token::after {
+  content: "";
+  position: absolute;
+  right: -13px;
+  top: 9px;
+  width: 14px;
+  height: 4px;
+  background: #ffcd70;
+  box-shadow: -3px 5px 0 #647985;
+}
+
+.enemy-token.gunner::after,
+.enemy-token.piercer::after { width: 20px; right: -19px; }
+.enemy-token.mortar { width: 31px; background-color: #452f35; }
+.enemy-token.mortar::after { top: -5px; right: -10px; width: 18px; transform: rotate(-28deg); }
+.enemy-token.drone { width: 38px; height: 18px; margin-top: 10px; border-radius: 45%; }
+.enemy-token.drone::before { left: 10px; top: 4px; width: 13px; height: 5px; border: 0; background: #ff496c; box-shadow: none; }
+.enemy-token.drone::after { left: 13px; right: auto; top: 18px; width: 8px; height: 6px; }
+.enemy-token.shield::after { right: -11px; top: 1px; width: 9px; height: 28px; background: #7a99a8; box-shadow: inset 2px 0 0 #d8f5f5; }
+.enemy-token.boss { width: 36px; height: 38px; border-color: #ff6b83; transform: scale(1.04); }
+.enemy-token.boss::before { left: 7px; width: 17px; border-color: #ff879a; }
+
+.admin-spawn-panel > p {
+  margin: 8px 0 0;
+  color: #8da4ad;
+  text-align: center;
+  font-size: 9px;
+}
+
 @keyframes reveal {
   from { opacity: 0; transform: scale(1.015); }
   to { opacity: 1; transform: scale(1); }
@@ -390,6 +517,12 @@ button:focus-visible {
 }
 
 @media (max-width: 760px), (max-height: 520px) {
+  .admin-spawn-panel { top: 6px; padding: 7px 9px 6px; }
+  .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
+  .enemy-token { transform: scale(0.78); margin-block: -3px; }
+  .enemy-token.boss { transform: scale(0.82); }
+  .admin-spawn-panel > p { display: none; }
+
   .key-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 0.3rem;

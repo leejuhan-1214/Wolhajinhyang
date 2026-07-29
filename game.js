@@ -11,8 +11,11 @@
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
   const adminStatus = document.getElementById("admin-status");
+  const adminSpawnPanel = document.getElementById("admin-spawn-panel");
+  const adminSpawnClose = document.getElementById("admin-spawn-close");
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
+  const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
 
   const W = 1280;
   const H = 720;
@@ -24,6 +27,7 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 580;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
+  const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
 
   const keys = new Set();
   const pressed = new Set();
@@ -39,6 +43,9 @@
   const rain = [];
   const boostNodes = [];
   const combatRooms = [];
+  const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "piercer", "mortar", "drone", "shield", "boss"]);
+  let adminRemovedEnemyIds = readAdminRemovedEnemies();
+  let adminSpawnSerial = 0;
 
   const stages = [
     { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 90 },
@@ -497,6 +504,7 @@
     attackTimer: 0,
     attackCooldown: 0,
     attackId: 0,
+    adminEraseAttackId: -1,
     attackDir: { x: 1, y: -0.2 },
     invincible: 0,
     hp: 5,
@@ -827,6 +835,43 @@
     };
     enemies.push(enemy);
     return enemy;
+  }
+
+  function readAdminRemovedEnemies() {
+    try {
+      const raw = window.localStorage?.getItem(ADMIN_REMOVED_ENEMIES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function persistAdminRemovedEnemies() {
+    try {
+      window.localStorage?.setItem(ADMIN_REMOVED_ENEMIES_KEY, JSON.stringify([...adminRemovedEnemyIds]));
+    } catch {
+      // Permanent administrator removal remains active for this session if storage is blocked.
+    }
+  }
+
+  function applyAdminRemovedEnemyData() {
+    for (const enemy of enemies) {
+      if (!adminRemovedEnemyIds.has(enemy.id)) continue;
+      enemy.alive = false;
+      enemy.hp = 0;
+      enemy.countedKill = true;
+    }
+  }
+
+  function syncAdminRemovedBossState() {
+    for (const enemy of enemies) {
+      if (enemy.type !== "boss" || !adminRemovedEnemyIds.has(enemy.id)) continue;
+      const kind = enemy.bossKind || stages[enemy.stageIndex]?.bossKind;
+      if (kind) game.defeatedBosses.add(kind);
+    }
+    game.stageBossDefeated = game.defeatedBosses.has("warden");
+    game.bossDefeated = game.defeatedBosses.has("echo");
   }
 
   function buildLegacyLevel() {
@@ -1312,6 +1357,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
+    applyAdminRemovedEnemyData();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     initRain();
   }
@@ -1448,6 +1494,7 @@
       attackTimer: 0,
       attackCooldown: 0,
       attackId: 0,
+      adminEraseAttackId: -1,
       invincible: 0,
       hp: difficulty.hp,
       maxHp: difficulty.hp,
@@ -1521,6 +1568,8 @@
       camera.x = 0;
       camera.y = 0;
     }
+    syncAdminRemovedBossState();
+    setAdminSpawnPanel(false);
     keys.clear();
     pressed.clear();
     startScreen.classList.remove("visible");
@@ -1528,6 +1577,102 @@
     endScreen.classList.remove("visible");
     updateContinueButton();
     sound.wake();
+  }
+
+  function setAdminSpawnPanel(open) {
+    if (!adminSpawnPanel) return false;
+    const shouldOpen = Boolean(open && game.adminMode && game.mode === "playing");
+    adminSpawnPanel.hidden = !shouldOpen;
+    adminSpawnPanel.classList.toggle?.("visible", shouldOpen);
+    return shouldOpen;
+  }
+
+  function toggleAdminSpawnPanel() {
+    return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
+  }
+
+  function teleportAdminToStage(stageNumber) {
+    if (!game.adminMode || game.mode !== "playing") return false;
+    const stageIndex = Number(stageNumber) - 1;
+    if (!Number.isInteger(stageIndex) || stageIndex < 0 || stageIndex >= stages.length) return false;
+    const checkpointIndex = stageIndex * 7;
+    const checkpoint = checkpoints[checkpointIndex];
+    if (!checkpoint) return false;
+    const position = setRespawnCheckpoint(checkpoint, checkpointIndex);
+    player.x = position.x;
+    player.y = position.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.grounded = false;
+    player.invincible = Math.max(player.invincible, 1);
+    player.attackTimer = 0;
+    player.attackCooldown = 0;
+    player.airJumpAvailable = true;
+    bullets.length = 0;
+    game.cutscene = null;
+    game.story = null;
+    game.storyQueue = [];
+    for (const event of CUTSCENE_EVENTS) {
+      if (event.x <= player.x) game.cutsceneSeen.add(event.id);
+    }
+    for (const event of STORY_EVENTS) {
+      if (event.x <= player.x) game.storySeen.add(event.id);
+    }
+    game.stage = stageIndex;
+    game.zone = checkpointIndex;
+    game.stageTitle = 3.8;
+    game.zoneTitle = 2.6;
+    game.hint = `관리자 이동 · STAGE 0${stageIndex + 1} · ${stages[stageIndex].name}`;
+    game.hintTimer = 3.4;
+    camera.lookX = 0;
+    camera.x = clamp(player.x - W * 0.36, 0, WORLD_W - W);
+    camera.y = clamp(player.y - H * 0.56, 0, WORLD_H - H);
+    setAdminSpawnPanel(false);
+    sound.tone(470 + stageIndex * 70, 0.12, "square", 0.028, 1.25);
+    return true;
+  }
+
+  function spawnAdminEnemy(type) {
+    if (!game.adminMode || game.mode !== "playing" || !ADMIN_SPAWN_TYPES.has(type)) return null;
+    const stageIndex = getStageIndexAt(player.x);
+    const enemy = addEnemy(type, player.x, player.y + player.h, 220);
+    enemy.adminSpawned = true;
+    enemy.id = `admin-spawn:${++adminSpawnSerial}:${stageIndex}:${type}`;
+    enemy.stageIndex = stageIndex;
+    enemy.homeZoneIndex = getZoneIndexAt(player.x);
+    enemy.x = clamp(player.x + player.w / 2 - enemy.w / 2, 0, WORLD_W - enemy.w);
+    enemy.y = player.y + player.h - enemy.h;
+    enemy.originX = enemy.x;
+    enemy.spawnX = enemy.x;
+    enemy.spawnY = enemy.y;
+    enemy.baseY = enemy.y;
+    enemy.vx = 0;
+    enemy.vy = 0;
+    enemy.alive = true;
+    enemy.countedKill = false;
+    if (type === "boss") {
+      enemy.bossKind = stages[stageIndex].bossKind;
+      const definition = BOSS_DEFINITIONS[enemy.bossKind];
+      enemy.hp = definition.hp;
+      enemy.maxHp = definition.hp;
+      if (enemy.bossKind === "echo") {
+        enemy.w = player.w;
+        enemy.h = player.h;
+        enemy.x = player.x;
+        enemy.y = player.y;
+        enemy.originX = enemy.x;
+        enemy.spawnX = enemy.x;
+        enemy.spawnY = enemy.y;
+        enemy.baseY = enemy.y;
+      }
+    }
+    game.totalEnemies += 1;
+    game.hint = `관리자 생성 · ${type.toUpperCase()} · 현재 위치 배치`;
+    game.hintTimer = 2.8;
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.amber, 22, 320, 0.58, 260);
+    sound.tone(620, 0.12, "square", 0.03, 0.82);
+    setAdminSpawnPanel(false);
+    return enemy;
   }
 
   function queueStory(lines) {
@@ -1737,6 +1882,31 @@
     sound.attack();
   }
 
+  function startAdminEraseAttack() {
+    if (!game.adminMode || game.mode !== "playing") return false;
+    const previousAttackId = player.attackId;
+    startAttack();
+    if (player.attackId === previousAttackId) return false;
+    player.adminEraseAttackId = player.attackId;
+    game.hint = "관리자 삭제 발도 · 적중한 적 데이터 영구 제거";
+    game.hintTimer = 1.8;
+    return true;
+  }
+
+  function eraseEnemyData(enemy) {
+    if (!enemy?.alive || !game.adminMode) return false;
+    if (!enemy.adminSpawned) {
+      adminRemovedEnemyIds.add(enemy.id);
+      persistAdminRemovedEnemies();
+    }
+    killEnemy(enemy);
+    game.hint = enemy.adminSpawned
+      ? `관리자 생성 개체 제거 · ${enemy.type.toUpperCase()}`
+      : `적 데이터 영구 삭제 · ${enemy.id}`;
+    game.hintTimer = 3.2;
+    return true;
+  }
+
   function attackBox() {
     const vertical = Math.abs(player.attackDir.y) > 0.25;
     const reach = player.chargedAttack ? 82 : player.slashChain === 3 ? 76 : 68;
@@ -1760,6 +1930,11 @@
   function damageEnemy(enemy) {
     if (!enemy.alive || enemy.hitAttackId === player.attackId) return;
     enemy.hitAttackId = player.attackId;
+
+    if (game.adminMode && player.adminEraseAttackId === player.attackId) {
+      eraseEnemyData(enemy);
+      return;
+    }
 
     const playerCenter = player.x + player.w / 2;
     const enemyCenter = enemy.x + enemy.w / 2;
@@ -1966,6 +2141,12 @@
       enemy.bossChargeDirection = 0;
       enemy.targetX = null;
       enemy.targetY = null;
+      if (!enemy.adminSpawned && adminRemovedEnemyIds.has(enemy.id)) {
+        enemy.alive = false;
+        enemy.hp = 0;
+        enemy.countedKill = true;
+        continue;
+      }
       if (enemyZoneIndex < restartZoneIndex) {
         enemy.alive = false;
         enemy.hp = 0;
@@ -2015,6 +2196,7 @@
 
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
+    syncAdminRemovedBossState();
     game.stage = getStageIndexAt(checkpoint.x);
     game.zone = restartZoneIndex;
     player.x = checkpointPosition.x;
@@ -2343,7 +2525,9 @@
     if (player.slashChainTimer <= 0 && player.attackTimer <= 0) player.slashChain = 0;
 
     if (pressed.has("Space") || pressed.has("KeyK")) player.jumpBuffer = 0.12;
-    if (pressed.has("KeyJ") || pressed.has("KeyX")) startAttack();
+    if (pressed.has("KeyJ") || (pressed.has("KeyX") && !game.adminMode)) startAttack();
+    if (pressed.has("KeyZ") && game.adminMode) startAdminEraseAttack();
+    if (pressed.has("KeyX") && game.adminMode) toggleAdminSpawnPanel();
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
     if (pressed.has("KeyE")) startBurst();
 
@@ -3147,13 +3331,13 @@
       }
     }
 
-    const zoneIndex = zones.findLastIndex((zone) => player.x >= zone.x);
+    const zoneIndex = getZoneIndexAt(player.x);
     if (zoneIndex !== game.zone) {
       game.zone = zoneIndex;
       game.zoneTitle = 3.2;
     }
 
-    const stageIndex = stages.findLastIndex((stage) => player.x >= stage.x);
+    const stageIndex = getStageIndexAt(player.x);
     if (stageIndex !== game.stage) {
       game.stage = stageIndex;
       game.stageTitle = 4.4;
@@ -5432,12 +5616,15 @@
 
     if (game.adminMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.9)";
-      ctx.fillRect(W / 2 - 178, 98, 356, 30);
+      ctx.fillRect(W / 2 - 250, 98, 500, 46);
       ctx.fillStyle = palette.amber;
-      ctx.fillRect(W / 2 - 178, 98, 4, 30);
+      ctx.fillRect(W / 2 - 250, 98, 4, 46);
       ctx.font = "900 11px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 108);
+      ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 106);
+      ctx.fillStyle = "#ffe4a0";
+      ctx.font = "800 9px 'Malgun Gothic', sans-serif";
+      ctx.fillText("1~5 스테이지 이동 · Z 영구 삭제 발도 · X 적 생성 패널", W / 2, 125);
       ctx.textAlign = "left";
     }
 
@@ -5795,18 +5982,25 @@
       requestCutsceneAdvance();
       return;
     }
+    if (adminSpawnPanel?.hidden === false) return;
     if (event.button === 0) startAttack();
     if (event.button === 2) startShotgun();
   });
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
-    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyR"];
+    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
     if (handled.includes(event.code)) event.preventDefault();
-    if (!keys.has(event.code)) pressed.add(event.code);
+    const firstPress = !keys.has(event.code);
+    if (firstPress) pressed.add(event.code);
     keys.add(event.code);
 
-    if (event.code === "Escape") togglePause();
+    const stageKey = /^(?:Digit|Numpad)([1-5])$/.exec(event.code) || /^([1-5])$/.exec(event.key || "");
+    if (firstPress && stageKey && game.adminMode && game.mode === "playing") teleportAdminToStage(Number(stageKey[1]));
+    if (event.code === "Escape") {
+      if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
+      else togglePause();
+    }
     if (event.code === "Enter" && game.mode === "menu") resetGame();
     if ((event.code === "Enter" || event.code === "KeyR") && game.mode === "won") resetGame();
   });
@@ -5818,12 +6012,17 @@
   window.addEventListener("blur", () => {
     keys.clear();
     pressed.clear();
+    setAdminSpawnPanel(false);
     if (game.mode === "playing") togglePause();
   });
 
   startButton.addEventListener("click", () => resetGame(false));
   continueButton?.addEventListener("click", () => resetGame(true));
   restartButton.addEventListener("click", () => resetGame(false));
+  adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
+  for (const button of adminSpawnButtons) {
+    button.addEventListener("click", () => spawnAdminEnemy(button.dataset.adminSpawn));
+  }
   for (const button of stageCodeButtons) {
     button.addEventListener("click", () => {
       button.classList.add("sequence-hit");
