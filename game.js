@@ -462,6 +462,8 @@
     totalEnemies: 0,
     difficulty: "cadet",
     adminMode: false,
+    adminCadetMode: false,
+    adminPreviousDifficulty: "cadet",
     stage: 0,
     stageTitle: 4.4,
     zone: 0,
@@ -1539,6 +1541,8 @@
       kills: 0,
       difficulty: selectedDifficulty,
       adminMode: adminModeUnlocked,
+      adminCadetMode: false,
+      adminPreviousDifficulty: selectedDifficulty,
       stage: 0,
       stageTitle: 4.4,
       zone: 0,
@@ -1589,6 +1593,41 @@
 
   function toggleAdminSpawnPanel() {
     return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
+  }
+
+  function toggleAdminCadetMode() {
+    if (!adminModeUnlocked || game.mode !== "playing" || (!game.adminMode && !game.adminCadetMode)) return false;
+    const enteringCadetMode = game.adminMode;
+    if (enteringCadetMode) {
+      game.adminPreviousDifficulty = game.difficulty;
+      game.adminMode = false;
+      game.adminCadetMode = true;
+      game.difficulty = "cadet";
+      const cadet = difficultySettings.cadet;
+      player.maxHp = cadet.hp;
+      player.hp = cadet.hp;
+      player.invincible = 0.9;
+      game.hint = "관리자 권한 일시 정지 · 신참내기 실전 모드 · R로 복귀";
+    } else {
+      game.adminCadetMode = false;
+      game.adminMode = true;
+      game.difficulty = difficultySettings[game.adminPreviousDifficulty]
+        ? game.adminPreviousDifficulty
+        : selectedDifficulty;
+      const restored = difficultySettings[game.difficulty];
+      player.maxHp = restored.hp;
+      player.hp = restored.hp;
+      player.invincible = 1;
+      bullets.length = 0;
+      game.hint = "관리자 권한 복구 · 적 수동화 · 모든 봉쇄 해제";
+    }
+    player.attackTimer = 0;
+    player.attackCooldown = 0;
+    player.adminEraseAttackId = -1;
+    game.hintTimer = 3.2;
+    setAdminSpawnPanel(false);
+    sound.tone(enteringCadetMode ? 360 : 760, 0.14, "square", 0.035, enteringCadetMode ? 0.78 : 1.25);
+    return true;
   }
 
   function teleportAdminToStage(stageNumber) {
@@ -2655,7 +2694,7 @@
     }
 
     if (player.y > WORLD_H + 120) respawn();
-    if (pressed.has("KeyR")) respawn();
+    if (pressed.has("KeyR") && !game.adminMode && !game.adminCadetMode) respawn();
 
     if (!game.adminMode) {
       for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
@@ -5624,7 +5663,20 @@
       ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 106);
       ctx.fillStyle = "#ffe4a0";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-      ctx.fillText("1~5 스테이지 이동 · Z 영구 삭제 발도 · X 적 생성 패널", W / 2, 125);
+      ctx.fillText("1~5 스테이지 이동 · Z 영구 삭제 · X 적 생성 · R 신참내기 전환", W / 2, 125);
+      ctx.textAlign = "left";
+    } else if (game.adminCadetMode) {
+      ctx.fillStyle = "rgba(8, 15, 22, 0.92)";
+      ctx.fillRect(W / 2 - 250, 98, 500, 46);
+      ctx.fillStyle = palette.cyan;
+      ctx.fillRect(W / 2 - 250, 98, 4, 46);
+      ctx.font = "900 11px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#d9ffff";
+      ctx.fillText("CADET PLAYTEST // ADMIN POWERS SUSPENDED", W / 2, 106);
+      ctx.fillStyle = "#9ed8dd";
+      ctx.font = "800 9px 'Malgun Gothic', sans-serif";
+      ctx.fillText("적 공격·접촉 피해·봉쇄 활성화 · R 관리자 모드 복귀", W / 2, 125);
       ctx.textAlign = "left";
     }
 
@@ -5997,6 +6049,10 @@
 
     const stageKey = /^(?:Digit|Numpad)([1-5])$/.exec(event.code) || /^([1-5])$/.exec(event.key || "");
     if (firstPress && stageKey && game.adminMode && game.mode === "playing") teleportAdminToStage(Number(stageKey[1]));
+    if (firstPress && event.code === "KeyR" && game.mode === "playing" && (game.adminMode || game.adminCadetMode)) {
+      toggleAdminCadetMode();
+      pressed.delete("KeyR");
+    }
     if (event.code === "Escape") {
       if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
       else togglePause();
