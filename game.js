@@ -464,6 +464,8 @@
     adminMode: false,
     adminCadetMode: false,
     adminPreviousDifficulty: "cadet",
+    adminCadetStartZone: 0,
+    adminCadetStartStage: 0,
     stage: 0,
     stageTitle: 4.4,
     zone: 0,
@@ -1543,6 +1545,8 @@
       adminMode: adminModeUnlocked,
       adminCadetMode: false,
       adminPreviousDifficulty: selectedDifficulty,
+      adminCadetStartZone: 0,
+      adminCadetStartStage: 0,
       stage: 0,
       stageTitle: 4.4,
       zone: 0,
@@ -1598,16 +1602,30 @@
   function toggleAdminCadetMode() {
     if (!adminModeUnlocked || game.mode !== "playing" || (!game.adminMode && !game.adminCadetMode)) return false;
     const enteringCadetMode = game.adminMode;
+    const preservedPosition = {
+      x: player.x,
+      y: player.y,
+      vx: player.vx,
+      vy: player.vy,
+      grounded: player.grounded,
+      stage: game.stage,
+      zone: game.zone,
+      checkpointIndex: player.respawnCheckpointIndex,
+      respawnX: player.respawnX,
+      respawnY: player.respawnY,
+    };
     if (enteringCadetMode) {
       game.adminPreviousDifficulty = game.difficulty;
       game.adminMode = false;
       game.adminCadetMode = true;
       game.difficulty = "cadet";
+      game.adminCadetStartZone = getZoneIndexAt(player.x);
+      game.adminCadetStartStage = getStageIndexAt(player.x);
       const cadet = difficultySettings.cadet;
       player.maxHp = cadet.hp;
       player.hp = cadet.hp;
       player.invincible = 0.9;
-      game.hint = "관리자 권한 일시 정지 · 신참내기 실전 모드 · R로 복귀";
+      game.hint = "현재 위치에서 신참내기 실전 시작 · R로 관리자 복귀";
     } else {
       game.adminCadetMode = false;
       game.adminMode = true;
@@ -1624,6 +1642,16 @@
     player.attackTimer = 0;
     player.attackCooldown = 0;
     player.adminEraseAttackId = -1;
+    player.x = preservedPosition.x;
+    player.y = preservedPosition.y;
+    player.vx = preservedPosition.vx;
+    player.vy = preservedPosition.vy;
+    player.grounded = preservedPosition.grounded;
+    player.respawnCheckpointIndex = preservedPosition.checkpointIndex;
+    player.respawnX = preservedPosition.respawnX;
+    player.respawnY = preservedPosition.respawnY;
+    game.stage = preservedPosition.stage;
+    game.zone = preservedPosition.zone;
     game.hintTimer = 3.2;
     setAdminSpawnPanel(false);
     sound.tone(enteringCadetMode ? 360 : 760, 0.14, "square", 0.035, enteringCadetMode ? 0.78 : 1.25);
@@ -2697,7 +2725,8 @@
     if (pressed.has("KeyR") && !game.adminMode && !game.adminCadetMode) respawn();
 
     if (!game.adminMode) {
-      for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+      const firstCheckedZone = game.adminCadetMode ? game.adminCadetStartZone : 0;
+      for (let zoneIndex = firstCheckedZone; zoneIndex < zones.length; zoneIndex += 1) {
         const lockedZone = zones[zoneIndex];
         const zoneBoundary = lockedZone.x + ZONE_W - 48;
         if (player.x + player.w <= zoneBoundary) break;
@@ -2710,7 +2739,8 @@
         break;
       }
 
-      for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
+      const firstCheckedStage = game.adminCadetMode ? game.adminCadetStartStage : 0;
+      for (let stageIndex = firstCheckedStage; stageIndex < stages.length; stageIndex += 1) {
         const stage = stages[stageIndex];
         if (player.x <= stage.gateX || game.defeatedBosses.has(stage.bossKind)) continue;
         player.x = stage.gateX - player.w - 35;
@@ -5676,7 +5706,7 @@
       ctx.fillText("CADET PLAYTEST // ADMIN POWERS SUSPENDED", W / 2, 106);
       ctx.fillStyle = "#9ed8dd";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-      ctx.fillText("적 공격·접촉 피해·봉쇄 활성화 · R 관리자 모드 복귀", W / 2, 125);
+      ctx.fillText("현재 위치 유지 · 적 공격·피해·봉쇄 활성화 · R 관리자 복귀", W / 2, 125);
       ctx.textAlign = "left";
     }
 
