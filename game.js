@@ -1849,6 +1849,7 @@
         streak: hash(i + x) > 0.5,
       });
     }
+    if (particles.length > 420) particles.splice(0, particles.length - 420);
   }
 
   function getPointerAim() {
@@ -3848,11 +3849,17 @@
     ctx.fillText(sign.sub, sign.x, sign.y);
   }
 
-  function drawPlayerBody(x, y, facing, alpha = 1, ghost = false) {
+  function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player") {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(Math.round(x + player.w / 2), Math.round(y + player.h));
     ctx.scale(facing, 1);
+
+    const echoStyle = style === "echo";
+    const bodyCyan = echoStyle ? "#a879ff" : palette.cyan;
+    const bodyRed = echoStyle ? "#63ffc6" : palette.red;
+    const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
+    const bodyBlade = echoStyle ? "#e8dcff" : "#b8f2ed";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -3874,7 +3881,7 @@
     ctx.rotate(lean);
 
     if (ghost) {
-      ctx.fillStyle = palette.cyan;
+      ctx.fillStyle = bodyCyan;
       ctx.beginPath();
       ctx.moveTo(-10, -48);
       ctx.lineTo(10, -48);
@@ -3920,7 +3927,7 @@
       ctx.fill();
       ctx.fillStyle = "#40596a";
       ctx.fillRect(Math.round(kneeX - width * 0.44), Math.round(kneeY - width * 0.34), Math.ceil(width * 0.88), Math.ceil(width * 0.68));
-      ctx.fillStyle = empowered ? palette.amber : palette.cyan;
+      ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
       ctx.fillRect(Math.round(kneeX - 1), Math.round(kneeY - 1), 2, 2);
       if (foot) {
         const toeLift = player.grounded ? 0 : clamp(-player.vy / 700, -0.35, 0.35);
@@ -3933,7 +3940,7 @@
         ctx.fillRect(-1, -1, 9, 4);
         ctx.fillStyle = "#657d88";
         ctx.fillRect(0, 2, 8, 1);
-        ctx.fillStyle = empowered ? palette.amber : palette.cyan;
+        ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
         ctx.fillRect(8, 0, 3, 2);
         ctx.restore();
       } else if (hand) {
@@ -3980,7 +3987,7 @@
     ctx.fillRect(-17, -43, 7, 24);
     ctx.fillStyle = "#3c5868";
     ctx.fillRect(-16, -39, 4, 13);
-    ctx.fillStyle = palette.cyan;
+    ctx.fillStyle = bodyCyan;
     ctx.globalAlpha = 0.4 + Math.sin(game.time * 5) * 0.18;
     ctx.fillRect(-15, -42, 2, 3);
     ctx.globalAlpha = 1;
@@ -3998,13 +4005,13 @@
     ctx.fillRect(0, -3, 42, 7);
     ctx.fillStyle = "#334d5b";
     ctx.fillRect(4, -2, 31, 2);
-    ctx.fillStyle = palette.red;
+    ctx.fillStyle = bodyRed;
     ctx.fillRect(5, -4, 3, 9);
     ctx.fillRect(34, -3, 2, 7);
     if (!attacking) {
       ctx.fillStyle = "#12151d";
       ctx.fillRect(-15, -3, 16, 7);
-      ctx.strokeStyle = palette.red;
+      ctx.strokeStyle = bodyRed;
       ctx.lineWidth = 1;
       for (let wrap = -13; wrap < -1; wrap += 4) {
         ctx.beginPath();
@@ -4047,15 +4054,15 @@
     ctx.fill();
     ctx.fillStyle = "#172431";
     ctx.fillRect(-10, -22, 22, 5);
-    ctx.fillStyle = empowered ? palette.amber : palette.red;
+    ctx.fillStyle = empowered ? bodyAmber : bodyRed;
     ctx.fillRect(-12, -24, 25, 3);
     ctx.fillStyle = "#7d929b";
     ctx.fillRect(-7, -21, 4, 3);
     ctx.fillRect(0, -21, 4, 3);
     ctx.fillRect(7, -21, 3, 3);
-    ctx.fillStyle = palette.cyan;
+    ctx.fillStyle = bodyCyan;
     ctx.fillRect(-4, -22, 13, 2);
-    ctx.fillStyle = palette.red;
+    ctx.fillStyle = bodyRed;
     ctx.fillRect(9, -36, 3, 15);
     ctx.strokeStyle = "rgba(143, 210, 216, 0.38)";
     ctx.beginPath();
@@ -4064,7 +4071,7 @@
     ctx.lineTo(6, -26);
     ctx.lineTo(-3, -23);
     ctx.stroke();
-    ctx.fillStyle = empowered ? palette.amber : palette.cyan;
+    ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
     ctx.beginPath();
     ctx.arc(2, -31, 2.4, 0, TAU);
     ctx.fill();
@@ -4089,7 +4096,7 @@
     ctx.fillRect(8, -21, 4, 2);
     ctx.fillStyle = "#c2d1d3";
     ctx.fillRect(-1, -25, 3, 4);
-    ctx.fillStyle = empowered ? palette.amber : palette.red;
+    ctx.fillStyle = empowered ? bodyAmber : bodyRed;
     ctx.fillRect(0, -24, 1, 2);
     ctx.fillStyle = "#6e8790";
     ctx.fillRect(-9, -18, 3, 2);
@@ -4103,7 +4110,7 @@
     ctx.fillRect(-10, -57, 19, 16);
     ctx.fillStyle = "#354a58";
     ctx.fillRect(-13, -53, 4, 9);
-    ctx.fillStyle = palette.cyan;
+    ctx.fillStyle = bodyCyan;
     ctx.fillRect(-13, -51, 2, 4);
     ctx.fillStyle = "#f5fbf8";
     ctx.beginPath();
@@ -4116,7 +4123,7 @@
     ctx.fill();
     ctx.fillStyle = "#0a111b";
     ctx.fillRect(1, -51, 9, 3);
-    ctx.fillStyle = empowered ? palette.amber : palette.red;
+    ctx.fillStyle = empowered ? bodyAmber : bodyRed;
     ctx.fillRect(6, -51, 4, 3);
     ctx.fillStyle = "rgba(255,73,108,0.22)";
     ctx.fillRect(10, -51, 12, 3);
@@ -4146,7 +4153,7 @@
     ctx.fillRect(7, -47, 2, 1);
     ctx.fillStyle = "#d68678";
     ctx.fillRect(4, -45, 3, 1);
-    ctx.fillStyle = palette.cyan;
+    ctx.fillStyle = bodyCyan;
     ctx.fillRect(-12, -49, 2, 2);
     ctx.fillStyle = "#506873";
     ctx.fillRect(-10, -46, 2, 3);
@@ -4164,7 +4171,7 @@
       // 붉은 끈으로 감은 손잡이와 원형 코등이.
       ctx.fillStyle = "#10141d";
       ctx.fillRect(7, -4, 15, 8);
-      ctx.strokeStyle = empowered ? palette.amber : palette.red;
+      ctx.strokeStyle = empowered ? bodyAmber : bodyRed;
       ctx.lineWidth = 1;
       for (let wrap = 9; wrap < 21; wrap += 4) {
         ctx.beginPath();
@@ -4182,7 +4189,7 @@
       ctx.fill();
 
       // 더 길고 완만하게 휜 외날과 등줄.
-      const bladeGlow = empowered ? palette.amber : "#b8f2ed";
+      const bladeGlow = empowered ? bodyAmber : bodyBlade;
       ctx.fillStyle = bladeGlow;
       ctx.beginPath();
       ctx.moveTo(25, -2.4);
@@ -4413,21 +4420,18 @@
       ctx.restore();
 
       const echoSpeed = clamp(Math.abs(enemy.vx) / 420, 0, 1);
-      if (echoSpeed > 0.25 || enemy.bossAction === "echoCounter") {
-        for (let trailIndex = 3; trailIndex >= 1; trailIndex -= 1) {
+      if (echoSpeed > 0.45 || enemy.bossAction === "echoCounter") {
+        for (let trailIndex = 2; trailIndex >= 1; trailIndex -= 1) {
           ctx.save();
-          ctx.globalAlpha = (0.045 + echoSpeed * 0.055) * trailIndex;
-          ctx.filter = "hue-rotate(108deg) saturate(1.8) brightness(1.14)";
-          drawPlayerBody(enemy.x - enemy.facing * trailIndex * 13, enemy.y, enemy.facing, 1, true);
+          ctx.globalAlpha = (0.04 + echoSpeed * 0.05) * trailIndex;
+          drawPlayerBody(enemy.x - enemy.facing * trailIndex * 15, enemy.y, enemy.facing, 1, true, "echo");
           ctx.restore();
         }
       }
 
       ctx.save();
-      ctx.filter = enemy.hurt > 0
-        ? "hue-rotate(108deg) saturate(2.1) brightness(2.1)"
-        : "hue-rotate(108deg) saturate(1.75) brightness(1.08)";
-      drawPlayerBody(enemy.x, enemy.y, enemy.facing);
+      if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
+      drawPlayerBody(enemy.x, enemy.y, enemy.facing, enemy.hurt > 0 ? 0.92 : 1, false, "echo");
       ctx.restore();
 
       ctx.save();
@@ -4435,8 +4439,8 @@
       ctx.font = "700 10px monospace";
       ctx.fillStyle = "#b994ff";
       ctx.fillText("ECHO // 00", enemy.x + enemy.w / 2, enemy.y - 15);
-      ctx.strokeStyle = "rgba(99, 255, 198, 0.55)";
-      ctx.strokeRect(enemy.x - 4, enemy.y - 5, enemy.w + 8, enemy.h + 10);
+      ctx.fillStyle = "rgba(99, 255, 198, 0.62)";
+      ctx.fillRect(enemy.x + enemy.w / 2 - 18, enemy.y - 10, 36, 1);
       ctx.restore();
       Object.assign(player, playerPose);
       return;
@@ -5564,12 +5568,11 @@
     ctx.ellipse(echoX + player.w / 2, echoY + player.h + 5, 43, 10, 0, 0, TAU);
     ctx.stroke();
     ctx.fillStyle = "rgba(161, 88, 255, 0.12)";
-    ctx.fillRect(echoX - 7, echoY - 12, player.w + 14, player.h + 22);
+    ctx.beginPath();
+    ctx.ellipse(echoX + player.w / 2, echoY + player.h / 2, 30, 43, 0, 0, TAU);
+    ctx.fill();
     ctx.restore();
-    ctx.save();
-    ctx.filter = "hue-rotate(105deg) saturate(1.9) brightness(1.12)";
-    drawPlayerBody(echoX, echoY, -1);
-    ctx.restore();
+    drawPlayerBody(echoX, echoY, -1, 1, false, "echo");
     ctx.fillStyle = "rgba(7, 4, 15, 0.82)";
     ctx.fillRect(echoX - 25, echoY - 30, 84, 18);
     ctx.fillStyle = "#d7a5ff";
