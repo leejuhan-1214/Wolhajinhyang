@@ -113,7 +113,7 @@
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 40,
+      hp: 34,
       accent: "#a879ff",
       silhouette: "한서린 동형 인체",
       weapon: "복제 발도·산탄총",
@@ -799,7 +799,7 @@
     };
     const [w, h, baseHp] = sizes[type];
     const stageIndex = getStageIndexAt(x);
-    const hp = type === "boss" ? baseHp : baseHp + Math.floor(stageIndex * 0.75);
+    const hp = type === "boss" ? baseHp : type === "drone" ? 1 : baseHp + Math.floor(stageIndex * 0.75);
     const support = type === "drone" ? null : platforms.find((platform) => (
       x + w / 2 >= platform.x
       && x + w / 2 <= platform.x + platform.w
@@ -2422,20 +2422,20 @@
         [-260, 260].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "echo-shotgun":
-        for (let index = -3; index <= 3; index += 1) {
-          fireBullet(enemy, 520 - Math.abs(index) * 24, index * 0.095, index === 0 ? "phase" : "standard", target);
+        for (let index = -2; index <= 2; index += 1) {
+          fireBullet(enemy, 460 - Math.abs(index) * 26, index * 0.12, index === 0 ? "phase" : "standard", target);
         }
         break;
       case "echo-air":
         if (enemy.grounded) {
-          enemy.vy = -760;
-          enemy.vx = -enemy.bossChargeDirection * 440;
+          enemy.vy = -680;
+          enemy.vx = -enemy.bossChargeDirection * 360;
         }
-        [-0.2, 0, 0.2].forEach((spread, index) => fireBullet(enemy, 500, spread, index === 1 ? "phase" : "standard", target));
+        [-0.22, 0, 0.22].forEach((spread, index) => fireBullet(enemy, 445, spread, index === 1 ? "phase" : "standard", target));
         break;
       case "echo-burst":
-        for (let index = 0; index < 14; index += 1) {
-          fireBullet(enemy, 350 + (index % 2) * 90, index * TAU / 14, index % 3 === 0 ? "phase" : "standard", target);
+        for (let index = 0; index < 10; index += 1) {
+          fireBullet(enemy, 310 + (index % 2) * 70, index * TAU / 10, index % 3 === 0 ? "phase" : "standard", target);
         }
         break;
       default:
@@ -3018,10 +3018,11 @@
     const hpRatio = enemy.hp / enemy.maxHp;
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
     const enrage = hpRatio < 0.45 ? 1.18 : 1;
-    const desiredSpeed = (72 + rank * 18) * speedScale * enrage;
+    const echoSpeedFactor = kind === "echo" ? 0.82 : 1;
+    const desiredSpeed = (72 + rank * 18) * speedScale * enrage * echoSpeedFactor;
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     if (chargingShot) {
-      const retreatSpeed = (165 + rank * 24) * speedScale;
+      const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
     } else if (distance < 760 && Math.abs(dx) > 115) {
       enemy.vx = moveToward(enemy.vx, Math.sign(dx) * desiredSpeed, 360 * dt);
@@ -3059,7 +3060,7 @@
     if (enemy.cooldown <= 0 && distance < 900) {
       const phaseCount = BOSS_DEFINITIONS[kind].patterns.length;
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
-      const recovery = hpRatio < 0.45 ? 0.82 : 1;
+      const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
 
       if (kind === "warden") {
         if (enemy.bossPhase === 0) {
@@ -3130,25 +3131,25 @@
         }
       } else {
         if (enemy.bossPhase === 0) {
-          enemy.windup = 0.4;
+          enemy.windup = 0.56;
           enemy.bossAction = "echoSlash";
-          enemy.cooldown = 1.4 * recovery;
-        } else if (enemy.bossPhase === 1) {
-          startBossChargedShot(enemy, "echo-shotgun", dx, 0.68);
-          enemy.cooldown = 1.75 * recovery;
-        } else if (enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "echo-air", dx, 0.62);
           enemy.cooldown = 1.85 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          startBossChargedShot(enemy, "echo-shotgun", dx, 0.82);
+          enemy.cooldown = 2.2 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "echo-air", dx, 0.76);
+          enemy.cooldown = 2.35 * recovery;
         } else if (enemy.bossPhase === 3) {
-          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a879ff", 24, 390, 0.45, 0);
-          enemy.x = clamp(player.x - Math.sign(dx || 1) * 210, arenaLeft + 35, arenaRight - enemy.w - 35);
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a879ff", 18, 340, 0.42, 0);
+          enemy.x = clamp(player.x - Math.sign(dx || 1) * 280, arenaLeft + 35, arenaRight - enemy.w - 35);
           enemy.y = Math.min(enemy.y, player.y + 12);
-          enemy.windup = 0.34;
+          enemy.windup = 0.5;
           enemy.bossAction = "echoCounter";
-          enemy.cooldown = 1.55 * recovery;
+          enemy.cooldown = 2.05 * recovery;
         } else {
-          startBossChargedShot(enemy, "echo-burst", dx, 0.96);
-          enemy.cooldown = 2.25 * recovery;
+          startBossChargedShot(enemy, "echo-burst", dx, 1.12);
+          enemy.cooldown = 2.8 * recovery;
         }
       }
     }
@@ -3165,14 +3166,14 @@
           enemy.vx = Math.sign(dx) * (420 + rank * 65);
           if (Math.abs(dx) < 165 && Math.abs(player.y - enemy.y) < 100) damagePlayer(rank >= 3 ? 2 : 1, enemy.x);
         } else if (enemy.bossAction === "echoSlash") {
-          enemy.vx = Math.sign(dx) * 760;
-          enemy.vy = player.y + player.h < enemy.y ? -380 : enemy.vy;
-          if (Math.abs(dx) < 190 && Math.abs(player.y - enemy.y) < 115) damagePlayer(2, enemy.x);
-          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#d6b7ff", 24, 520, 0.42, 0);
+          enemy.vx = Math.sign(dx) * 620;
+          enemy.vy = player.y + player.h < enemy.y ? -330 : enemy.vy;
+          if (Math.abs(dx) < 175 && Math.abs(player.y - enemy.y) < 105) damagePlayer(1, enemy.x);
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#d6b7ff", 18, 450, 0.38, 0);
         } else if (enemy.bossAction === "echoCounter") {
-          enemy.vx = Math.sign(dx) * 880;
-          if (Math.abs(dx) < 220 && Math.abs(player.y - enemy.y) < 130) damagePlayer(2, enemy.x);
-          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 30, 590, 0.46, 0);
+          enemy.vx = Math.sign(dx) * 690;
+          if (Math.abs(dx) < 190 && Math.abs(player.y - enemy.y) < 115) damagePlayer(1, enemy.x);
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 20, 480, 0.4, 0);
         } else if (enemy.bossAction === "chargeShot") {
           releaseBossChargedShot(enemy);
         }
