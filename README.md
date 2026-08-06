@@ -173,7 +173,11 @@ node server.mjs
 
 ## GitHub에 올리기
 
-이 폴더를 저장소 루트로 사용하세요. GitHub에서 빈 저장소를 만든 뒤 아래 명령을 실행하면 됩니다.
+이 폴더의 **내용물**을 저장소 루트로 사용하세요. 저장소 첫 화면에서 `index.html`, `game.js`, `VERSION.txt`, `.github`가 바로 보여야 합니다. `moonlit-echo-github-v1.5.0-windows/index.html`처럼 한 단계 아래에 들어가면 GitHub Pages는 이전 루트 파일을 계속 배포합니다.
+
+GitHub 웹 업로드를 사용할 때는 배포용 ZIP을 먼저 압축 해제한 뒤, 생긴 파일과 폴더를 전부 저장소 루트에 올리세요. ZIP 파일 자체나 ZIP을 감싸는 상위 폴더를 올리면 안 됩니다.
+
+GitHub에서 빈 저장소를 만든 뒤 명령으로 올릴 때는 아래와 같이 실행합니다.
 
 ```powershell
 git init
@@ -185,6 +189,8 @@ git push -u origin main
 ```
 
 저장소의 `Settings → Pages → Build and deployment → Source`를 `GitHub Actions`로 선택하면 `main` 브랜치에 푸시할 때 게임이 자동 배포됩니다. 배포 주소는 Actions의 `Deploy GitHub Pages` 작업에서 확인할 수 있습니다.
+
+업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.5.0`이 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
 
 로컬 실행과 문법 검사는 다음 명령으로 할 수 있습니다.
 
@@ -203,6 +209,7 @@ npm.cmd test
 - `F` 또는 `C`: 키보드 샷건 보조 입력
 - `J` 또는 `X`: 키보드 발도 보조 입력
 - `E`: 주변 탄환을 소거하는 버스트
+- `Q`: 처형 게이지 100%에서 잔영 처형 발동
 - `R`: 일반 작전은 마지막 체크포인트 복귀, 관리자 작전은 신참내기 실전 모드 전환/복귀
 - `Esc`: 일시정지
 
