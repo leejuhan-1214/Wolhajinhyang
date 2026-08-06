@@ -122,6 +122,45 @@
     },
   };
 
+  const SQUAD_FORMATIONS = {
+    shield: {
+      id: "bulwark",
+      name: "철벽 호위망",
+      target: "방패병",
+      description: "방패병이 후방 기체의 피해를 40% 경감",
+      accent: "#ffcd70",
+    },
+    drone: {
+      id: "spotter",
+      name: "공중 표식망",
+      target: "감시 드론",
+      description: "드론이 살아 있으면 사격 주기가 빨라짐",
+      accent: "#65f5ea",
+    },
+    mortar: {
+      id: "crossfire",
+      name: "곡사 교차망",
+      target: "박격포병",
+      description: "박격포 지휘 중 사수가 교차 탄막 사용",
+      accent: "#ff7b62",
+    },
+    piercer: {
+      id: "relay",
+      name: "관통 중계망",
+      target: "관통병",
+      description: "관통병이 드론 탄환을 지형 관통탄으로 변환",
+      accent: "#d7a0ff",
+    },
+  };
+
+  const TERRAIN_PROFILES = [
+    { name: "폐철 승강벽", interval: 5.8, amplitude: 72, speed: 128, accent: "#65f5ea" },
+    { name: "압력식 용광 발판", interval: 5.2, amplitude: 92, speed: 150, accent: "#ff7b62" },
+    { name: "기억층 반전", interval: 4.8, amplitude: 108, speed: 170, accent: "#d7a0ff" },
+    { name: "송신 격자 재배열", interval: 4.35, amplitude: 122, speed: 195, accent: "#ff5e87" },
+    { name: "거울 지형 전환", interval: 4.05, amplitude: 138, speed: 220, accent: "#63ffc6" },
+  ];
+
   const difficultySettings = {
     chick: { name: "병아리", hp: 5, damage: 0, enemySpeed: 0.82, bulletSpeed: 0.82 },
     cadet: { name: "신참내기", hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1 },
@@ -527,6 +566,9 @@
     attackDuration: 0.22,
     styleScore: 0,
     echoGauge: 0,
+    executionGauge: 0,
+    executionTimer: 0,
+    executionChain: 0,
     chargedAttack: false,
     shotgunCooldown: 0,
     shotgunReload: 0,
@@ -839,6 +881,103 @@
     };
     enemies.push(enemy);
     return enemy;
+  }
+
+  function getCombatRoomForEnemy(enemy) {
+    if (!Number.isFinite(enemy?.squadRoomLeft)) return null;
+    return combatRooms.find((room) => room.left === enemy.squadRoomLeft) || null;
+  }
+
+  function getEnemyFormation(enemy) {
+    const room = getCombatRoomForEnemy(enemy);
+    if (!room || !room.triggered || room.cleared || !room.anchorAlive || game.adminMode) return null;
+    return SQUAD_FORMATIONS[room.formationAnchorType] || null;
+  }
+
+  function configureCombatRooms() {
+    const anchorTypes = ["shield", "drone", "mortar", "piercer"];
+    combatRooms.forEach((room, roomIndex) => {
+      const members = enemies.filter((enemy) => enemy.type !== "boss" && enemy.originX > room.left && enemy.originX < room.right);
+      const preferred = anchorTypes.map((_, offset) => anchorTypes[(roomIndex + offset) % anchorTypes.length]);
+      const formationAnchorType = preferred.find((type) => members.some((enemy) => enemy.type === type)) || members[0]?.type || "shield";
+      const formation = SQUAD_FORMATIONS[formationAnchorType] || SQUAD_FORMATIONS.shield;
+      const profile = TERRAIN_PROFILES[room.stageIndex] || TERRAIN_PROFILES[0];
+      Object.assign(room, {
+        formationAnchorType,
+        formationId: formation.id,
+        formationName: formation.name,
+        formationTarget: formation.target,
+        formationDescription: formation.description,
+        formationAccent: formation.accent,
+        anchorAlive: members.some((enemy) => enemy.type === formationAnchorType && enemy.alive),
+        terrainName: profile.name,
+        terrainAccent: profile.accent,
+        terrainInterval: profile.interval,
+        terrainAmplitude: profile.amplitude,
+        terrainSpeed: profile.speed,
+        terrainTimer: 0,
+        terrainStep: 0,
+        terrainPlatforms: [],
+      });
+
+      for (const enemy of members) {
+        enemy.squadRoomLeft = room.left;
+        enemy.squadRole = enemy.type === formationAnchorType ? "anchor" : "support";
+      }
+
+      const candidates = platforms
+        .filter((platform) => (
+          platform.h <= 36
+          && platform.x + platform.w / 2 > room.left + 100
+          && platform.x + platform.w / 2 < room.right - 100
+        ))
+        .sort((first, second) => first.x - second.x);
+      const selectedIndexes = [...new Set([0, Math.floor((candidates.length - 1) / 2), candidates.length - 1])]
+        .filter((index) => index >= 0 && candidates[index]);
+      room.terrainPlatforms = selectedIndexes.map((index, dynamicIndex) => {
+        const platform = candidates[index];
+        platform.dynamicRoomLeft = room.left;
+        platform.dynamicIndex = dynamicIndex;
+        platform.dynamicAccent = profile.accent;
+        return platform;
+      });
+    });
+  }
+
+  function carryEntityWithPlatform(entity, platform, previousY, deltaY) {
+    if (!entity?.grounded || Math.abs(entity.y + entity.h - previousY) > 9) return;
+    if (entity.x + entity.w <= platform.x + 3 || entity.x >= platform.x + platform.w - 3) return;
+    entity.y += deltaY;
+  }
+
+  function updateCombatTerrain(dt) {
+    for (const room of combatRooms) {
+      const active = room.triggered && !room.cleared && !game.adminMode;
+      if (active) room.terrainTimer += dt;
+      const nextStep = active ? Math.floor(room.terrainTimer / room.terrainInterval) : 0;
+      if (active && nextStep > room.terrainStep) {
+        room.terrainStep = nextStep;
+        game.hint = `전장 재배열 ${nextStep}단계 · ${room.terrainName}`;
+        game.hintTimer = 2.4;
+        sound.tone(155 + room.stageIndex * 34, 0.16, "sawtooth", 0.025, 1.45);
+      } else if (!active) {
+        room.terrainStep = 0;
+        room.terrainTimer = 0;
+      }
+
+      for (const platform of room.terrainPlatforms || []) {
+        const shouldRise = active && nextStep > 0 && (nextStep + platform.dynamicIndex) % 2 === 0;
+        const targetY = platform.originalY - (shouldRise ? room.terrainAmplitude : 0);
+        const previousY = platform.y;
+        platform.y = moveToward(platform.y, targetY, room.terrainSpeed * dt);
+        const deltaY = platform.y - previousY;
+        if (Math.abs(deltaY) < 0.001) continue;
+        carryEntityWithPlatform(player, platform, previousY, deltaY);
+        for (const enemy of enemies) {
+          if (enemy.alive && enemy.type !== "drone") carryEntityWithPlatform(enemy, platform, previousY, deltaY);
+        }
+      }
+    }
   }
 
   function readAdminRemovedEnemies() {
@@ -1361,6 +1500,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
+    configureCombatRooms();
     applyAdminRemovedEnemyData();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     initRain();
@@ -1516,6 +1656,9 @@
       attackDuration: 0.22,
       styleScore: 0,
       echoGauge: 0,
+      executionGauge: 0,
+      executionTimer: 0,
+      executionChain: 0,
       chargedAttack: false,
       shotgunCooldown: 0,
       shotgunReload: 0,
@@ -1939,7 +2082,8 @@
     }
 
     const chainDuration = player.slashChain === 3 ? 0.25 : player.slashChain === 2 ? 0.2 : 0.18;
-    player.attackDuration = player.grounded ? chainDuration : 0.23;
+    const executionRate = player.executionTimer > 0 ? 0.62 : 1;
+    player.attackDuration = (player.grounded ? chainDuration : 0.23) * executionRate;
 
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
@@ -1948,6 +2092,36 @@
     game.shake = Math.max(game.shake, 4);
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, player.chargedAttack ? palette.amber : palette.cyan, player.chargedAttack ? 14 : 6, 220, 0.3, 100);
     sound.attack();
+  }
+
+  function gainExecutionGauge(amount) {
+    if (player.executionTimer > 0 || amount <= 0) return;
+    const previous = player.executionGauge;
+    player.executionGauge = Math.min(100, player.executionGauge + amount);
+    if (previous < 100 && player.executionGauge >= 100) {
+      game.hint = "처형 게이지 충전 완료 · Q로 잔영 처형 발동";
+      game.hintTimer = 2.8;
+      spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.amber, 22, 330, 0.58, 300);
+      sound.tone(620, 0.16, "sine", 0.04, 1.65);
+    }
+  }
+
+  function activateExecution() {
+    if (game.mode !== "playing" || player.executionGauge < 100 || player.executionTimer > 0) return false;
+    player.executionGauge = 0;
+    player.executionTimer = 5.2;
+    player.executionChain = 0;
+    player.airJumpAvailable = true;
+    player.invincible = Math.max(player.invincible, 0.34);
+    player.vy = Math.min(player.vy, -190);
+    game.freeze = Math.max(game.freeze, 0.055);
+    game.shake = Math.max(game.shake, 16);
+    game.hint = "잔영 처형 발동 · 공중 참격으로 일반 적 즉시 처치";
+    game.hintTimer = 3.2;
+    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.amber, 38, 520, 0.78, 420);
+    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 24, 380, 0.64, 260);
+    sound.tone(160, 0.34, "sawtooth", 0.055, 2.8);
+    return true;
   }
 
   function startAdminEraseAttack() {
@@ -2024,7 +2198,20 @@
     }
 
     const chainFinisher = player.grounded && player.slashChain === 3 ? 1 : 0;
-    enemy.hp -= (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher;
+    let dealtDamage = (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher;
+    const formation = getEnemyFormation(enemy);
+    if (formation?.id === "bulwark" && enemy.type !== "shield") {
+      dealtDamage *= 0.6;
+      const room = getCombatRoomForEnemy(enemy);
+      if (room && (!room.guardHintAt || game.time - room.guardHintAt > 2.6)) {
+        room.guardHintAt = game.time;
+        game.hint = "철벽 호위 작동 · 방패병을 먼저 쓰러뜨려라";
+        game.hintTimer = 1.8;
+      }
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, formation.accent, 8, 210, 0.3, 160);
+    }
+    if (player.executionTimer > 0 && !player.grounded && enemy.type !== "boss") dealtDamage = Math.max(dealtDamage, enemy.hp);
+    enemy.hp -= dealtDamage;
     enemy.hurt = 0.18;
     enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
     game.shake = enemy.type === "boss" ? 8 : chainFinisher ? 16 : 11;
@@ -2046,6 +2233,7 @@
       game.hintTimer = 2.2;
       sound.tone(520, 0.14, "sine", 0.035, 1.7);
     }
+    gainExecutionGauge(player.grounded ? 5 : 12 + (enemy.type === "drone" ? 5 : 0));
 
     if (!player.grounded) {
       player.vy = clamp(player.vy, -110, 120);
@@ -2073,7 +2261,10 @@
     }
     if (enemy.hitShotId === bullet.shotId) return true;
     enemy.hitShotId = bullet.shotId;
-    enemy.hp -= bullet.damage;
+    let shotgunDamage = bullet.damage;
+    const formation = getEnemyFormation(enemy);
+    if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.6;
+    enemy.hp -= shotgunDamage;
     enemy.hurt = 0.22;
     enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
     game.shake = Math.max(game.shake, bullet.piercing ? 24 : 14);
@@ -2082,6 +2273,7 @@
     player.combo += 1;
     player.comboTimer = 2.4;
     player.styleScore = Math.min(100, player.styleScore + (bullet.piercing ? 24 : 14));
+    gainExecutionGauge(player.grounded ? 3 : 7);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, bullet.piercing ? palette.amber : palette.white, bullet.piercing ? 26 : 15, 480, 0.55, 760);
     sound.hit();
     if (enemy.hp <= 0) killEnemy(enemy);
@@ -2090,6 +2282,20 @@
 
   function killEnemy(enemy, { silent = false } = {}) {
     enemy.alive = false;
+    const squadRoom = getCombatRoomForEnemy(enemy);
+    if (squadRoom && enemy.type === squadRoom.formationAnchorType) {
+      squadRoom.anchorAlive = enemies.some((candidate) => (
+        candidate !== enemy
+        && candidate.alive
+        && candidate.type === squadRoom.formationAnchorType
+        && candidate.originX > squadRoom.left
+        && candidate.originX < squadRoom.right
+      ));
+      if (!squadRoom.anchorAlive && squadRoom.triggered && !squadRoom.cleared && !silent) {
+        game.hint = `${squadRoom.formationName} 붕괴 · 지원 기체가 약화됐다`;
+        game.hintTimer = 2.6;
+      }
+    }
     const deathCenterX = enemy.x + enemy.w / 2;
     const deathCenterY = enemy.y + enemy.h / 2;
     const deathIsNearPlayer = !silent
@@ -2101,6 +2307,14 @@
     }
     player.styleScore = Math.min(100, player.styleScore + (enemy.type === "boss" ? 30 : 9));
     player.burstCooldown = Math.max(0, player.burstCooldown - (enemy.type === "boss" ? 1.2 : 0.32));
+    if (enemy.type !== "boss" && !player.grounded && !silent) {
+      gainExecutionGauge(enemy.type === "drone" ? 24 : 18);
+      player.airJumpAvailable = true;
+      if (player.executionTimer > 0) {
+        player.executionChain += 1;
+        player.executionTimer = Math.min(6.4, player.executionTimer + 0.24);
+      }
+    }
     if (deathIsNearPlayer) {
       game.freeze = enemy.type === "boss" ? 0.18 : 0.09;
       game.shake = enemy.type === "boss" ? 22 : 13;
@@ -2243,6 +2457,9 @@
       const clearedBeforeCheckpoint = roomZoneIndex < restartZoneIndex;
       room.triggered = clearedBeforeCheckpoint;
       room.cleared = clearedBeforeCheckpoint;
+      room.terrainTimer = 0;
+      room.terrainStep = 0;
+      for (const platform of room.terrainPlatforms || []) platform.y = platform.originalY;
       room.remaining = clearedBeforeCheckpoint
         ? 0
         : enemies.filter((enemy) => enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
@@ -2281,6 +2498,9 @@
     player.shotgunReload = 0;
     player.shells = player.maxShells;
     player.combo = 0;
+    player.executionGauge = Math.max(0, player.executionGauge - 25);
+    player.executionTimer = 0;
+    player.executionChain = 0;
     bullets.length = 0;
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
@@ -2578,6 +2798,7 @@
     player.burstCooldown = Math.max(0, player.burstCooldown - dt);
     player.burstTimer = Math.max(0, player.burstTimer - dt);
     player.buffTimer = Math.max(0, player.buffTimer - dt);
+    player.executionTimer = Math.max(0, player.executionTimer - dt);
     player.shotgunCooldown = Math.max(0, player.shotgunCooldown - dt);
     player.recoilTimer = Math.max(0, player.recoilTimer - dt);
     const wasReloading = player.shotgunReload > 0;
@@ -2598,6 +2819,7 @@
     if (pressed.has("KeyX") && game.adminMode) toggleAdminSpawnPanel();
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
     if (pressed.has("KeyE")) startBurst();
+    if (pressed.has("KeyQ")) activateExecution();
 
     const left = keys.has("KeyA") || keys.has("ArrowLeft");
     const right = keys.has("KeyD") || keys.has("ArrowRight");
@@ -2757,7 +2979,7 @@
     }
 
     player.afterimageTimer -= dt;
-    if ((player.attackTimer > 0 || player.buffTimer > 0 || (!player.grounded && Math.abs(player.vx) > 390)) && player.afterimageTimer <= 0) {
+    if ((player.attackTimer > 0 || player.buffTimer > 0 || player.executionTimer > 0 || (!player.grounded && Math.abs(player.vx) > 390)) && player.afterimageTimer <= 0) {
       player.trail.push({ x: player.x, y: player.y, facing: player.facing, life: 0.19, maxLife: 0.19 });
       player.afterimageTimer = 0.035;
     }
@@ -2904,6 +3126,8 @@
     const dy = player.y + player.h / 2 - (enemy.y + enemy.h / 2);
     const distance = Math.hypot(dx, dy);
     const stagePressure = 1 + enemy.stageIndex * 0.08;
+    const formation = getEnemyFormation(enemy);
+    const formationCooldown = formation?.id === "spotter" && enemy.type !== "drone" ? 0.72 : 1;
     const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed * stagePressure;
     enemy.facing = dx >= 0 ? 1 : -1;
 
@@ -2922,7 +3146,7 @@
       }
       constrainEnemyToLockdown(enemy);
       if (distance < 560 && enemy.cooldown <= 0) {
-        fireBullet(enemy, 410);
+        fireBullet(enemy, 410, 0, formation?.id === "relay" ? "phase" : "standard");
         enemy.cooldown = 1.75 + hash(enemy.anim) * 0.45;
       }
       if (distance < 42) damagePlayer(1, enemy.x);
@@ -2932,12 +3156,15 @@
     if (enemy.type === "gunner") {
       if (distance < 680 && enemy.cooldown <= 0) {
         enemy.windup = 0.36;
-        enemy.cooldown = 2.05 / stagePressure;
+        enemy.cooldown = (2.05 / stagePressure) * formationCooldown;
       }
       if (enemy.windup > 0) {
         const before = enemy.windup;
         enemy.windup -= dt;
-        if (before > 0.07 && enemy.windup <= 0.07) fireBullet(enemy, 470);
+        if (before > 0.07 && enemy.windup <= 0.07) {
+          fireBullet(enemy, 470);
+          if (formation?.id === "crossfire") fireBullet(enemy, 430, enemy.facing > 0 ? 0.13 : -0.13);
+        }
       }
       enemy.vx = moveToward(enemy.vx, 0, 480 * dt);
       moveEnemyPhysics(enemy, dt);
@@ -2947,7 +3174,7 @@
     if (enemy.type === "piercer") {
       if (distance < 880 && enemy.cooldown <= 0) {
         enemy.windup = 0.48;
-        enemy.cooldown = 2.45 / enemySpeedScale;
+        enemy.cooldown = (2.45 / enemySpeedScale) * formationCooldown;
         enemy.targetX = player.x + player.w / 2;
         enemy.targetY = player.y + player.h / 2;
       }
@@ -2964,7 +3191,7 @@
     if (enemy.type === "mortar") {
       if (distance < 920 && enemy.cooldown <= 0) {
         enemy.windup = 0.74;
-        enemy.cooldown = 3.15 / enemySpeedScale;
+        enemy.cooldown = (3.15 / enemySpeedScale) * formationCooldown;
         enemy.targetX = player.x + player.w / 2 + player.vx * 0.32;
         enemy.targetY = player.y + player.h;
       }
@@ -3187,10 +3414,18 @@
   function updateCombatRooms() {
     if (game.adminMode) return;
     for (const room of combatRooms) {
+      room.anchorAlive = enemies.some((enemy) => (
+        enemy.alive
+        && enemy.type === room.formationAnchorType
+        && enemy.originX > room.left
+        && enemy.originX < room.right
+      ));
       if (!room.triggered && player.x > room.left + 90 && player.x < room.right) {
         room.triggered = true;
+        room.terrainTimer = 0;
+        room.terrainStep = 0;
         game.arenaTitle = 3.2;
-        game.hint = `${room.name} · 모든 경비기를 격파`;
+        game.hint = `${room.formationName} · ${room.formationTarget} 우선 격파 · ${room.terrainName} 가동`;
         game.hintTimer = 3.2;
         sound.tone(118, 0.32, "sawtooth", 0.045, 0.7);
       }
@@ -3375,6 +3610,7 @@
       }
     }
 
+    updateCombatTerrain(dt);
     enforceEnemyLockdowns();
     updatePlayer(dt);
     for (const enemy of enemies) updateEnemy(enemy, dt);
@@ -3718,6 +3954,27 @@
       ctx.fillRect(platform.x + 8, platform.y + 8, 5, 3);
       ctx.fillRect(platform.x + platform.w - 13, platform.y + 8, 5, 3);
       ctx.globalAlpha = 1;
+    }
+
+    if (Number.isFinite(platform.dynamicRoomLeft)) {
+      const room = combatRooms.find((candidate) => candidate.left === platform.dynamicRoomLeft);
+      const active = room?.triggered && !room.cleared && !game.adminMode;
+      const accent = platform.dynamicAccent || palette.cyan;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = active ? 0.46 + Math.sin(game.time * 8 + platform.dynamicIndex) * 0.18 : 0.14;
+      ctx.fillStyle = accent;
+      ctx.fillRect(platform.x + 12, platform.y + 5, Math.max(8, platform.w - 24), 3);
+      ctx.globalAlpha *= 0.7;
+      const chevronX = platform.x + platform.w / 2;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(chevronX - 10, platform.y + 19);
+      ctx.lineTo(chevronX, platform.y + 11);
+      ctx.lineTo(chevronX + 10, platform.y + 19);
+      ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -4215,7 +4472,7 @@
   }
 
   function drawPlayer() {
-    const empoweredSlash = player.buffTimer > 0 || (player.attackTimer > 0 && player.chargedAttack);
+    const empoweredSlash = player.executionTimer > 0 || player.buffTimer > 0 || (player.attackTimer > 0 && player.chargedAttack);
     if (Math.abs(player.vx) > 250) {
       ctx.save();
       ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.28)" : "rgba(101, 245, 234, 0.16)";
@@ -4232,6 +4489,31 @@
     }
     for (const trail of player.trail) {
       drawPlayerBody(trail.x, trail.y, trail.facing, (trail.life / trail.maxLife) * 0.22, true);
+    }
+
+    if (player.executionTimer > 0) {
+      const centerX = player.x + player.w / 2;
+      const centerY = player.y + player.h / 2;
+      const pulse = 0.55 + Math.sin(game.time * 18) * 0.18;
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = palette.amber;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.arc(0, 0, 32 + pulse * 5, -1.3, 1.3);
+      ctx.arc(0, 0, 32 + pulse * 5, 1.82, 4.44);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 205, 112, 0.12)";
+      ctx.beginPath();
+      ctx.moveTo(0, -39);
+      ctx.lineTo(17, 0);
+      ctx.lineTo(0, 39);
+      ctx.lineTo(-17, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
 
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
@@ -4381,10 +4663,105 @@
     }
   }
 
+  function drawBossIdentityHalo(x, y, bossKind, accent, pulse, chargeProgress = 0) {
+    const radius = 54 + pulse * 5 + chargeProgress * 8;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.16 + pulse * 0.14 + chargeProgress * 0.16;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, -2.82, -0.38);
+    ctx.arc(0, 0, radius, 0.32, 2.76);
+    ctx.stroke();
+    ctx.globalAlpha *= 0.72;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + 9, -1.25, -0.72);
+    ctx.arc(0, 0, radius + 9, 1.89, 2.42);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.3 + pulse * 0.18;
+    if (bossKind === "warden") {
+      ctx.beginPath();
+      for (let point = 0; point < 6; point += 1) {
+        const angle = -Math.PI / 2 + point * TAU / 6;
+        const px = Math.cos(angle) * 42;
+        const py = Math.sin(angle) * 42;
+        if (point === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.12;
+      ctx.fillRect(-5, -32, 10, 64);
+    } else if (bossKind === "furnace") {
+      for (let segment = 0; segment < 8; segment += 1) {
+        const angle = segment * TAU / 8 + game.time * 0.24;
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = accent;
+        ctx.fillRect(42, -3, 16, 6);
+        ctx.restore();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, 31, 0, TAU);
+      ctx.stroke();
+    } else if (bossKind === "weaver") {
+      for (let layer = 0; layer < 3; layer += 1) {
+        const scale = 28 + layer * 13;
+        ctx.save();
+        ctx.rotate(game.time * (layer % 2 ? -0.16 : 0.12));
+        ctx.beginPath();
+        ctx.moveTo(0, -scale);
+        ctx.lineTo(scale * 0.88, scale * 0.5);
+        ctx.lineTo(-scale * 0.88, scale * 0.5);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if (bossKind === "censor") {
+      ctx.beginPath();
+      ctx.moveTo(0, -58);
+      ctx.lineTo(0, 57);
+      ctx.moveTo(-58, 0);
+      ctx.lineTo(58, 0);
+      ctx.moveTo(-41, -41);
+      ctx.lineTo(41, 41);
+      ctx.moveTo(41, -41);
+      ctx.lineTo(-41, 41);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.12;
+      ctx.fillRect(-50, -4, 100, 8);
+    } else {
+      ctx.beginPath();
+      ctx.arc(-13, 0, 39, -1.35, 1.35);
+      ctx.arc(13, 0, 39, 1.8, 4.48);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.14;
+      ctx.beginPath();
+      ctx.moveTo(0, -44);
+      ctx.lineTo(18, 0);
+      ctx.lineTo(0, 44);
+      ctx.lineTo(-18, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawEnemy(enemy) {
     if (!enemy.alive) return;
     drawEnemyTelegraph(enemy);
     if (enemy.type === "boss" && enemy.bossKind === "echo") {
+      const echoPulse = 0.5 + Math.sin(game.time * 5.4) * 0.2;
+      const echoCharge = enemy.bossAction === "chargeShot" && enemy.windup > 0
+        ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
+        : 0;
+      drawBossIdentityHalo(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.5, "echo", BOSS_DEFINITIONS.echo.accent, echoPulse, echoCharge);
       const playerPose = {
         vx: player.vx,
         vy: player.vy,
@@ -4747,6 +5124,7 @@
       const chargeProgress = chargingShot
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
         : 0;
+      drawBossIdentityHalo(0, 49, bossKind, bossAccent, pulse, chargeProgress);
       if (bossKind === "weaver") {
         ctx.strokeStyle = `rgba(215, 160, 255, ${0.32 + pulse * 0.32})`;
         ctx.lineWidth = 3;
@@ -5715,7 +6093,7 @@
     }
 
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
-    ctx.fillRect(28, 28, 320, 194);
+    ctx.fillRect(28, 28, 320, 224);
     const hudSweep = 30 + ((game.time * 34) % 190);
     const hudGlow = ctx.createLinearGradient(28, 0, 348, 0);
     hudGlow.addColorStop(0, "rgba(101, 245, 234, 0)");
@@ -5729,12 +6107,12 @@
     ctx.moveTo(28, 46);
     ctx.lineTo(28, 28);
     ctx.lineTo(94, 28);
-    ctx.moveTo(282, 222);
-    ctx.lineTo(348, 222);
-    ctx.lineTo(348, 204);
+    ctx.moveTo(282, 252);
+    ctx.lineTo(348, 252);
+    ctx.lineTo(348, 234);
     ctx.stroke();
     ctx.fillStyle = "rgba(101, 245, 234, 0.22)";
-    ctx.fillRect(28, 28, 4, 194);
+    ctx.fillRect(28, 28, 4, 224);
     ctx.fillStyle = "#9bb3bd";
     ctx.font = "700 11px monospace";
     ctx.fillText(`OPERATIVE · M-07 · ${difficultySettings[game.difficulty].name}`, 47, 42);
@@ -5799,6 +6177,22 @@
     ctx.font = "700 10px 'Malgun Gothic', sans-serif";
     ctx.fillText(player.echoGauge >= 100 ? "잔향 · 강화 참격 준비" : `잔향 ${Math.floor(player.echoGauge)}%`, 232, 190);
 
+    ctx.fillStyle = "#263743";
+    ctx.fillRect(47, 222, 176, 8);
+    const executionRatio = player.executionTimer > 0 ? player.executionTimer / 5.2 : player.executionGauge / 100;
+    ctx.fillStyle = player.executionTimer > 0 ? palette.amber : player.executionGauge >= 100 ? "#fff1aa" : "#ff708c";
+    ctx.fillRect(47, 222, 176 * clamp(executionRatio, 0, 1), 8);
+    ctx.fillStyle = player.executionTimer > 0 || player.executionGauge >= 100 ? "#fff0b8" : "#c6a7b0";
+    ctx.fillText(
+      player.executionTimer > 0
+        ? `처형 중 · ${player.executionChain}연속 · ${player.executionTimer.toFixed(1)}초`
+        : player.executionGauge >= 100
+          ? "Q · 잔영 처형 준비"
+          : `처형 게이지 ${Math.floor(player.executionGauge)}%`,
+      232,
+      216,
+    );
+
     const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
     ctx.fillRect(W - 318, 28, 290, 64);
@@ -5853,13 +6247,22 @@
     const activeRoom = combatRooms.find((room) => room.triggered && !room.cleared && player.x > room.left - 80 && player.x < room.right + 80);
     if (activeRoom && !boss) {
       ctx.fillStyle = "rgba(3, 7, 13, 0.82)";
-      ctx.fillRect(W / 2 - 225, 42, 450, 40);
-      ctx.fillStyle = palette.red;
-      ctx.fillRect(W / 2 - 225, 42, 4, 40);
+      ctx.fillRect(W / 2 - 245, 42, 490, 56);
+      ctx.fillStyle = activeRoom.formationAccent || palette.red;
+      ctx.fillRect(W / 2 - 245, 42, 4, 56);
       ctx.fillStyle = "#e5eef0";
       ctx.font = "800 12px 'Malgun Gothic', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(`${activeRoom.name} · 잔여 ${activeRoom.remaining ?? 0}`, W / 2, 55);
+      ctx.fillStyle = activeRoom.anchorAlive ? activeRoom.formationAccent : palette.cyan;
+      ctx.font = "700 10px 'Malgun Gothic', sans-serif";
+      ctx.fillText(
+        activeRoom.anchorAlive
+          ? `${activeRoom.formationName} 활성 · ${activeRoom.formationTarget} 우선 / ${activeRoom.terrainName}`
+          : `적 연계 붕괴 · ${activeRoom.terrainName} ${activeRoom.terrainStep || 0}단계`,
+        W / 2,
+        76,
+      );
       ctx.textAlign = "left";
     }
 
@@ -5906,6 +6309,12 @@
       ctx.fillStyle = palette.white;
       ctx.font = "900 28px 'Malgun Gothic', sans-serif";
       ctx.fillText("봉쇄 전투 개시", W / 2, 148);
+      const titleRoom = combatRooms.find((room) => room.triggered && !room.cleared && player.x > room.left - 80 && player.x < room.right + 80);
+      if (titleRoom) {
+        ctx.fillStyle = titleRoom.formationAccent || palette.red;
+        ctx.font = "800 11px 'Malgun Gothic', sans-serif";
+        ctx.fillText(`${titleRoom.formationName} × ${titleRoom.terrainName}`, W / 2, 169);
+      }
       ctx.textAlign = "left";
       ctx.globalAlpha = 1;
     }
