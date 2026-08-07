@@ -28,6 +28,8 @@
   const TARGET_CAMPAIGN_MINUTES = 580;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
+  const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
+  const MAX_ADMIN_SPAWNED_ENEMIES = 200;
 
   const keys = new Set();
   const pressed = new Set();
@@ -45,6 +47,7 @@
   const combatRooms = [];
   const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "piercer", "mortar", "drone", "shield", "boss"]);
   let adminRemovedEnemyIds = readAdminRemovedEnemies();
+  let adminSpawnedEnemyData = readAdminSpawnedEnemies();
   let adminSpawnSerial = 0;
 
   const stages = [
@@ -998,6 +1001,109 @@
     }
   }
 
+  function readAdminSpawnedEnemies() {
+    try {
+      const raw = window.localStorage?.getItem(ADMIN_SPAWNED_ENEMIES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      const seenIds = new Set();
+      return parsed.filter((record) => {
+        if (!record || typeof record.id !== "string" || seenIds.has(record.id)) return false;
+        if (!ADMIN_SPAWN_TYPES.has(record.type)) return false;
+        if (!Number.isFinite(Number(record.x)) || !Number.isFinite(Number(record.y))) return false;
+        seenIds.add(record.id);
+        return true;
+      }).slice(-MAX_ADMIN_SPAWNED_ENEMIES);
+    } catch {
+      return [];
+    }
+  }
+
+  function persistAdminSpawnedEnemies() {
+    try {
+      window.localStorage?.setItem(ADMIN_SPAWNED_ENEMIES_KEY, JSON.stringify(adminSpawnedEnemyData));
+    } catch {
+      // Administrator additions remain active for this session if storage is blocked.
+    }
+  }
+
+  function createAdminSpawnId(type, stageIndex) {
+    adminSpawnSerial += 1;
+    return `admin-spawn:${Date.now().toString(36)}:${adminSpawnSerial.toString(36)}:${stageIndex}:${type}`;
+  }
+
+  function recordAdminSpawnedEnemy(enemy) {
+    if (!enemy?.adminSpawned) return;
+    const record = {
+      id: enemy.id,
+      type: enemy.type,
+      x: enemy.spawnX,
+      y: enemy.spawnY,
+      stageIndex: enemy.stageIndex,
+      homeZoneIndex: enemy.homeZoneIndex,
+      bossKind: enemy.bossKind || null,
+      range: enemy.range,
+    };
+    adminSpawnedEnemyData = adminSpawnedEnemyData.filter((saved) => saved.id !== enemy.id);
+    adminSpawnedEnemyData.push(record);
+    if (adminSpawnedEnemyData.length > MAX_ADMIN_SPAWNED_ENEMIES) {
+      adminSpawnedEnemyData = adminSpawnedEnemyData.slice(-MAX_ADMIN_SPAWNED_ENEMIES);
+    }
+    persistAdminSpawnedEnemies();
+  }
+
+  function removeAdminSpawnedEnemyData(enemyId) {
+    const next = adminSpawnedEnemyData.filter((record) => record.id !== enemyId);
+    if (next.length === adminSpawnedEnemyData.length) return;
+    adminSpawnedEnemyData = next;
+    persistAdminSpawnedEnemies();
+  }
+
+  function restoreAdminSpawnedEnemies() {
+    for (const record of adminSpawnedEnemyData) {
+      const rawX = Number(record.x);
+      const rawY = Number(record.y);
+      const x = clamp(rawX, 0, WORLD_W - 1);
+      const stageIndex = Number.isInteger(record.stageIndex)
+        ? clamp(record.stageIndex, 0, stages.length - 1)
+        : getStageIndexAt(x);
+      const enemy = addEnemy(record.type, x, rawY, Number.isFinite(record.range) ? record.range : 220);
+      enemy.adminSpawned = true;
+      enemy.id = record.id;
+      enemy.stageIndex = stageIndex;
+      enemy.homeZoneIndex = Number.isInteger(record.homeZoneIndex)
+        ? clamp(record.homeZoneIndex, 0, zones.length - 1)
+        : getZoneIndexAt(x);
+      enemy.x = clamp(x, 0, WORLD_W - enemy.w);
+      enemy.y = clamp(rawY, -enemy.h * 2, WORLD_H - enemy.h);
+      enemy.originX = enemy.x;
+      enemy.spawnX = enemy.x;
+      enemy.spawnY = enemy.y;
+      enemy.baseY = enemy.y;
+      enemy.vx = 0;
+      enemy.vy = 0;
+      enemy.alive = true;
+      enemy.countedKill = false;
+      if (enemy.type !== "boss") continue;
+      enemy.bossKind = BOSS_DEFINITIONS[record.bossKind]
+        ? record.bossKind
+        : stages[stageIndex].bossKind;
+      const definition = BOSS_DEFINITIONS[enemy.bossKind];
+      enemy.hp = definition.hp;
+      enemy.maxHp = definition.hp;
+      if (enemy.bossKind === "echo") {
+        enemy.w = player.w;
+        enemy.h = player.h;
+        enemy.x = clamp(x, 0, WORLD_W - enemy.w);
+        enemy.y = clamp(rawY, -enemy.h * 2, WORLD_H - enemy.h);
+        enemy.originX = enemy.x;
+        enemy.spawnX = enemy.x;
+        enemy.spawnY = enemy.y;
+        enemy.baseY = enemy.y;
+      }
+    }
+  }
+
   function applyAdminRemovedEnemyData() {
     for (const enemy of enemies) {
       if (!adminRemovedEnemyIds.has(enemy.id)) continue;
@@ -1500,6 +1606,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
+    restoreAdminSpawnedEnemies();
     configureCombatRooms();
     applyAdminRemovedEnemyData();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
@@ -1847,7 +1954,7 @@
     const stageIndex = getStageIndexAt(player.x);
     const enemy = addEnemy(type, player.x, player.y + player.h, 220);
     enemy.adminSpawned = true;
-    enemy.id = `admin-spawn:${++adminSpawnSerial}:${stageIndex}:${type}`;
+    enemy.id = createAdminSpawnId(type, stageIndex);
     enemy.stageIndex = stageIndex;
     enemy.homeZoneIndex = getZoneIndexAt(player.x);
     enemy.x = clamp(player.x + player.w / 2 - enemy.w / 2, 0, WORLD_W - enemy.w);
@@ -1876,8 +1983,9 @@
         enemy.baseY = enemy.y;
       }
     }
+    recordAdminSpawnedEnemy(enemy);
     game.totalEnemies += 1;
-    game.hint = `관리자 생성 · ${type.toUpperCase()} · 현재 위치 배치`;
+    game.hint = `관리자 생성·저장 · ${type.toUpperCase()} · 현재 위치 배치`;
     game.hintTimer = 2.8;
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, palette.amber, 22, 320, 0.58, 260);
     sound.tone(620, 0.12, "square", 0.03, 0.82);
@@ -2137,13 +2245,15 @@
 
   function eraseEnemyData(enemy) {
     if (!enemy?.alive || !game.adminMode) return false;
-    if (!enemy.adminSpawned) {
+    if (enemy.adminSpawned) {
+      removeAdminSpawnedEnemyData(enemy.id);
+    } else {
       adminRemovedEnemyIds.add(enemy.id);
       persistAdminRemovedEnemies();
     }
     killEnemy(enemy);
     game.hint = enemy.adminSpawned
-      ? `관리자 생성 개체 제거 · ${enemy.type.toUpperCase()}`
+      ? `관리자 생성 개체 데이터 영구 삭제 · ${enemy.type.toUpperCase()}`
       : `적 데이터 영구 삭제 · ${enemy.id}`;
     game.hintTimer = 3.2;
     return true;
