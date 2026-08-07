@@ -13,6 +13,8 @@
   const adminStatus = document.getElementById("admin-status");
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
+  const touchControls = document.getElementById("touch-controls");
+  const touchControlButtons = [...(document.querySelectorAll?.("[data-touch-key], [data-touch-action]") || [])];
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
@@ -35,6 +37,7 @@
 
   const keys = new Set();
   const pressed = new Set();
+  const touchPointers = new Map();
   const pointer = { screenX: W * 0.72, screenY: H * 0.48, active: false };
   const platforms = [];
   const hazards = [];
@@ -1556,10 +1559,7 @@
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 28, "cargo"));
         addPlatform(origin + 2290, floorY - 265, 280, 24, "roof");
       } else if (stageIndex === 1) {
-        // 홍련: 총열 가교와 간헐적으로 분출하는 용탕 배기구.
-        [[310, -160, 340], [910, -300, 300], [1510, -205, 380], [2210, -355, 330], [3000, -220, 420]]
-          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, "foundry"));
-        [760, 2010, 2820].forEach((x, index) => addHazard(origin + x, floorY - 245, 30, 245, "steam", index * 0.74));
+        // 홍련: 박격포와 낙하 폭탄 회피에 집중하는 완전한 단층 평지 전장.
       } else if (stageIndex === 2) {
         // 백면: 공중 마법전을 위한 부유 제단과 황색 도약 발판.
         [[300, -145, 300], [790, -330, 280], [1290, -510, 300], [1840, -390, 320], [2410, -540, 300], [2990, -320, 350], [3500, -150, 280]]
@@ -7707,7 +7707,115 @@
     pointer.active = true;
   }
 
+  function setVirtualKey(code, active) {
+    if (active) {
+      if (!keys.has(code)) pressed.add(code);
+      keys.add(code);
+    } else {
+      keys.delete(code);
+    }
+  }
+
+  function updateTouchShotgunAim(entry, clientX, clientY) {
+    const dragX = clientX - entry.startX;
+    const dragY = clientY - entry.startY;
+    const dragLength = Math.hypot(dragX, dragY);
+    const aimX = dragLength > 9 ? dragX / dragLength : player.facing;
+    const aimY = dragLength > 9 ? dragY / dragLength : 0;
+    const playerScreenX = player.x + player.w / 2 - camera.x;
+    const playerScreenY = player.y + player.h / 2 - camera.y;
+    pointer.screenX = clamp(playerScreenX + aimX * 280, 0, W);
+    pointer.screenY = clamp(playerScreenY + aimY * 280, 0, H);
+    pointer.active = true;
+  }
+
+  function releaseTouchPointer(pointerId, event = null) {
+    const entry = touchPointers.get(pointerId);
+    if (!entry) return;
+    if (entry.key) setVirtualKey(entry.key, false);
+    if (entry.action === "jump") setVirtualKey("Space", false);
+    if (entry.action === "shotgun" && event && game.mode === "playing" && !game.cutscene) {
+      updateTouchShotgunAim(entry, event.clientX, event.clientY);
+      startShotgun();
+    }
+    entry.button.classList.remove("touch-active");
+    entry.button.setAttribute("aria-pressed", "false");
+    touchPointers.delete(pointerId);
+  }
+
+  function clearTouchPointers() {
+    for (const pointerId of [...touchPointers.keys()]) releaseTouchPointer(pointerId);
+  }
+
+  function syncTouchControls() {
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const touchCapable = Boolean(coarsePointer || navigator.maxTouchPoints > 0 || "ontouchstart" in window);
+    document.documentElement.classList.toggle("touch-capable", touchCapable);
+    if (touchControls) touchControls.hidden = !touchCapable;
+  }
+
+  function handleTouchControlDown(event) {
+    if (event.pointerType === "mouse") return;
+    event.preventDefault();
+    event.stopPropagation();
+    sound.wake();
+    const button = event.currentTarget;
+    const key = button.dataset.touchKey || null;
+    const action = button.dataset.touchAction || null;
+    const entry = {
+      button,
+      key,
+      action,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    touchPointers.set(event.pointerId, entry);
+    button.classList.add("touch-active");
+    button.setAttribute("aria-pressed", "true");
+    button.setPointerCapture?.(event.pointerId);
+
+    if (game.cutscene) {
+      requestCutsceneAdvance();
+      return;
+    }
+    if (key) {
+      setVirtualKey(key, true);
+      return;
+    }
+    if (action === "jump") setVirtualKey("Space", true);
+    else if (action === "slash") startAttack();
+    else if (action === "burst") startBurst();
+    else if (action === "execute") activateExecution();
+    else if (action === "pause") togglePause();
+    else if (action === "shotgun") updateTouchShotgunAim(entry, event.clientX, event.clientY);
+  }
+
+  function handleTouchControlMove(event) {
+    const entry = touchPointers.get(event.pointerId);
+    if (!entry || entry.action !== "shotgun") return;
+    event.preventDefault();
+    updateTouchShotgunAim(entry, event.clientX, event.clientY);
+  }
+
+  function handleTouchControlUp(event) {
+    if (!touchPointers.has(event.pointerId)) return;
+    event.preventDefault();
+    releaseTouchPointer(event.pointerId, event);
+  }
+
   canvas.addEventListener("mousemove", updatePointer);
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") return;
+    event.preventDefault();
+    updatePointer(event);
+    sound.wake();
+    if (game.cutscene) requestCutsceneAdvance();
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "touch") return;
+    event.preventDefault();
+    updatePointer(event);
+  });
   canvas.addEventListener("mousedown", (event) => {
     updatePointer(event);
     event.preventDefault();
@@ -7748,11 +7856,22 @@
   });
 
   window.addEventListener("blur", () => {
+    clearTouchPointers();
     keys.clear();
     pressed.clear();
     setAdminSpawnPanel(false);
     if (game.mode === "playing") togglePause();
   });
+
+  for (const button of touchControlButtons) {
+    button.addEventListener("pointerdown", handleTouchControlDown);
+    button.addEventListener("pointermove", handleTouchControlMove);
+    button.addEventListener("pointerup", handleTouchControlUp);
+    button.addEventListener("pointercancel", handleTouchControlUp);
+    button.addEventListener("lostpointercapture", handleTouchControlUp);
+  }
+  window.matchMedia?.("(pointer: coarse)")?.addEventListener?.("change", syncTouchControls);
+  syncTouchControls();
 
   startButton.addEventListener("click", () => resetGame(false));
   continueButton?.addEventListener("click", () => resetGame(true));

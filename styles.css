@@ -22,6 +22,8 @@ body {
   background: var(--ink);
   color: var(--text);
   font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -49,6 +51,7 @@ canvas {
   height: 100%;
   image-rendering: pixelated;
   cursor: none;
+  touch-action: none;
 }
 
 .overlay {
@@ -379,6 +382,129 @@ button:focus-visible {
   display: none;
 }
 
+.touch-help,
+.touch-controls {
+  display: none;
+}
+
+.touch-controls[hidden] {
+  display: none !important;
+}
+
+.touch-capable .touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  --touch-unit: clamp(40px, 7vmin, 66px);
+}
+
+.touch-controls button {
+  min-width: 0;
+  width: var(--touch-unit);
+  height: var(--touch-unit);
+  padding: 0;
+  pointer-events: auto;
+  touch-action: none;
+  border: 1px solid rgba(146, 230, 232, 0.55);
+  border-radius: 14px;
+  background: linear-gradient(155deg, rgba(18, 43, 56, 0.8), rgba(5, 12, 22, 0.7));
+  color: #eaffff;
+  font: 900 clamp(12px, 2.2vmin, 18px) / 1 "Malgun Gothic", sans-serif;
+  text-shadow: 0 1px 3px #000;
+  box-shadow: inset 0 0 14px rgba(101, 245, 234, 0.08), 0 4px 16px rgba(0, 0, 0, 0.3);
+  clip-path: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-controls button:hover,
+.touch-controls button:focus-visible {
+  transform: none;
+}
+
+.touch-controls button.touch-active {
+  transform: scale(0.91);
+  border-color: #fff3b1;
+  background: linear-gradient(155deg, rgba(255, 205, 112, 0.72), rgba(104, 42, 49, 0.8));
+  filter: brightness(1.2);
+}
+
+.touch-controls button b,
+.touch-controls button small {
+  display: block;
+  pointer-events: none;
+}
+
+.touch-controls button small {
+  margin-top: 3px;
+  color: #a9c8cf;
+  font: 700 clamp(7px, 1.3vmin, 10px) / 1 monospace;
+}
+
+.touch-dpad {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template: repeat(3, var(--touch-unit)) / repeat(3, var(--touch-unit));
+  gap: 3px;
+  pointer-events: none;
+}
+
+.touch-dpad button {
+  color: #bffaf7;
+  background: rgba(8, 26, 38, 0.7);
+}
+
+.touch-up { grid-area: 1 / 2; }
+.touch-left { grid-area: 2 / 1; }
+.touch-right { grid-area: 2 / 3; }
+.touch-down { grid-area: 3 / 2; }
+
+.touch-actions {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template: repeat(2, var(--touch-unit)) / repeat(3, var(--touch-unit));
+  gap: 5px;
+  pointer-events: none;
+}
+
+.touch-actions .touch-slash {
+  border-color: rgba(101, 245, 234, 0.8);
+  background: linear-gradient(155deg, rgba(23, 92, 99, 0.82), rgba(5, 23, 32, 0.75));
+}
+
+.touch-actions .touch-shotgun {
+  border-color: rgba(255, 73, 108, 0.82);
+  background: linear-gradient(155deg, rgba(112, 37, 55, 0.83), rgba(30, 9, 19, 0.76));
+}
+
+.touch-actions .touch-burst,
+.touch-actions .touch-execute {
+  height: calc(var(--touch-unit) * 0.78);
+  align-self: end;
+}
+
+.touch-actions .touch-execute {
+  border-color: rgba(255, 205, 112, 0.8);
+  color: #fff0b2;
+}
+
+.touch-pause {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  width: calc(var(--touch-unit) * 0.64) !important;
+  height: calc(var(--touch-unit) * 0.52) !important;
+  border-radius: 8px !important;
+  font-size: clamp(10px, 1.8vmin, 15px) !important;
+}
+
 .admin-spawn-panel {
   position: absolute;
   top: 14px;
@@ -530,7 +656,8 @@ button:focus-visible {
 }
 
 @media (max-width: 760px), (max-height: 520px) {
-  .admin-spawn-panel { top: 6px; padding: 7px 9px 6px; }
+  .admin-spawn-panel { top: 6px; max-height: calc(100% - 12px); padding: 7px 9px 6px; overflow-y: auto; }
+  .admin-enemy-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
   .enemy-token { transform: scale(0.78); margin-block: -3px; }
   .enemy-token.boss { transform: scale(0.82); }
@@ -540,6 +667,27 @@ button:focus-visible {
     grid-template-columns: repeat(3, 1fr);
     gap: 0.3rem;
     margin-bottom: 0.7rem;
+  }
+
+  .touch-capable .key-grid {
+    display: none;
+  }
+
+  .touch-capable .touch-help {
+    display: block;
+    max-width: 720px;
+    margin: 0 0 0.55rem;
+    color: #b9e8e6;
+    font-size: clamp(0.58rem, 1.7vw, 0.76rem);
+  }
+
+  .overlay {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  h1 {
+    font-size: clamp(2.4rem, 13vh, 5.2rem);
   }
 
   .key-grid > div {
@@ -584,17 +732,45 @@ button:focus-visible {
   }
 }
 
+@media (pointer: coarse) and (orientation: portrait) {
+  .game-shell {
+    width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  canvas {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    transform: translateY(-50%);
+  }
+
+  .touch-capable .touch-controls {
+    --touch-unit: clamp(48px, 15vw, 68px);
+  }
+
+  .overlay {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
 @media (orientation: portrait) and (max-width: 700px) {
   #rotate-notice {
     position: absolute;
-    inset: auto 1rem 1rem;
-    z-index: 9;
+    inset: max(0.5rem, env(safe-area-inset-top)) 4.2rem auto;
+    z-index: 3;
     display: block;
-    padding: 0.6rem;
+    padding: 0.42rem 0.6rem;
     border: 1px solid rgba(101, 245, 234, 0.4);
     background: rgba(4, 9, 18, 0.9);
     color: #d9ffff;
     text-align: center;
-    font-size: 0.72rem;
+    font-size: 0.64rem;
+    pointer-events: none;
   }
 }

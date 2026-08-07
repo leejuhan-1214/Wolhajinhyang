@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
@@ -11,14 +11,14 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=1.6.1" />
+    <link rel="stylesheet" href="styles.css?v=1.6.2" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.1</div>
+        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.2</div>
         <h1>월하잔향</h1>
         <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
@@ -49,6 +49,7 @@
           <div class="accent"><kbd>Q</kbd><span>처형 게이지 발동</span></div>
           <div><kbd>R</kbd><span>일반: 체크포인트 / 관리자: 모드 전환</span></div>
         </div>
+        <p class="touch-help">왼쪽 패드로 이동하고, 오른쪽 버튼으로 점프·발도·샷건을 사용하세요. 샷건 버튼을 원하는 방향으로 끌었다 놓으면 조준 사격합니다.</p>
         <div class="campaign-actions">
           <button id="start-button" type="button">새 작전</button>
           <button id="continue-button" type="button" hidden disabled>이어하기</button>
@@ -89,8 +90,25 @@
         <p><kbd>X</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 생성 위치가 저장되며 관리자 <kbd>Z</kbd>로 영구 삭제합니다.</p>
       </section>
 
+      <section id="touch-controls" class="touch-controls" aria-label="모바일 게임 조작" hidden>
+        <div class="touch-dpad" aria-label="이동 및 공격 방향">
+          <button type="button" class="touch-up" data-touch-key="KeyW" aria-label="위쪽 참격 방향">▲</button>
+          <button type="button" class="touch-left" data-touch-key="KeyA" aria-label="왼쪽 이동">◀</button>
+          <button type="button" class="touch-right" data-touch-key="KeyD" aria-label="오른쪽 이동">▶</button>
+          <button type="button" class="touch-down" data-touch-key="KeyS" aria-label="아래쪽 참격 방향">▼</button>
+        </div>
+        <div class="touch-actions" aria-label="전투 행동">
+          <button type="button" class="touch-jump" data-touch-action="jump"><b>점프</b><small>2단</small></button>
+          <button type="button" class="touch-slash" data-touch-action="slash"><b>발도</b><small>참격</small></button>
+          <button type="button" class="touch-shotgun" data-touch-action="shotgun"><b>샷건</b><small>끌어 조준</small></button>
+          <button type="button" class="touch-burst" data-touch-action="burst"><b>버스트</b><small>E</small></button>
+          <button type="button" class="touch-execute" data-touch-action="execute"><b>처형</b><small>Q</small></button>
+        </div>
+        <button type="button" class="touch-pause" data-touch-action="pause" aria-label="일시정지">Ⅱ</button>
+      </section>
+
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=1.6.1"></script>
+  <script src="game.js?v=1.6.2"></script>
   </body>
 </html>
