@@ -878,6 +878,8 @@
       halfPhaseTriggered: false,
       summonCooldown: 6.5,
       summonCount: 0,
+      barrierTimer: 0,
+      barrierCooldown: 3.2,
       countedKill: false,
     };
     enemies.push(enemy);
@@ -2433,6 +2435,16 @@
       return;
     }
 
+    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
+      enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (player.chargedAttack ? 0.5 : 0.16));
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 18, 320, 0.42, 0);
+      game.hint = "무명 · 공허 장막이 참격을 무효화했습니다";
+      game.hintTimer = 1.15;
+      game.shake = Math.max(game.shake, 6);
+      sound.tone(245, 0.12, "sine", 0.035, 1.55);
+      return;
+    }
+
     const playerCenter = player.x + player.w / 2;
     const enemyCenter = enemy.x + enemy.w / 2;
     const incomingSide = Math.sign(playerCenter - enemyCenter) || 1;
@@ -2516,6 +2528,14 @@
     }
     if (enemy.hitShotId === bullet.shotId) return true;
     enemy.hitShotId = bullet.shotId;
+    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
+      enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (bullet.piercing ? 0.45 : 0.12));
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 16, 300, 0.38, 0);
+      game.hint = "무명 · 공허 장막이 총격을 흡수했습니다";
+      game.hintTimer = 1.05;
+      sound.tone(220, 0.1, "sine", 0.03, 1.6);
+      return true;
+    }
     let shotgunDamage = bullet.damage;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.6;
@@ -2707,6 +2727,8 @@
       enemy.halfPhaseTriggered = false;
       enemy.summonCooldown = 6.5;
       enemy.summonCount = 0;
+      enemy.barrierTimer = 0;
+      enemy.barrierCooldown = 3.2;
       enemy.stuckTimer = 0;
       enemy.hitAttackId = -1;
       enemy.hitShotId = -1;
@@ -2856,35 +2878,216 @@
       damage: 0,
       color: "#ff5b67",
       ownerStage: enemy.stageIndex,
+      ceilingY: Math.max(45, enemy.baseY - 650),
     });
   }
 
   function explodeRainCore(bullet) {
-    const stage = stages[bullet.ownerStage] || stages[1];
-    const arenaLeft = stage.x + ZONE_W * 6 + 180;
-    const arenaRight = stage.gateX - 120;
-    const count = 15;
-    for (let index = 0; index < count; index += 1) {
-      const lane = index / (count - 1);
-      const x = arenaLeft + (arenaRight - arenaLeft) * lane + (hash(index * 7.13 + game.time) - 0.5) * 100;
-      const size = 14 + (index % 3) * 3;
-      bullets.push({
-        x: x - size / 2,
-        y: Math.max(70, bullet.y - 40 - (index % 4) * 45),
-        w: size,
-        h: size,
-        vx: (hash(index * 3.8) - 0.5) * 80,
-        vy: 110 + (index % 5) * 25,
-        life: 4,
-        enemy: true,
-        kind: "rain-drop",
-        gravity: 760,
-        color: "#ff566c",
-      });
-    }
+    bullets.push({
+      x: bullet.x,
+      y: bullet.y,
+      w: 0,
+      h: 0,
+      vx: 0,
+      vy: 0,
+      life: 2,
+      maxLife: 2,
+      enemy: true,
+      harmless: true,
+      kind: "rain-controller",
+      gravity: 0,
+      color: "#ff566c",
+      ownerStage: bullet.ownerStage,
+      ceilingY: bullet.ceilingY,
+      spawnTimer: 0,
+      spawnSerial: 0,
+    });
     spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, "#ff7b62", 48, 580, 0.85, 120);
     game.shake = Math.max(game.shake, 20);
     sound.tone(58, 0.55, "sawtooth", 0.065, 0.36);
+  }
+
+  function spawnRainBomb(controller) {
+    const stage = stages[controller.ownerStage] || stages[1];
+    const arenaLeft = stage.x + ZONE_W * 6 + 170;
+    const arenaRight = stage.gateX - 110;
+    const serial = controller.spawnSerial++;
+    const randomX = hash(serial * 17.31 + game.time * 7.17);
+    const randomSize = hash(serial * 31.73 + 4.9);
+    const size = 15 + Math.floor(randomSize * 12);
+    const x = arenaLeft + (arenaRight - arenaLeft) * randomX;
+    bullets.push({
+      x: x - size / 2,
+      y: (controller.ceilingY || 45) - hash(serial * 4.73) * 65,
+      w: size,
+      h: size,
+      vx: (hash(serial * 11.8 + 2.6) - 0.5) * 105,
+      vy: 90 + hash(serial * 5.91 + 8.2) * 105,
+      life: 4.5,
+      enemy: true,
+      kind: "rain-drop",
+      gravity: 820,
+      color: "#ff566c",
+    });
+  }
+
+  function fireHomingMissile(enemy, target, angleOffset = 0) {
+    const sourceX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.42;
+    const sourceY = enemy.y + enemy.h * 0.38;
+    const angle = Math.atan2(target.y - sourceY, target.x - sourceX) + angleOffset;
+    const speed = 315 * difficultySettings[game.difficulty].bulletSpeed;
+    bullets.push({
+      x: sourceX - 14,
+      y: sourceY - 7,
+      w: 28,
+      h: 14,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      speed,
+      turnRate: 2.65,
+      satelliteTimer: 0.18,
+      satelliteSerial: 0,
+      piercePlatforms: true,
+      life: 4.8,
+      enemy: true,
+      kind: "homing-missile",
+      gravity: 0,
+      color: "#ff304f",
+    });
+    sound.tone(84, 0.2, "sawtooth", 0.034, 0.72);
+  }
+
+  function spawnMissileSatelliteShots(missile) {
+    const centerX = missile.x + missile.w / 2;
+    const centerY = missile.y + missile.h / 2;
+    const serial = missile.satelliteSerial++;
+    for (let index = 0; index < 3; index += 1) {
+      const angle = serial * 0.74 + index * TAU / 3;
+      bullets.push({
+        x: centerX - 4,
+        y: centerY - 4,
+        w: 8,
+        h: 8,
+        vx: Math.cos(angle) * 175,
+        vy: Math.sin(angle) * 175,
+        life: 1.55,
+        enemy: true,
+        kind: "missile-spark",
+        gravity: 0,
+        color: "#ff496c",
+      });
+    }
+  }
+
+  function fireWardenBeam(enemy, target) {
+    const originX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.55;
+    const originY = enemy.y + enemy.h * 0.45;
+    const angle = Math.atan2(target.y - originY, target.x - originX);
+    bullets.push({
+      x: originX,
+      y: originY,
+      w: 1,
+      h: 1,
+      vx: 0,
+      vy: 0,
+      life: 0.58,
+      maxLife: 0.58,
+      enemy: true,
+      harmless: true,
+      kind: "warden-beam",
+      beamDX: Math.cos(angle),
+      beamDY: Math.sin(angle),
+      beamLength: 1700,
+      beamThickness: 92,
+      hitPlayer: false,
+      gravity: 0,
+      color: "#ff304f",
+    });
+    game.shake = Math.max(game.shake, 32);
+    sound.tone(46, 0.58, "sawtooth", 0.075, 0.34);
+  }
+
+  function summonMagicSigil(enemy, spell, x, y, delay = 0.72) {
+    const stage = stages[enemy.stageIndex] || stages[2];
+    const safeX = clamp(x, stage.x + ZONE_W * 6 + 150, stage.gateX - 110);
+    const safeY = clamp(y, 50, enemy.baseY - 70);
+    bullets.push({
+      x: safeX - 30,
+      y: safeY - 30,
+      w: 60,
+      h: 60,
+      vx: 0,
+      vy: 0,
+      life: delay + 0.42,
+      maxLife: delay + 0.42,
+      triggerTimer: delay,
+      triggered: false,
+      enemy: true,
+      harmless: true,
+      kind: "magic-sigil",
+      spell,
+      ownerId: enemy.id,
+      ownerStage: enemy.stageIndex,
+      gravity: 0,
+      color: "#d7a0ff",
+    });
+    sound.tone(320, delay, "sine", 0.017, 1.7);
+  }
+
+  function fireMagicFireball(x, y, target, spread = 0) {
+    const angle = Math.atan2(target.y - y, target.x - x) + spread;
+    const speed = 385 * difficultySettings[game.difficulty].bulletSpeed;
+    bullets.push({
+      x: x - 14,
+      y: y - 14,
+      w: 28,
+      h: 28,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 4.2,
+      enemy: true,
+      kind: "fireball",
+      gravity: 0,
+      color: "#ff7b42",
+    });
+  }
+
+  function triggerMagicSigil(sigil) {
+    const centerX = sigil.x + sigil.w / 2;
+    const centerY = sigil.y + sigil.h / 2;
+    const owner = enemies.find((candidate) => candidate.alive && candidate.id === sigil.ownerId);
+    if (sigil.spell === "teleport" && owner) {
+      const stage = stages[owner.stageIndex];
+      const arenaLeft = stage.x + ZONE_W * 6 + 150;
+      const arenaRight = stage.gateX - 100;
+      spawnParticles(owner.x + owner.w / 2, owner.y + owner.h / 2, "#d7a0ff", 26, 380, 0.5, 0);
+      owner.x = clamp(centerX - owner.w / 2, arenaLeft, arenaRight - owner.w);
+      owner.y = Math.min(owner.baseY - 125, centerY - owner.h / 2);
+      owner.vx = 0;
+      owner.vy = 0;
+      spawnParticles(owner.x + owner.w / 2, owner.y + owner.h / 2, "#fff1ff", 32, 430, 0.62, 0);
+      [-0.18, 0, 0.18].forEach((spread) => fireMagicFireball(centerX, centerY, {
+        x: player.x + player.w / 2,
+        y: player.y + player.h / 2,
+      }, spread));
+    } else {
+      fireMagicFireball(centerX, centerY, {
+        x: player.x + player.w / 2,
+        y: player.y + player.h / 2,
+      });
+    }
+    spawnParticles(centerX, centerY, sigil.spell === "teleport" ? "#f4e0ff" : "#ff9a5e", 22, 340, 0.48, 0);
+  }
+
+  function explodeFireball(bullet) {
+    const centerX = bullet.x + bullet.w / 2;
+    const centerY = bullet.y + bullet.h / 2;
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    if (Math.hypot(playerCenterX - centerX, playerCenterY - centerY) < 92) damagePlayer(1, centerX);
+    spawnParticles(centerX, centerY, "#ff7b42", 24, 410, 0.55, 500);
+    game.shake = Math.max(game.shake, 11);
+    sound.tone(92, 0.18, "sawtooth", 0.04, 0.5);
   }
 
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
@@ -2914,70 +3117,85 @@
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
       case "warden-volley":
-        [-0.28, -0.14, 0, 0.14, 0.28].forEach((spread) => fireBullet(enemy, 410, spread, "standard", target));
+        [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       case "warden-air":
         if (enemy.grounded) {
           enemy.vy = -590;
           enemy.vx = -enemy.bossChargeDirection * 230;
         }
-        [-0.3, -0.15, 0, 0.15, 0.3].forEach((spread) => fireBullet(enemy, 350, spread, "standard", target));
+        [-0.14, 0.14].forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       case "warden-suppress":
-        for (let index = -4; index <= 4; index += 1) {
-          fireBullet(enemy, 445 - Math.abs(index) * 18, index * 0.085, "standard", target);
-        }
+        [-0.28, -0.09, 0.09, 0.28].forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       case "warden-core":
-        fireHeavyOrb(enemy, target, 650, 34);
-        [-0.34, -0.22, -0.11, 0, 0.11, 0.22, 0.34].forEach((spread) => fireBullet(enemy, 480, spread, "standard", target));
+        fireWardenBeam(enemy, target);
         break;
       case "furnace-mortar":
-        [-270, -90, 90, 270].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "furnace-volley":
-        for (let index = -2; index <= 2; index += 1) fireBullet(enemy, 375, index * 0.13, "standard", target);
+        [-360, -180, 0, 180, 360].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "furnace-eruption":
-        for (let index = 0; index < 8; index += 1) {
-          fireBullet(enemy, 285, index * TAU / 8, "standard", target);
-        }
-        fireMortar(enemy, enemy.targetX);
+        [-420, -280, -140, 0, 140, 280, 420].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "furnace-rain":
         launchRainCore(enemy);
         break;
       case "weaver-lance":
-        [-0.2, -0.1, 0, 0.1, 0.2].forEach((spread) => fireBullet(enemy, 430, spread, "spell", target));
+        [-220, 0, 220].forEach((offset, index) => summonMagicSigil(
+          enemy,
+          "fireball",
+          enemy.targetX + offset,
+          Math.max(70, enemy.baseY - 380 - index * 45),
+          0.52 + index * 0.14,
+        ));
         break;
       case "weaver-fan":
-        for (let index = -3; index <= 3; index += 1) fireBullet(enemy, 340, index * 0.16, "spell", target);
+        [-360, -180, 0, 180, 360].forEach((offset, index) => summonMagicSigil(
+          enemy,
+          "fireball",
+          enemy.targetX + offset,
+          Math.max(60, enemy.baseY - 300 - (index % 2) * 130),
+          0.48 + index * 0.1,
+        ));
         break;
       case "weaver-orbit":
-        for (let index = 0; index < 12; index += 1) {
-          fireBullet(enemy, 305 + (index % 2) * 45, index * TAU / 12, "spell", target);
+        for (let index = 0; index < 6; index += 1) {
+          const angle = index * TAU / 6;
+          summonMagicSigil(
+            enemy,
+            "fireball",
+            enemy.targetX + Math.cos(angle) * 310,
+            enemy.targetY + Math.sin(angle) * 190,
+            0.46 + index * 0.11,
+          );
         }
         break;
       case "censor-volley":
-        for (let index = -3; index <= 3; index += 1) {
-          fireBullet(enemy, 430, index * 0.115, index % 2 === 0 ? "phase" : "standard", target);
+        for (let index = -4; index <= 4; index += 1) {
+          fireBullet(enemy, 450, index * 0.095, index % 2 === 0 ? "phase" : "standard", target);
         }
+        [-170, 170].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "censor-mortar":
-        [-220, 0, 220].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        [-340, -170, 0, 170, 340].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "censor-air":
         if (enemy.grounded) {
           enemy.vy = -720;
           enemy.vx = -enemy.bossChargeDirection * 360;
         }
-        [-0.22, 0, 0.22].forEach((spread) => fireBullet(enemy, 470, spread, "phase", target));
+        [-0.3, -0.15, 0, 0.15, 0.3].forEach((spread) => fireBullet(enemy, 480, spread, "phase", target));
+        [-230, 230].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "censor-grid":
-        for (let index = -4; index <= 4; index += 1) {
-          fireBullet(enemy, 455, index * 0.09, index % 2 === 0 ? "phase" : "standard", target);
+        for (let index = -5; index <= 5; index += 1) {
+          fireBullet(enemy, 465, index * 0.078, index % 2 === 0 ? "phase" : "standard", target);
         }
-        [-260, 260].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        [-330, -110, 110, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "echo-shotgun":
         for (let index = -2; index <= 2; index += 1) {
@@ -3013,7 +3231,7 @@
     enemy.bossAction = null;
     enemy.bossShotPattern = null;
     enemy.bossChargeDuration = 0;
-    game.shake = 12 + enemy.stageIndex * 2;
+    game.shake = Math.max(game.shake, 12 + enemy.stageIndex * 2);
   }
 
   function startBurst() {
@@ -3600,20 +3818,30 @@
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
       if (kind === "warden") {
         enemy.halfPhaseTriggered = true;
-        startBossChargedShot(enemy, "warden-core", dx, 1.62);
-        enemy.cooldown = 3.15;
-        game.hint = "철각 · 궤도 후퇴 · 적색 노심 차지샷 충전";
+        startBossChargedShot(enemy, "warden-core", dx, 2.08);
+        enemy.cooldown = 3.5;
+        game.hint = "철각 · 장거리 후퇴 · 초대형 관통 차지빔 충전";
         game.hintTimer = 3.1;
       } else if (kind === "furnace") {
         enemy.halfPhaseTriggered = true;
         startBossChargedShot(enemy, "furnace-rain", dx, 1.76);
         enemy.cooldown = 3.45;
-        game.hint = "홍련 · 천공탄 장전 · 낙하 탄우 경보";
+        game.hint = "홍련 · 2초간 무작위 낙하 폭탄 전개";
         game.hintTimer = 3.3;
       }
     }
 
     if (kind === "censor") {
+      enemy.barrierTimer = Math.max(0, (enemy.barrierTimer || 0) - dt);
+      enemy.barrierCooldown = Math.max(0, (enemy.barrierCooldown || 0) - dt);
+      if (enemy.barrierCooldown <= 0 && enemy.barrierTimer <= 0 && distance < 900) {
+        enemy.barrierTimer = hpRatio < 0.5 ? 1.35 : 1.05;
+        enemy.barrierCooldown = hpRatio < 0.5 ? 4.6 : 5.6;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 30, 390, 0.7, 0);
+        game.hint = "무명 · 공허 장막 · 잠시 모든 공격 무효";
+        game.hintTimer = 1.7;
+        sound.tone(185, 0.38, "sine", 0.04, 1.9);
+      }
       enemy.summonCooldown = Math.max(0, (enemy.summonCooldown || 0) - dt);
       const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id).length;
       if (enemy.summonCooldown <= 0 && distance < 1050 && livingSummons < 4) {
@@ -3641,7 +3869,8 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     if (chargingShot) {
-      const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor;
+      const beamRetreatBoost = kind === "warden" && enemy.bossShotPattern === "warden-core" ? 2.25 : 1;
+      const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor * beamRetreatBoost;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
     } else if (distance < 760 && Math.abs(dx) > 115) {
       enemy.vx = moveToward(enemy.vx, Math.sign(dx) * desiredSpeed, 360 * dt);
@@ -3723,19 +3952,16 @@
         }
       } else if (kind === "weaver") {
         if (enemy.bossPhase === 0) {
-          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#d7a0ff", 28, 360, 0.55, 0);
-          enemy.x = clamp(player.x + (dx > 0 ? -420 : 420), arenaLeft + 35, arenaRight - enemy.w - 35);
-          enemy.y = enemy.baseY - 185;
-          enemy.vx = 0;
-          startBossChargedShot(enemy, "weaver-lance", dx, 0.76);
-          enemy.cooldown = 2.2 * recovery;
+          const teleportX = clamp(player.x + (dx > 0 ? -420 : 420), arenaLeft + 80, arenaRight - 80);
+          summonMagicSigil(enemy, "teleport", teleportX, enemy.baseY - 205, 0.68);
+          enemy.cooldown = 1.85 * recovery;
         } else if (enemy.bossPhase === 1) {
           startBossChargedShot(enemy, "weaver-fan", dx, 0.86);
           enemy.cooldown = 1.95 * recovery;
         } else if (enemy.bossPhase === 2) {
-          enemy.windup = 0.68;
-          enemy.bossAction = "dash";
-          enemy.cooldown = 2.05 * recovery;
+          const teleportX = clamp(player.x - Math.sign(dx || 1) * 310, arenaLeft + 80, arenaRight - 80);
+          summonMagicSigil(enemy, "teleport", teleportX, enemy.baseY - 285, 0.54);
+          enemy.cooldown = 1.75 * recovery;
         } else {
           startBossChargedShot(enemy, "weaver-orbit", dx, 1.02);
           enemy.cooldown = 2.5 * recovery;
@@ -3743,20 +3969,20 @@
       } else if (kind === "censor") {
         if (enemy.bossPhase === 0) {
           startBossChargedShot(enemy, "censor-volley", dx, 0.72);
-          enemy.cooldown = 1.55 * recovery;
+          enemy.cooldown = 1.15 * recovery;
         } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.55;
           enemy.bossAction = "dash";
-          enemy.cooldown = 1.65 * recovery;
+          enemy.cooldown = 1.35 * recovery;
         } else if (enemy.bossPhase === 2) {
           startBossChargedShot(enemy, "censor-mortar", dx, 0.98);
-          enemy.cooldown = 2.05 * recovery;
+          enemy.cooldown = 1.55 * recovery;
         } else if (enemy.bossPhase === 3) {
           startBossChargedShot(enemy, "censor-air", dx, 0.66);
-          enemy.cooldown = 1.8 * recovery;
+          enemy.cooldown = 1.45 * recovery;
         } else {
           startBossChargedShot(enemy, "censor-grid", dx, 1.12);
-          enemy.cooldown = 2.35 * recovery;
+          enemy.cooldown = 1.85 * recovery;
         }
       } else {
         if (enemy.bossPhase === 0) {
@@ -3790,10 +4016,18 @@
         if (enemy.bossAction === "slam") {
           enemy.vy = -760;
           enemy.vx = Math.sign(dx) * 300;
-          for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 310, i * 0.18);
+          if (kind === "furnace") {
+            [-280, -90, 90, 280].forEach((offset) => fireMortar(enemy, player.x + player.w / 2 + offset));
+          } else {
+            for (let i = -2; i <= 2; i += 1) fireBullet(enemy, 310, i * 0.18);
+          }
         } else if (enemy.bossAction === "dash") {
           enemy.vx = Math.sign(dx) * (420 + rank * 65);
           if (Math.abs(dx) < 165 && Math.abs(player.y - enemy.y) < 100) damagePlayer(rank >= 3 ? 2 : 1, enemy.x);
+          if (kind === "censor") {
+            [-0.2, -0.1, 0, 0.1, 0.2].forEach((spread) => fireBullet(enemy, 420, spread, "phase"));
+            [-190, 190].forEach((offset) => fireMortar(enemy, player.x + player.w / 2 + offset));
+          }
         } else if (enemy.bossAction === "echoSlash") {
           enemy.vx = Math.sign(dx) * 620;
           enemy.vy = player.y + player.h < enemy.y ? -330 : enemy.vy;
@@ -3878,6 +4112,66 @@
   function updateBullets(dt) {
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
       const bullet = bullets[i];
+
+      if (bullet.kind === "rain-controller") {
+        bullet.life -= dt;
+        bullet.spawnTimer -= dt;
+        while (bullet.spawnTimer <= 0 && bullet.life > 0) {
+          spawnRainBomb(bullet);
+          bullet.spawnTimer += 0.1 + hash(bullet.spawnSerial * 13.7 + game.time) * 0.1;
+        }
+        if (bullet.life <= 0) bullets.splice(i, 1);
+        continue;
+      }
+
+      if (bullet.kind === "warden-beam") {
+        bullet.life -= dt;
+        if (!bullet.hitPlayer) {
+          const playerCenterX = player.x + player.w / 2;
+          const playerCenterY = player.y + player.h / 2;
+          const relativeX = playerCenterX - bullet.x;
+          const relativeY = playerCenterY - bullet.y;
+          const projection = clamp(relativeX * bullet.beamDX + relativeY * bullet.beamDY, 0, bullet.beamLength);
+          const closestX = bullet.x + bullet.beamDX * projection;
+          const closestY = bullet.y + bullet.beamDY * projection;
+          if (Math.hypot(playerCenterX - closestX, playerCenterY - closestY) <= bullet.beamThickness * 0.5) {
+            bullet.hitPlayer = true;
+            damagePlayer(2, bullet.x);
+          }
+        }
+        if (bullet.life <= 0) bullets.splice(i, 1);
+        continue;
+      }
+
+      if (bullet.kind === "magic-sigil") {
+        bullet.life -= dt;
+        bullet.triggerTimer -= dt;
+        if (!bullet.triggered && bullet.triggerTimer <= 0) {
+          bullet.triggered = true;
+          triggerMagicSigil(bullet);
+        }
+        if (bullet.life <= 0) bullets.splice(i, 1);
+        continue;
+      }
+
+      if (bullet.kind === "homing-missile") {
+        const centerX = bullet.x + bullet.w / 2;
+        const centerY = bullet.y + bullet.h / 2;
+        const currentAngle = Math.atan2(bullet.vy, bullet.vx);
+        const desiredAngle = Math.atan2(player.y + player.h / 2 - centerY, player.x + player.w / 2 - centerX);
+        let angleDelta = desiredAngle - currentAngle;
+        while (angleDelta > Math.PI) angleDelta -= TAU;
+        while (angleDelta < -Math.PI) angleDelta += TAU;
+        const nextAngle = currentAngle + clamp(angleDelta, -bullet.turnRate * dt, bullet.turnRate * dt);
+        bullet.vx = Math.cos(nextAngle) * bullet.speed;
+        bullet.vy = Math.sin(nextAngle) * bullet.speed;
+        bullet.satelliteTimer -= dt;
+        if (bullet.satelliteTimer <= 0) {
+          spawnMissileSatelliteShots(bullet);
+          bullet.satelliteTimer += 0.38;
+        }
+      }
+
       bullet.life -= dt;
       let remove = bullet.life <= 0;
       let exploded = false;
@@ -3897,6 +4191,9 @@
           if (bullet.kind === "mortar") {
             explodeMortar(bullet);
             exploded = true;
+          } else if (bullet.kind === "fireball") {
+            explodeFireball(bullet);
+            exploded = true;
           } else {
             damagePlayer(bullet.damage || 1, bullet.x);
           }
@@ -3915,12 +4212,16 @@
 
         if (remove) break;
         for (const platform of platforms) {
+          if (bullet.piercePlatforms) continue;
           if (overlaps(bullet, platform)) {
             if (bullet.kind === "mortar") {
               explodeMortar(bullet);
               exploded = true;
             } else if (bullet.kind === "rain-core") {
               explodeRainCore(bullet);
+              exploded = true;
+            } else if (bullet.kind === "fireball") {
+              explodeFireball(bullet);
               exploded = true;
             }
             remove = true;
@@ -5014,7 +5315,7 @@
   function drawEnemyTelegraph(enemy) {
     if (enemy.windup <= 0) return;
     const pulse = 0.45 + Math.sin(game.time * 28) * 0.22;
-    if (enemy.type === "boss" && enemy.bossAction === "chargeShot") {
+    if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && enemy.bossKind !== "weaver") {
       const duration = Math.max(0.01, enemy.bossChargeDuration || enemy.windup);
       const progress = clamp(1 - enemy.windup / duration, 0, 1);
       const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
@@ -5076,6 +5377,23 @@
     const radius = 54 + pulse * 5 + chargeProgress * 8;
     ctx.save();
     ctx.translate(x, y);
+    if (bossKind === "weaver") {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.16 + pulse * 0.14;
+      for (let shard = 0; shard < 7; shard += 1) {
+        const drift = Math.sin(game.time * 1.4 + shard * 2.1) * 9;
+        const sx = -45 + shard * 15;
+        const sy = -34 + (shard % 3) * 33 + drift;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(-0.35 + Math.sin(game.time + shard) * 0.18);
+        ctx.fillRect(-2, -8, 4, 16);
+        ctx.restore();
+      }
+      ctx.restore();
+      return;
+    }
     ctx.globalCompositeOperation = "lighter";
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
@@ -5276,22 +5594,7 @@
       ctx.arc(0, 48, 7 + pulse * 2, 0, TAU);
       ctx.fill();
     } else if (bossKind === "weaver") {
-      // 부유 대마법사: 가면, 장포, 지팡이, 다층 마법진을 한 실루엣으로 묶는다.
-      ctx.save();
-      ctx.rotate(enemy.anim * 0.35);
-      ctx.strokeStyle = `rgba(215, 160, 255, ${0.55 + pulse * 0.35})`;
-      ctx.lineWidth = 2;
-      for (let ring = 0; ring < 2; ring += 1) {
-        ctx.beginPath();
-        ctx.arc(0, 42, 39 + ring * 11, 0, TAU);
-        ctx.stroke();
-      }
-      for (let rune = 0; rune < 8; rune += 1) {
-        ctx.rotate(TAU / 8);
-        ctx.fillStyle = accent;
-        ctx.fillRect(47, -1, 7, 2);
-      }
-      ctx.restore();
+      // 부유 대마법사 본체에는 마법진을 붙이지 않는다. 모든 진은 월드 좌표에 소환된다.
       ctx.fillStyle = flash ? "#ffffff" : "#1d162c";
       ctx.beginPath();
       ctx.moveTo(-17, 30);
@@ -5329,20 +5632,6 @@
       ctx.beginPath();
       ctx.arc(22, 20, 10 + pulse * 2, 0, TAU);
       ctx.stroke();
-      if (chargingShot) {
-        ctx.save();
-        ctx.translate(66, 43);
-        ctx.rotate(-game.time * 2.6);
-        ctx.globalCompositeOperation = "lighter";
-        ctx.beginPath();
-        ctx.arc(0, 0, 16 + chargeProgress * 13, 0, TAU);
-        ctx.moveTo(0, -20);
-        ctx.lineTo(18, 11);
-        ctx.lineTo(-18, 11);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
-      }
     } else {
       // 흑마법사 무명: 기계 날개 대신 후드, 찢어진 망토, 소환 구체로 구성한다.
       ctx.fillStyle = "rgba(4, 2, 11, 0.82)";
@@ -5399,6 +5688,34 @@
         ctx.beginPath();
         ctx.arc(Math.cos(angle) * 43, 48 + Math.sin(angle) * 25, 4, 0, TAU);
         ctx.fill();
+      }
+      if (enemy.barrierTimer > 0) {
+        const barrierPulse = 1 + Math.sin(game.time * 15) * 0.035;
+        ctx.save();
+        ctx.translate(0, 48);
+        ctx.scale(barrierPulse, barrierPulse);
+        ctx.rotate(game.time * 0.8);
+        ctx.fillStyle = "rgba(138, 69, 255, 0.09)";
+        ctx.strokeStyle = "rgba(211, 160, 255, 0.9)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let side = 0; side < 6; side += 1) {
+          const angle = -Math.PI / 2 + side * TAU / 6;
+          const x = Math.cos(angle) * 54;
+          const y = Math.sin(angle) * 66;
+          if (side === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.rotate(-game.time * 1.7);
+        ctx.strokeStyle = "rgba(255, 73, 108, 0.75)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 62, -1.1, 1.5);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -6204,6 +6521,115 @@
     const centerX = bullet.x + bullet.w / 2;
     const centerY = bullet.y + bullet.h / 2;
     const radius = Math.max(bullet.w, bullet.h) * 1.15;
+    if (bullet.kind === "rain-controller") return;
+    if (bullet.kind === "warden-beam") {
+      const alpha = clamp(bullet.life / bullet.maxLife, 0, 1);
+      const endX = bullet.x + bullet.beamDX * bullet.beamLength;
+      const endY = bullet.y + bullet.beamDY * bullet.beamLength;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = `rgba(255, 36, 72, ${0.18 + alpha * 0.18})`;
+      ctx.lineWidth = bullet.beamThickness + 46;
+      ctx.beginPath();
+      ctx.moveTo(bullet.x, bullet.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 58, 86, ${0.62 + alpha * 0.25})`;
+      ctx.lineWidth = bullet.beamThickness;
+      ctx.beginPath();
+      ctx.moveTo(bullet.x, bullet.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 241, 226, ${0.82 + alpha * 0.18})`;
+      ctx.lineWidth = 23;
+      ctx.beginPath();
+      ctx.moveTo(bullet.x, bullet.y);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "magic-sigil") {
+      const progress = 1 - clamp(bullet.triggerTimer / Math.max(0.01, bullet.maxLife - 0.42), 0, 1);
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(game.time * (bullet.spell === "teleport" ? -2.1 : 1.65));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = bullet.spell === "teleport" ? "#f0c8ff" : "#ffb06f";
+      ctx.lineWidth = 2 + progress * 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 + progress * 13, 0, TAU);
+      ctx.stroke();
+      ctx.rotate(-game.time * 3.4);
+      ctx.beginPath();
+      for (let point = 0; point < 6; point += 1) {
+        const angle = -Math.PI / 2 + point * TAU / 6;
+        const x = Math.cos(angle) * (16 + progress * 10);
+        const y = Math.sin(angle) * (16 + progress * 10);
+        if (point === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = bullet.spell === "teleport" ? "rgba(215,160,255,0.18)" : "rgba(255,123,66,0.2)";
+      ctx.beginPath();
+      ctx.arc(0, 0, 9 + progress * 7, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "homing-missile") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255,48,79,0.22)";
+      ctx.fillRect(-34, -10, 42, 20);
+      ctx.fillStyle = "#d9dde0";
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(4, -7);
+      ctx.lineTo(-15, -6);
+      ctx.lineTo(-15, 6);
+      ctx.lineTo(4, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#ff304f";
+      ctx.fillRect(-17, -4, 9, 8);
+      ctx.fillStyle = "#ffb05e";
+      ctx.beginPath();
+      ctx.moveTo(-16, -5);
+      ctx.lineTo(-30 - Math.sin(game.time * 31) * 5, 0);
+      ctx.lineTo(-16, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "fireball") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255,73,50,0.2)";
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 9, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#ff5b35";
+      ctx.beginPath();
+      ctx.moveTo(15, 0);
+      ctx.quadraticCurveTo(-5, -17, -27 - Math.sin(game.time * 24) * 7, -4);
+      ctx.quadraticCurveTo(-10, 0, -27, 7);
+      ctx.quadraticCurveTo(-4, 17, 15, 0);
+      ctx.fill();
+      ctx.fillStyle = "#fff3b0";
+      ctx.beginPath();
+      ctx.arc(5, 0, 6, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
     if (bullet.kind === "heavy" || bullet.kind === "rain-core" || bullet.kind === "rain-drop") {
       const core = bullet.kind === "rain-core";
       ctx.save();
