@@ -428,7 +428,7 @@ button:focus-visible {
 
 .admin-enemy-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -498,6 +498,19 @@ button:focus-visible {
 .enemy-token.shield::after { right: -11px; top: 1px; width: 9px; height: 28px; background: #7a99a8; box-shadow: inset 2px 0 0 #d8f5f5; }
 .enemy-token.boss { width: 36px; height: 38px; border-color: #ff6b83; transform: scale(1.04); }
 .enemy-token.boss::before { left: 7px; width: 17px; border-color: #ff879a; }
+.enemy-token.repair {
+  width: 27px;
+  height: 27px;
+  border-color: #65f5ea;
+  background: #112f36;
+  transform: rotate(45deg);
+  box-shadow: inset 0 0 0 5px #1b5960, 0 0 12px rgba(101, 245, 234, 0.45);
+}
+.enemy-token.repair::before { left: 10px; top: 4px; width: 4px; height: 16px; border: 0; background: #dffffb; box-shadow: none; }
+.enemy-token.repair::after { left: 4px; right: auto; top: 10px; width: 16px; height: 4px; background: #dffffb; box-shadow: none; }
+.enemy-token.boost { width: 37px; height: 12px; margin-top: 15px; border-color: #ffcd70; background: #5f4818; box-shadow: inset 0 -4px 0 #211a0d, 0 0 12px rgba(255, 205, 112, 0.48); }
+.enemy-token.boost::before { left: 5px; top: -11px; width: 23px; height: 8px; border: 0; background: #ffcd70; clip-path: polygon(50% 0, 100% 100%, 65% 100%, 65% 70%, 35% 70%, 35% 100%, 0 100%); box-shadow: none; }
+.enemy-token.boost::after { display: none; }
 
 .admin-spawn-panel > p {
   margin: 8px 0 0;

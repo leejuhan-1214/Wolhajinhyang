@@ -11,14 +11,14 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=1.5.1" />
+    <link rel="stylesheet" href="styles.css?v=1.6.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.5.1</div>
+        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.0</div>
         <h1>월하잔향</h1>
         <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
@@ -26,11 +26,11 @@
           <span>여섯 해 전에 사망한 노동자들의 구조 요청이 폐기장에서 송신된다. 한서린은 2,418명의 기억 생존자와 열아홉 개의 자신을 추적하고, 끝내 같은 얼굴을 한 원본 대행체와 ‘누가 진짜인가’가 아닌 ‘누가 살아갈 수 있는가’를 두고 맞선다.</span>
         </div>
         <div class="stage-strip" aria-label="전체 스테이지">
-          <button class="stage-card" type="button" data-admin-stage="1"><b>STAGE 01</b>작전 4호 · 백야 폐기장<em>철각 · 방벽 돌진 / 제압 사격</em></button>
-          <button class="stage-card" type="button" data-admin-stage="2"><b>STAGE 02</b>검은 공장 · 타오르는 심장<em>홍련 · 용탕 낙하 / 노심 폭발</em></button>
-          <button class="stage-card" type="button" data-admin-stage="3"><b>STAGE 03</b>기억 성당 · 거짓된 합창<em>백면 · 배후 전이 / 기억침 궤도</em></button>
-          <button class="stage-card" type="button" data-admin-stage="4"><b>STAGE 04</b>새벽 송신탑 · 마지막 증언<em>무명 · 좌표 말소 / 격자 삭제</em></button>
-          <button class="stage-card" type="button" data-admin-stage="5"><b>STAGE 05</b>원형 보관소 · 거울의 뿌리<em>잔영-00 · 거울 발도 / 기억 폭주</em></button>
+          <button class="stage-card" type="button" data-admin-stage="1"><b>STAGE 01</b>작전 4호 · 백야 폐기장<em>보스 · 철각</em></button>
+          <button class="stage-card" type="button" data-admin-stage="2"><b>STAGE 02</b>검은 공장 · 타오르는 심장<em>보스 · 홍련</em></button>
+          <button class="stage-card" type="button" data-admin-stage="3"><b>STAGE 03</b>기억 성당 · 거짓된 합창<em>보스 · 백면</em></button>
+          <button class="stage-card" type="button" data-admin-stage="4"><b>STAGE 04</b>새벽 송신탑 · 마지막 증언<em>보스 · 무명</em></button>
+          <button class="stage-card" type="button" data-admin-stage="5"><b>STAGE 05</b>원형 보관소 · 거울의 뿌리<em>보스 · 잔영-00</em></button>
         </div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
@@ -72,7 +72,7 @@
 
       <section id="admin-spawn-panel" class="admin-spawn-panel" aria-label="관리자 적 생성 패널" hidden>
         <header>
-          <div><small>ADMIN ENTITY CATALOG</small><strong>현재 위치에 생성할 적 선택</strong></div>
+          <div><small>ADMIN ENTITY CATALOG</small><strong>현재 위치에 생성·설치할 항목 선택</strong></div>
           <button id="admin-spawn-close" type="button" aria-label="적 생성 패널 닫기">×</button>
         </header>
         <div class="admin-enemy-grid">
@@ -83,12 +83,14 @@
           <button type="button" data-admin-spawn="drone"><i class="enemy-token drone"></i><b>감시 드론</b><span>공중 기체</span></button>
           <button type="button" data-admin-spawn="shield"><i class="enemy-token shield"></i><b>방패병</b><span>전면 방어</span></button>
           <button type="button" data-admin-spawn="boss"><i class="enemy-token boss"></i><b>현재 막 보스</b><span>보스 개체</span></button>
+          <button type="button" data-admin-spawn="repair"><i class="enemy-token repair"></i><b>회복 수복편</b><span>체력 2 회복</span></button>
+          <button type="button" data-admin-spawn="boost"><i class="enemy-token boost"></i><b>도약 발판</b><span>황색 점프 장치</span></button>
         </div>
         <p><kbd>X</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 생성 위치가 저장되며 관리자 <kbd>Z</kbd>로 영구 삭제합니다.</p>
       </section>
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=1.5.1"></script>
+  <script src="game.js?v=1.6.0"></script>
   </body>
 </html>
