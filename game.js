@@ -8,6 +8,7 @@
   const endScreen = document.getElementById("end-screen");
   const startButton = document.getElementById("start-button");
   const continueButton = document.getElementById("continue-button");
+  const resumeButton = document.getElementById("resume-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
   const adminStatus = document.getElementById("admin-status");
@@ -2310,21 +2311,28 @@
     sound.shotgun(overcharged);
   }
 
-  function startAttack() {
+  function startAttack(aimOverride = null) {
     if (game.mode !== "playing" || player.attackCooldown > 0 || player.attackTimer > 0) return;
 
-    const movingLeft = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
-    const movingRight = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
-    if (movingLeft && !movingRight) player.facing = -1;
-    if (movingRight && !movingLeft) player.facing = 1;
+    if (aimOverride) {
+      const directionLength = Math.max(0.001, Math.hypot(aimOverride.x, aimOverride.y));
+      player.attackDir.x = aimOverride.x / directionLength;
+      player.attackDir.y = aimOverride.y / directionLength;
+      if (Math.abs(player.attackDir.x) > 0.06) player.facing = player.attackDir.x > 0 ? 1 : -1;
+    } else {
+      const movingLeft = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
+      const movingRight = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
+      if (movingLeft && !movingRight) player.facing = -1;
+      if (movingRight && !movingLeft) player.facing = 1;
 
-    let dirY = 0;
-    if (keys.has("KeyW") || keys.has("ArrowUp") || (moveStick.active && moveStick.y < -0.28)) dirY = -0.82;
-    if (keys.has("KeyS") || keys.has("ArrowDown") || (moveStick.active && moveStick.y > 0.28)) dirY = 0.82;
-    const dirX = dirY === 0 ? player.facing : player.facing * 0.58;
-    const directionLength = Math.max(1, Math.hypot(dirX, dirY));
-    player.attackDir.x = dirX / directionLength;
-    player.attackDir.y = dirY / directionLength;
+      let dirY = 0;
+      if (keys.has("KeyW") || keys.has("ArrowUp") || (moveStick.active && moveStick.y < -0.28)) dirY = -0.82;
+      if (keys.has("KeyS") || keys.has("ArrowDown") || (moveStick.active && moveStick.y > 0.28)) dirY = 0.82;
+      const dirX = dirY === 0 ? player.facing : player.facing * 0.58;
+      const directionLength = Math.max(1, Math.hypot(dirX, dirY));
+      player.attackDir.x = dirX / directionLength;
+      player.attackDir.y = dirY / directionLength;
+    }
     player.chargedAttack = player.echoGauge >= 100;
     if (player.chargedAttack) player.echoGauge = 0;
 
@@ -2416,18 +2424,21 @@
     return true;
   }
 
-  function attackBox() {
-    const vertical = Math.abs(player.attackDir.y) > 0.25;
-    const reach = player.chargedAttack ? 82 : player.slashChain === 3 ? 76 : 68;
-    const centerX = player.x + player.w / 2 + player.attackDir.x * reach;
-    const centerY = player.y + player.h / 2 + player.attackDir.y * reach;
-    const charged = player.chargedAttack;
+  function buildAttackBox(direction, charged, slashChain) {
+    const vertical = Math.abs(direction.y) > 0.25;
+    const reach = charged ? 82 : slashChain === 3 ? 76 : 68;
+    const centerX = player.x + player.w / 2 + direction.x * reach;
+    const centerY = player.y + player.h / 2 + direction.y * reach;
     return {
-      x: centerX - (vertical ? (charged ? 70 : 55) : (charged ? 108 : player.slashChain === 3 ? 92 : 84)),
+      x: centerX - (vertical ? (charged ? 70 : 55) : (charged ? 108 : slashChain === 3 ? 92 : 84)),
       y: centerY - (vertical ? (charged ? 105 : 82) : (charged ? 72 : 52)),
-      w: vertical ? (charged ? 140 : 110) : charged ? 216 : player.slashChain === 3 ? 184 : 168,
+      w: vertical ? (charged ? 140 : 110) : charged ? 216 : slashChain === 3 ? 184 : 168,
       h: vertical ? (charged ? 210 : 164) : charged ? 144 : 104,
     };
+  }
+
+  function attackBox() {
+    return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
   }
 
   function isAttackActive() {
@@ -7667,6 +7678,7 @@
 
   function togglePause() {
     if (game.mode === "playing") {
+      clearTouchPointers();
       game.mode = "paused";
       pauseScreen.classList.add("visible");
     } else if (game.mode === "paused") {
@@ -7716,6 +7728,59 @@
     pointer.screenX = clamp((event.clientX - bounds.left) * (W / bounds.width), 0, W);
     pointer.screenY = clamp((event.clientY - bounds.top) * (H / bounds.height), 0, H);
     pointer.active = true;
+  }
+
+  function aimAtWorldPoint(worldX, worldY) {
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    const deltaX = worldX - playerCenterX;
+    const deltaY = worldY - playerCenterY;
+    const length = Math.max(0.001, Math.hypot(deltaX, deltaY));
+    return { x: deltaX / length, y: deltaY / length };
+  }
+
+  function findTouchSlashTarget(worldX, worldY) {
+    const nextSlashChain = player.grounded
+      ? (player.slashChainTimer > 0 ? (player.slashChain % 3) + 1 : 1)
+      : 0;
+    const charged = player.echoGauge >= 100;
+    let closest = null;
+    let closestDistance = Infinity;
+
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      const margin = enemy.type === "boss" ? 88 : 48;
+      const tappedEnemy = worldX >= enemy.x - margin
+        && worldX <= enemy.x + enemy.w + margin
+        && worldY >= enemy.y - margin
+        && worldY <= enemy.y + enemy.h + margin;
+      if (!tappedEnemy) continue;
+
+      const enemyCenterX = enemy.x + enemy.w / 2;
+      const enemyCenterY = enemy.y + enemy.h / 2;
+      const aim = aimAtWorldPoint(enemyCenterX, enemyCenterY);
+      const prospectiveSlashBox = buildAttackBox(aim, charged, nextSlashChain);
+      if (!overlaps(prospectiveSlashBox, enemy)) continue;
+
+      const tapDistance = Math.hypot(enemyCenterX - worldX, enemyCenterY - worldY);
+      if (tapDistance < closestDistance) {
+        closest = { enemy, aim };
+        closestDistance = tapDistance;
+      }
+    }
+    return closest;
+  }
+
+  function startTouchContextAttack() {
+    if (game.mode !== "playing" || game.cutscene || adminSpawnPanel?.hidden === false) return;
+    const worldX = pointer.screenX + camera.x;
+    const worldY = pointer.screenY + camera.y;
+    const slashTarget = findTouchSlashTarget(worldX, worldY);
+    if (slashTarget) {
+      startAttack(slashTarget.aim);
+      return;
+    }
+    startShotgun(aimAtWorldPoint(worldX, worldY));
   }
 
   function setVirtualKey(code, active) {
@@ -7834,14 +7899,9 @@
     }
     if (action === "move") updateMoveJoystick(entry, event.clientX, event.clientY);
     else if (action === "jump") setVirtualKey("Space", true);
-    else if (action === "slash") startAttack();
     else if (action === "burst") startBurst();
     else if (action === "execute") activateExecution();
     else if (action === "pause") togglePause();
-    else if (action === "shotgun") {
-      syncMoveStickAimPointer();
-      startShotgun(getMoveStickAim());
-    }
   }
 
   function handleTouchControlMove(event) {
@@ -7863,7 +7923,11 @@
     event.preventDefault();
     updatePointer(event);
     sound.wake();
-    if (game.cutscene) requestCutsceneAdvance();
+    if (game.cutscene) {
+      requestCutsceneAdvance();
+      return;
+    }
+    startTouchContextAttack();
   });
   canvas.addEventListener("pointermove", (event) => {
     if (event.pointerType !== "touch") return;
@@ -7929,6 +7993,10 @@
 
   startButton.addEventListener("click", () => resetGame(false));
   continueButton?.addEventListener("click", () => resetGame(true));
+  resumeButton?.addEventListener("click", () => {
+    sound.wake();
+    togglePause();
+  });
   restartButton.addEventListener("click", () => resetGame(false));
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
   for (const button of adminSpawnButtons) {
