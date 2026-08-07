@@ -11,14 +11,14 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=1.6.4" />
+    <link rel="stylesheet" href="styles.css?v=1.6.5" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.4</div>
+        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.5</div>
         <h1>월하잔향</h1>
         <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
@@ -53,6 +53,7 @@
         <div class="campaign-actions">
           <button id="start-button" type="button">새 작전</button>
           <button id="continue-button" type="button" hidden disabled>이어하기</button>
+          <button id="fullscreen-button" class="fullscreen-button" type="button" hidden aria-pressed="false">⛶ 전체화면</button>
         </div>
         <p class="tip">공중 공격으로 처형 게이지를 채우고 Q로 발동하세요. 봉쇄전에서는 적 연계의 핵심 개체를 먼저 찾고, 재배열되는 발판에 대응해야 합니다.</p>
       </section>
@@ -102,10 +103,11 @@
           <button type="button" class="touch-execute" data-touch-action="execute"><b>처형</b><small>Q</small></button>
         </div>
         <button type="button" class="touch-pause" data-touch-action="pause" aria-label="일시정지">Ⅱ</button>
+        <button type="button" class="touch-fullscreen" data-touch-action="fullscreen" aria-label="전체화면 전환" aria-pressed="false" hidden>⛶</button>
       </section>
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=1.6.4"></script>
+  <script src="game.js?v=1.6.5"></script>
   </body>
 </html>

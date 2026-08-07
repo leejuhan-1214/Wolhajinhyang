@@ -1,4 +1,12 @@
-# 월하잔향: 백야 작전 — v1.6.4
+# 월하잔향: 백야 작전 — v1.6.5
+
+## v1.6.5 모바일 브라우저 화면 잘림 방지
+
+- 주소창과 하단 도구 모음이 열리고 닫힐 때 `visualViewport`의 실제 표시 영역으로 게임 크기를 즉시 다시 계산
+- 짧은 가로 화면을 강제로 넘치게 하던 320×180 최소 크기 제한 제거
+- 회전, 브라우저 UI 변화, 전체화면 전환 때 캔버스와 터치 조작 UI를 안전 영역 안에 다시 배치
+- 지원되는 모바일 브라우저에서는 시작할 때 전체화면을 요청하고 시작 화면과 게임 화면에도 전체화면 전환 버튼 제공
+- 전체화면 API가 없는 iPhone Safari에서도 주소창 아래의 실제 보이는 영역 안에 게임이 맞도록 동작
 
 ## v1.6.4 모바일 상황별 터치 공격
 
@@ -225,7 +233,7 @@ node server.mjs
 
 ## GitHub에 올리기
 
-이 폴더의 **내용물**을 저장소 루트로 사용하세요. 저장소 첫 화면에서 `index.html`, `game.js`, `VERSION.txt`, `.github`가 바로 보여야 합니다. `moonlit-echo-github-v1.6.4-windows/index.html`처럼 한 단계 아래에 들어가면 GitHub Pages는 이전 루트 파일을 계속 배포합니다.
+이 폴더의 **내용물**을 저장소 루트로 사용하세요. 저장소 첫 화면에서 `index.html`, `game.js`, `VERSION.txt`, `.github`가 바로 보여야 합니다. `moonlit-echo-github-v1.6.5-windows/index.html`처럼 한 단계 아래에 들어가면 GitHub Pages는 이전 루트 파일을 계속 배포합니다.
 
 GitHub 웹 업로드를 사용할 때는 배포용 ZIP을 먼저 압축 해제한 뒤, 생긴 파일과 폴더를 전부 저장소 루트에 올리세요. ZIP 파일 자체나 ZIP을 감싸는 상위 폴더를 올리면 안 됩니다.
 
@@ -242,7 +250,7 @@ git push -u origin main
 
 저장소의 `Settings → Pages → Build and deployment → Source`를 `GitHub Actions`로 선택하면 `main` 브랜치에 푸시할 때 게임이 자동 배포됩니다. 배포 주소는 Actions의 `Deploy GitHub Pages` 작업에서 확인할 수 있습니다.
 
-업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.4`가 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
+업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.5`가 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
 
 로컬 실행과 문법 검사는 다음 명령으로 할 수 있습니다.
 

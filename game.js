@@ -8,6 +8,7 @@
   const endScreen = document.getElementById("end-screen");
   const startButton = document.getElementById("start-button");
   const continueButton = document.getElementById("continue-button");
+  const fullscreenButton = document.getElementById("fullscreen-button");
   const resumeButton = document.getElementById("resume-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
@@ -18,6 +19,7 @@
   const touchControlButtons = [...(document.querySelectorAll?.("[data-touch-key], [data-touch-action]") || [])];
   const touchJoystick = document.querySelector?.("[data-touch-action='move']") || null;
   const touchJoystickKnob = touchJoystick?.querySelector?.(".touch-joystick-knob") || null;
+  const touchFullscreenButton = document.querySelector?.("[data-touch-action='fullscreen']") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
@@ -7862,11 +7864,69 @@
     for (const pointerId of [...touchPointers.keys()]) releaseTouchPointer(pointerId);
   }
 
-  function syncTouchControls() {
+  function isTouchDevice() {
     const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
-    const touchCapable = Boolean(coarsePointer || navigator.maxTouchPoints > 0 || "ontouchstart" in window);
+    return Boolean(coarsePointer || navigator.maxTouchPoints > 0 || "ontouchstart" in window);
+  }
+
+  let viewportSyncFrame = 0;
+
+  function syncVisibleViewport() {
+    viewportSyncFrame = 0;
+    const viewport = window.visualViewport;
+    const width = Math.max(1, Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth));
+    const height = Math.max(1, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight));
+    document.documentElement.style.setProperty("--app-width", `${width}px`);
+    document.documentElement.style.setProperty("--app-height", `${height}px`);
+  }
+
+  function scheduleVisibleViewportSync() {
+    if (viewportSyncFrame) cancelAnimationFrame(viewportSyncFrame);
+    viewportSyncFrame = requestAnimationFrame(syncVisibleViewport);
+  }
+
+  function fullscreenSupported() {
+    return Boolean(document.fullscreenEnabled !== false && document.documentElement.requestFullscreen);
+  }
+
+  function syncFullscreenButtons() {
+    const supported = fullscreenSupported();
+    const active = Boolean(document.fullscreenElement);
+    if (fullscreenButton) {
+      fullscreenButton.hidden = !supported || !isTouchDevice();
+      fullscreenButton.textContent = active ? "전체화면 종료" : "⛶ 전체화면";
+      fullscreenButton.setAttribute("aria-pressed", String(active));
+    }
+    if (touchFullscreenButton) {
+      touchFullscreenButton.hidden = !supported;
+      touchFullscreenButton.textContent = active ? "×" : "⛶";
+      touchFullscreenButton.setAttribute("aria-pressed", String(active));
+      touchFullscreenButton.setAttribute("aria-label", active ? "전체화면 종료" : "전체화면 전환");
+    }
+  }
+
+  async function toggleMobileFullscreen() {
+    if (!fullscreenSupported() && !document.fullscreenElement) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen?.();
+      else await document.documentElement.requestFullscreen();
+    } catch (error) {
+      console.info("Fullscreen request was not available:", error?.message || error);
+    }
+    scheduleVisibleViewportSync();
+    syncFullscreenButtons();
+  }
+
+  function enterMobileFullscreen() {
+    if (!isTouchDevice() || document.fullscreenElement || !fullscreenSupported()) return;
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+
+  function syncTouchControls() {
+    const touchCapable = isTouchDevice();
     document.documentElement.classList.toggle("touch-capable", touchCapable);
     if (touchControls) touchControls.hidden = !touchCapable;
+    syncFullscreenButtons();
   }
 
   function handleTouchControlDown(event) {
@@ -7902,6 +7962,7 @@
     else if (action === "burst") startBurst();
     else if (action === "execute") activateExecution();
     else if (action === "pause") togglePause();
+    else if (action === "fullscreen") toggleMobileFullscreen();
   }
 
   function handleTouchControlMove(event) {
@@ -7989,10 +8050,26 @@
     button.addEventListener("lostpointercapture", handleTouchControlUp);
   }
   window.matchMedia?.("(pointer: coarse)")?.addEventListener?.("change", syncTouchControls);
+  window.visualViewport?.addEventListener("resize", scheduleVisibleViewportSync);
+  window.visualViewport?.addEventListener("scroll", scheduleVisibleViewportSync);
+  window.addEventListener("resize", scheduleVisibleViewportSync);
+  window.addEventListener("orientationchange", () => setTimeout(scheduleVisibleViewportSync, 120));
+  document.addEventListener("fullscreenchange", () => {
+    scheduleVisibleViewportSync();
+    syncFullscreenButtons();
+  });
+  syncVisibleViewport();
   syncTouchControls();
 
-  startButton.addEventListener("click", () => resetGame(false));
-  continueButton?.addEventListener("click", () => resetGame(true));
+  startButton.addEventListener("click", () => {
+    enterMobileFullscreen();
+    resetGame(false);
+  });
+  continueButton?.addEventListener("click", () => {
+    enterMobileFullscreen();
+    resetGame(true);
+  });
+  fullscreenButton?.addEventListener("click", toggleMobileFullscreen);
   resumeButton?.addEventListener("click", () => {
     sound.wake();
     togglePause();

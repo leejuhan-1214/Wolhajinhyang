@@ -1,5 +1,7 @@
 :root {
   color-scheme: dark;
+  --app-width: 100vw;
+  --app-height: 100dvh;
   --ink: #070a12;
   --panel: rgba(7, 12, 24, 0.9);
   --cyan: #65f5ea;
@@ -15,8 +17,9 @@
 
 html,
 body {
-  width: 100%;
-  height: 100%;
+  width: var(--app-width);
+  height: var(--app-height);
+  min-height: var(--app-height);
   margin: 0;
   overflow: hidden;
   background: var(--ink);
@@ -27,6 +30,8 @@ body {
 }
 
 body {
+  position: fixed;
+  inset: 0;
   display: grid;
   place-items: center;
   background:
@@ -36,10 +41,12 @@ body {
 
 .game-shell {
   position: relative;
-  width: min(100vw, 177.7778vh);
-  height: min(100vh, 56.25vw);
-  min-width: 320px;
-  min-height: 180px;
+  width: min(var(--app-width), calc(var(--app-height) * 1.777778));
+  height: min(var(--app-height), calc(var(--app-width) * 0.5625));
+  min-width: 0;
+  min-height: 0;
+  max-width: var(--app-width);
+  max-height: var(--app-height);
   overflow: hidden;
   background: #07101d;
   box-shadow: 0 0 70px rgba(0, 0, 0, 0.78);
@@ -272,6 +279,13 @@ h2 {
   display: flex;
   justify-content: center;
   gap: 10px;
+}
+
+.fullscreen-button {
+  border-color: rgba(255, 205, 112, 0.78);
+  background: linear-gradient(145deg, rgba(70, 47, 18, 0.94), rgba(21, 28, 37, 0.94));
+  color: #fff0bd;
+  box-shadow: 0 0 24px rgba(255, 205, 112, 0.13);
 }
 
 .campaign-actions button[hidden] {
@@ -585,6 +599,19 @@ button:focus-visible {
   font-size: clamp(10px, 1.8vmin, 15px) !important;
 }
 
+.touch-fullscreen {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  width: calc(var(--touch-unit) * 0.64) !important;
+  height: calc(var(--touch-unit) * 0.52) !important;
+  border-radius: 8px !important;
+  border-color: rgba(255, 205, 112, 0.7) !important;
+  background: rgba(54, 39, 17, 0.86) !important;
+  color: #fff0bd !important;
+  font-size: clamp(13px, 2.2vmin, 19px) !important;
+}
+
 .admin-spawn-panel {
   position: absolute;
   top: 14px;
@@ -814,9 +841,9 @@ button:focus-visible {
 
 @media (pointer: coarse) and (orientation: portrait) {
   .game-shell {
-    width: 100vw;
-    height: 100dvh;
-    min-height: 100dvh;
+    width: var(--app-width);
+    height: var(--app-height);
+    min-height: var(--app-height);
   }
 
   canvas {
@@ -841,9 +868,9 @@ button:focus-visible {
 
 @media (orientation: portrait) and (max-width: 700px) {
   .game-shell {
-    width: 100vw;
-    height: 100dvh;
-    min-height: 100dvh;
+    width: var(--app-width);
+    height: var(--app-height);
+    min-height: var(--app-height);
   }
 
   canvas {
