@@ -15,6 +15,8 @@
   const adminSpawnClose = document.getElementById("admin-spawn-close");
   const touchControls = document.getElementById("touch-controls");
   const touchControlButtons = [...(document.querySelectorAll?.("[data-touch-key], [data-touch-action]") || [])];
+  const touchJoystick = document.querySelector?.("[data-touch-action='move']") || null;
+  const touchJoystickKnob = touchJoystick?.querySelector?.(".touch-joystick-knob") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
@@ -39,6 +41,7 @@
   const pressed = new Set();
   const touchPointers = new Map();
   const pointer = { screenX: W * 0.72, screenY: H * 0.48, active: false };
+  const moveStick = { x: 0, y: 0, aimX: 1, aimY: 0, magnitude: 0, active: false };
   const platforms = [];
   const hazards = [];
   const checkpoints = [];
@@ -2248,9 +2251,16 @@
     return { x: (targetX - centerX) / length, y: (targetY - centerY) / length };
   }
 
-  function startShotgun() {
+  function getMoveStickAim() {
+    if (moveStick.active && moveStick.magnitude > 0.12) {
+      return { x: moveStick.aimX, y: moveStick.aimY };
+    }
+    return { x: player.facing, y: 0 };
+  }
+
+  function startShotgun(aimOverride = null) {
     if (game.mode !== "playing" || player.shotgunCooldown > 0 || player.shells <= 0) return;
-    const aim = getPointerAim();
+    const aim = aimOverride || getPointerAim();
     const overcharged = player.shotgunCharge >= 3;
     const pelletCount = overcharged ? 9 : 6;
     const spread = overcharged ? 0.21 : 0.16;
@@ -2303,14 +2313,14 @@
   function startAttack() {
     if (game.mode !== "playing" || player.attackCooldown > 0 || player.attackTimer > 0) return;
 
-    const movingLeft = keys.has("KeyA") || keys.has("ArrowLeft");
-    const movingRight = keys.has("KeyD") || keys.has("ArrowRight");
+    const movingLeft = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
+    const movingRight = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
     if (movingLeft && !movingRight) player.facing = -1;
     if (movingRight && !movingLeft) player.facing = 1;
 
     let dirY = 0;
-    if (keys.has("KeyW") || keys.has("ArrowUp")) dirY = -0.82;
-    if (keys.has("KeyS") || keys.has("ArrowDown")) dirY = 0.82;
+    if (keys.has("KeyW") || keys.has("ArrowUp") || (moveStick.active && moveStick.y < -0.28)) dirY = -0.82;
+    if (keys.has("KeyS") || keys.has("ArrowDown") || (moveStick.active && moveStick.y > 0.28)) dirY = 0.82;
     const dirX = dirY === 0 ? player.facing : player.facing * 0.58;
     const directionLength = Math.max(1, Math.hypot(dirX, dirY));
     player.attackDir.x = dirX / directionLength;
@@ -3377,12 +3387,13 @@
     if (pressed.has("KeyE")) startBurst();
     if (pressed.has("KeyQ")) activateExecution();
 
-    const left = keys.has("KeyA") || keys.has("ArrowLeft");
-    const right = keys.has("KeyD") || keys.has("ArrowRight");
-    const direction = Number(right) - Number(left);
+    const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
+    const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
+    const keyboardDirection = Number(right) - Number(left);
+    const direction = moveStick.active && Math.abs(moveStick.x) > 0.04 ? moveStick.x : keyboardDirection;
 
-    if (direction !== 0) {
-      player.facing = direction;
+    if (Math.abs(direction) > 0.04) {
+      player.facing = direction > 0 ? 1 : -1;
       const control = player.attackTimer > 0 ? 0.5 : player.grounded ? 1 : 0.78;
       const buffSpeed = player.buffTimer > 0 ? 1.22 : 1;
       player.vx = moveToward(player.vx, direction * 415 * buffSpeed, 2800 * control * dt);
@@ -3428,8 +3439,8 @@
 
     const holdingWall = !player.grounded && ((player.wallLeft && left) || (player.wallRight && right));
     if (holdingWall) {
-      if (keys.has("KeyW") || keys.has("ArrowUp")) player.vy = moveToward(player.vy, -175, 1500 * dt);
-      else player.vy = Math.min(player.vy, keys.has("KeyS") || keys.has("ArrowDown") ? 300 : 145);
+      if (keys.has("KeyW") || keys.has("ArrowUp") || (moveStick.active && moveStick.y < -0.28)) player.vy = moveToward(player.vy, -175, 1500 * dt);
+      else player.vy = Math.min(player.vy, keys.has("KeyS") || keys.has("ArrowDown") || (moveStick.active && moveStick.y > 0.28) ? 300 : 145);
     }
 
     if (!keys.has("Space") && !keys.has("KeyK") && player.vy < -240 && player.attackTimer <= 0) {
@@ -7716,17 +7727,59 @@
     }
   }
 
-  function updateTouchShotgunAim(entry, clientX, clientY) {
-    const dragX = clientX - entry.startX;
-    const dragY = clientY - entry.startY;
-    const dragLength = Math.hypot(dragX, dragY);
-    const aimX = dragLength > 9 ? dragX / dragLength : player.facing;
-    const aimY = dragLength > 9 ? dragY / dragLength : 0;
+  function syncMoveStickAimPointer() {
+    const aim = getMoveStickAim();
     const playerScreenX = player.x + player.w / 2 - camera.x;
     const playerScreenY = player.y + player.h / 2 - camera.y;
-    pointer.screenX = clamp(playerScreenX + aimX * 280, 0, W);
-    pointer.screenY = clamp(playerScreenY + aimY * 280, 0, H);
+    pointer.screenX = clamp(playerScreenX + aim.x * 280, 0, W);
+    pointer.screenY = clamp(playerScreenY + aim.y * 280, 0, H);
     pointer.active = true;
+  }
+
+  function updateMoveJoystick(entry, clientX, clientY) {
+    const bounds = entry.control.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const deltaX = clientX - centerX;
+    const deltaY = clientY - centerY;
+    const rawLength = Math.hypot(deltaX, deltaY);
+    const radius = Math.max(28, Math.min(bounds.width, bounds.height) * 0.36);
+    const normalizedX = rawLength > 0 ? deltaX / rawLength : 0;
+    const normalizedY = rawLength > 0 ? deltaY / rawLength : 0;
+    const clampedLength = Math.min(rawLength, radius);
+    const rawMagnitude = clamp(clampedLength / radius, 0, 1);
+    const magnitude = rawMagnitude < 0.12 ? 0 : clamp((rawMagnitude - 0.12) / 0.88, 0, 1);
+
+    moveStick.active = true;
+    moveStick.magnitude = magnitude;
+    moveStick.x = normalizedX * magnitude;
+    moveStick.y = normalizedY * magnitude;
+    if (magnitude > 0) {
+      moveStick.aimX = normalizedX;
+      moveStick.aimY = normalizedY;
+    } else {
+      moveStick.aimX = player.facing;
+      moveStick.aimY = 0;
+    }
+
+    const offsetX = normalizedX * clampedLength;
+    const offsetY = normalizedY * clampedLength;
+    if (touchJoystickKnob) touchJoystickKnob.style.transform = `translate(-50%, -50%) translate(${offsetX}px, ${offsetY}px)`;
+    entry.control.classList.toggle("engaged", magnitude > 0);
+    entry.control.setAttribute("aria-valuetext", magnitude > 0 ? `이동 ${Math.round(normalizedX * 100)}, ${Math.round(normalizedY * 100)}` : "중립");
+    syncMoveStickAimPointer();
+  }
+
+  function resetMoveJoystick() {
+    moveStick.x = 0;
+    moveStick.y = 0;
+    moveStick.magnitude = 0;
+    moveStick.active = false;
+    moveStick.aimX = player.facing;
+    moveStick.aimY = 0;
+    if (touchJoystickKnob) touchJoystickKnob.style.removeProperty("transform");
+    touchJoystick?.classList.remove("engaged", "touch-active");
+    touchJoystick?.setAttribute("aria-valuetext", "중립");
   }
 
   function releaseTouchPointer(pointerId, event = null) {
@@ -7734,12 +7787,9 @@
     if (!entry) return;
     if (entry.key) setVirtualKey(entry.key, false);
     if (entry.action === "jump") setVirtualKey("Space", false);
-    if (entry.action === "shotgun" && event && game.mode === "playing" && !game.cutscene) {
-      updateTouchShotgunAim(entry, event.clientX, event.clientY);
-      startShotgun();
-    }
-    entry.button.classList.remove("touch-active");
-    entry.button.setAttribute("aria-pressed", "false");
+    if (entry.action === "move") resetMoveJoystick();
+    entry.control.classList.remove("touch-active");
+    if (entry.control.matches?.("button")) entry.control.setAttribute("aria-pressed", "false");
     touchPointers.delete(pointerId);
   }
 
@@ -7759,20 +7809,20 @@
     event.preventDefault();
     event.stopPropagation();
     sound.wake();
-    const button = event.currentTarget;
-    const key = button.dataset.touchKey || null;
-    const action = button.dataset.touchAction || null;
+    const control = event.currentTarget;
+    const key = control.dataset.touchKey || null;
+    const action = control.dataset.touchAction || null;
     const entry = {
-      button,
+      control,
       key,
       action,
       startX: event.clientX,
       startY: event.clientY,
     };
     touchPointers.set(event.pointerId, entry);
-    button.classList.add("touch-active");
-    button.setAttribute("aria-pressed", "true");
-    button.setPointerCapture?.(event.pointerId);
+    control.classList.add("touch-active");
+    if (control.matches?.("button")) control.setAttribute("aria-pressed", "true");
+    control.setPointerCapture?.(event.pointerId);
 
     if (game.cutscene) {
       requestCutsceneAdvance();
@@ -7782,19 +7832,23 @@
       setVirtualKey(key, true);
       return;
     }
-    if (action === "jump") setVirtualKey("Space", true);
+    if (action === "move") updateMoveJoystick(entry, event.clientX, event.clientY);
+    else if (action === "jump") setVirtualKey("Space", true);
     else if (action === "slash") startAttack();
     else if (action === "burst") startBurst();
     else if (action === "execute") activateExecution();
     else if (action === "pause") togglePause();
-    else if (action === "shotgun") updateTouchShotgunAim(entry, event.clientX, event.clientY);
+    else if (action === "shotgun") {
+      syncMoveStickAimPointer();
+      startShotgun(getMoveStickAim());
+    }
   }
 
   function handleTouchControlMove(event) {
     const entry = touchPointers.get(event.pointerId);
-    if (!entry || entry.action !== "shotgun") return;
+    if (!entry || entry.action !== "move") return;
     event.preventDefault();
-    updateTouchShotgunAim(entry, event.clientX, event.clientY);
+    updateMoveJoystick(entry, event.clientX, event.clientY);
   }
 
   function handleTouchControlUp(event) {

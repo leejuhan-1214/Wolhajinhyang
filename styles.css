@@ -444,25 +444,76 @@ button:focus-visible {
   font: 700 clamp(7px, 1.3vmin, 10px) / 1 monospace;
 }
 
-.touch-dpad {
+.touch-joystick {
   position: absolute;
   left: max(10px, env(safe-area-inset-left));
   bottom: max(10px, env(safe-area-inset-bottom));
-  display: grid;
-  grid-template: repeat(3, var(--touch-unit)) / repeat(3, var(--touch-unit));
-  gap: 3px;
+  width: clamp(108px, 25vmin, 156px);
+  height: clamp(108px, 25vmin, 156px);
+  pointer-events: auto;
+  touch-action: none;
+  border: 2px solid rgba(132, 226, 229, 0.48);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(24, 66, 78, 0.7) 0 30%, rgba(7, 22, 34, 0.74) 31% 57%, rgba(3, 10, 18, 0.5) 58%),
+    conic-gradient(from 45deg, rgba(101, 245, 234, 0.12), transparent 12% 38%, rgba(101, 245, 234, 0.12) 50%, transparent 62% 88%, rgba(101, 245, 234, 0.12));
+  box-shadow: inset 0 0 28px rgba(101, 245, 234, 0.09), 0 8px 28px rgba(0, 0, 0, 0.38);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-joystick::before,
+.touch-joystick::after {
+  content: "";
+  position: absolute;
+  inset: 14%;
   pointer-events: none;
+  border: 1px solid rgba(169, 237, 238, 0.18);
+  border-radius: 50%;
 }
 
-.touch-dpad button {
-  color: #bffaf7;
-  background: rgba(8, 26, 38, 0.7);
+.touch-joystick::after {
+  inset: 47% 10%;
+  border-width: 1px 0 0;
+  border-radius: 0;
 }
 
-.touch-up { grid-area: 1 / 2; }
-.touch-left { grid-area: 2 / 1; }
-.touch-right { grid-area: 2 / 3; }
-.touch-down { grid-area: 3 / 2; }
+.touch-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  width: 43%;
+  height: 43%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 2px solid rgba(224, 255, 255, 0.72);
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, rgba(203, 255, 252, 0.82), rgba(56, 146, 153, 0.9) 32%, rgba(10, 39, 52, 0.94) 74%);
+  box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.14), 0 4px 16px rgba(0, 0, 0, 0.42);
+  transition: transform 65ms linear, filter 100ms ease;
+}
+
+.touch-joystick.engaged {
+  border-color: rgba(255, 236, 157, 0.82);
+  box-shadow: inset 0 0 32px rgba(101, 245, 234, 0.15), 0 0 24px rgba(255, 205, 112, 0.18);
+}
+
+.touch-joystick.engaged .touch-joystick-knob {
+  filter: brightness(1.18) saturate(1.15);
+}
+
+.touch-joystick-label {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  z-index: 1;
+  transform: translateX(-50%);
+  pointer-events: none;
+  color: rgba(210, 247, 247, 0.58);
+  font: 800 clamp(7px, 1.4vmin, 10px) / 1 monospace;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 
 .touch-actions {
   position: absolute;
