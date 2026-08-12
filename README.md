@@ -1,4 +1,12 @@
-# 월하잔향: 백야 작전 — v1.6.5
+# 월하잔향: 백야 작전 — v1.6.6
+
+## v1.6.6 최종 잔영·처치 집계·관리자 수복편 수정
+
+- 마지막 컷신 중 세로 화면 밖 판정으로 잔영-00이 자동 삭제되지 않도록 보스는 원래 전투 위치로 복귀
+- 과거 관리자 삭제 기록이 정규 최종 보스 잔영-00을 영구 제거하지 않도록 보호
+- 환경 추락·화면 밖 정리·관리자 삭제·보스 소환물 정리를 플레이어 처치 수에서 제외
+- 체크포인트 재기동으로 되살아난 현재 및 이후 구역 적의 처치 기록을 되돌려 실제 확정 처치만 표시
+- 관리자 모드에서는 수복편과 겹쳐도 획득하지 않아 배치 즉시 사라지지 않도록 변경
 
 ## v1.6.5 모바일 브라우저 화면 잘림 방지
 
@@ -233,7 +241,7 @@ node server.mjs
 
 ## GitHub에 올리기
 
-이 폴더의 **내용물**을 저장소 루트로 사용하세요. 저장소 첫 화면에서 `index.html`, `game.js`, `VERSION.txt`, `.github`가 바로 보여야 합니다. `moonlit-echo-github-v1.6.5-windows/index.html`처럼 한 단계 아래에 들어가면 GitHub Pages는 이전 루트 파일을 계속 배포합니다.
+이 폴더의 **내용물**을 저장소 루트로 사용하세요. 저장소 첫 화면에서 `index.html`, `game.js`, `VERSION.txt`, `.github`가 바로 보여야 합니다. `moonlit-echo-github-v1.6.6-windows/index.html`처럼 한 단계 아래에 들어가면 GitHub Pages는 이전 루트 파일을 계속 배포합니다.
 
 GitHub 웹 업로드를 사용할 때는 배포용 ZIP을 먼저 압축 해제한 뒤, 생긴 파일과 폴더를 전부 저장소 루트에 올리세요. ZIP 파일 자체나 ZIP을 감싸는 상위 폴더를 올리면 안 됩니다.
 
@@ -250,7 +258,7 @@ git push -u origin main
 
 저장소의 `Settings → Pages → Build and deployment → Source`를 `GitHub Actions`로 선택하면 `main` 브랜치에 푸시할 때 게임이 자동 배포됩니다. 배포 주소는 Actions의 `Deploy GitHub Pages` 작업에서 확인할 수 있습니다.
 
-업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.5`가 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
+업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.6`이 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
 
 로컬 실행과 문법 검사는 다음 명령으로 할 수 있습니다.
 

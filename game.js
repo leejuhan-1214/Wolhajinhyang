@@ -724,7 +724,8 @@
       if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
         recoverEnemyToHome(enemy);
       } else if (enemy.y > WORLD_H + 100) {
-        killEnemy(enemy);
+        if (enemy.type === "boss") recoverEnemyToHome(enemy);
+        else killEnemy(enemy, { countKill: false });
       }
     }
   }
@@ -1180,9 +1181,11 @@
   function applyAdminRemovedEnemyData() {
     for (const enemy of enemies) {
       if (!adminRemovedEnemyIds.has(enemy.id)) continue;
+      // Never let old administrator deletion data remove the story's final duel.
+      if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
       enemy.alive = false;
       enemy.hp = 0;
-      enemy.countedKill = true;
+      enemy.countedKill = false;
     }
   }
 
@@ -1190,6 +1193,7 @@
     for (const enemy of enemies) {
       if (enemy.type !== "boss" || !adminRemovedEnemyIds.has(enemy.id)) continue;
       const kind = enemy.bossKind || stages[enemy.stageIndex]?.bossKind;
+      if (!enemy.adminSpawned && kind === "echo") continue;
       if (kind) game.defeatedBosses.add(kind);
     }
     game.stageBossDefeated = game.defeatedBosses.has("warden");
@@ -1765,6 +1769,7 @@
         storySeen: [...game.storySeen],
         cutsceneSeen: [...game.cutsceneSeen],
         defeatedEnemyIds: enemies.filter((enemy) => !enemy.alive).map((enemy) => enemy.id),
+        countedKillEnemyIds: enemies.filter((enemy) => enemy.countedKill).map((enemy) => enemy.id),
         roomStates: combatRooms.map((room) => ({ left: room.left, triggered: room.triggered, cleared: room.cleared })),
       };
       window.localStorage?.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1776,11 +1781,19 @@
 
   function restoreCampaign(saved) {
     const deadIds = new Set(saved.defeatedEnemyIds || []);
+    const savedCountedIds = Array.isArray(saved.countedKillEnemyIds)
+      ? new Set(saved.countedKillEnemyIds)
+      : null;
+    const legacySave = savedCountedIds === null;
+    let legacyCountedKills = Math.min(Math.max(0, saved.kills || 0), deadIds.size);
     for (const enemy of enemies) {
       if (!deadIds.has(enemy.id)) continue;
+      // v1.6.5 and older could cull the final boss during its cutscene.
+      if (legacySave && !enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
+      if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo" && adminRemovedEnemyIds.has(enemy.id)) continue;
       enemy.alive = false;
       enemy.hp = 0;
-      enemy.countedKill = true;
+      enemy.countedKill = savedCountedIds ? savedCountedIds.has(enemy.id) : legacyCountedKills-- > 0;
     }
     for (const state of saved.roomStates || []) {
       const room = combatRooms.find((candidate) => candidate.left === state.left);
@@ -1802,8 +1815,9 @@
     player.hp = player.maxHp;
     game.runTime = Math.max(0, saved.runTime || 0);
     game.deaths = Math.max(0, saved.deaths || 0);
-    game.kills = Math.max(0, saved.kills || 0);
+    game.kills = enemies.reduce((count, enemy) => count + (enemy.countedKill ? 1 : 0), 0);
     game.defeatedBosses = new Set(saved.defeatedBosses || []);
+    if (legacySave) game.defeatedBosses.delete("echo");
     game.stageClearTimes = Array.isArray(saved.stageClearTimes) ? saved.stageClearTimes.slice(0, stages.length) : Array(stages.length).fill(0);
     while (game.stageClearTimes.length < stages.length) game.stageClearTimes.push(0);
     game.storySeen = new Set(saved.storySeen || []);
@@ -2407,7 +2421,7 @@
       adminRemovedEnemyIds.add(enemy.id);
       persistAdminRemovedEnemies();
     }
-    killEnemy(enemy);
+    killEnemy(enemy, { countKill: false });
     game.hint = enemy.adminSpawned
       ? `관리자 생성 개체 데이터 영구 삭제 · ${enemy.type.toUpperCase()}`
       : `적 데이터 영구 삭제 · ${enemy.id}`;
@@ -2578,7 +2592,7 @@
     return true;
   }
 
-  function killEnemy(enemy, { silent = false } = {}) {
+  function killEnemy(enemy, { silent = false, countKill = true } = {}) {
     enemy.alive = false;
     const squadRoom = getCombatRoomForEnemy(enemy);
     if (squadRoom && enemy.type === squadRoom.formationAnchorType) {
@@ -2599,7 +2613,7 @@
     const deathIsNearPlayer = !silent
       && Math.abs(deathCenterX - (player.x + player.w / 2)) < W
       && Math.abs(deathCenterY - (player.y + player.h / 2)) < H;
-    if (!enemy.countedKill) {
+    if (countKill && !enemy.countedKill) {
       enemy.countedKill = true;
       game.kills += 1;
     }
@@ -2634,7 +2648,7 @@
       const rank = enemy.stageIndex;
       const kind = enemy.bossKind || stages[rank].bossKind;
       for (const summon of enemies) {
-        if (summon.alive && summon.summonedByBossId === enemy.id) killEnemy(summon, { silent: true });
+        if (summon.alive && summon.summonedByBossId === enemy.id) killEnemy(summon, { silent: true, countKill: false });
       }
       game.defeatedBosses.add(kind);
       game.stageClearTimes[rank] = game.runTime;
@@ -2727,17 +2741,17 @@
       if (!enemy.adminSpawned && adminRemovedEnemyIds.has(enemy.id)) {
         enemy.alive = false;
         enemy.hp = 0;
-        enemy.countedKill = true;
+        enemy.countedKill = false;
         continue;
       }
       if (enemyZoneIndex < restartZoneIndex) {
         enemy.alive = false;
         enemy.hp = 0;
-        enemy.countedKill = true;
         continue;
       }
       restartedEnemyCount += 1;
       enemy.alive = true;
+      enemy.countedKill = false;
       enemy.hp = enemy.maxHp;
       enemy.x = enemy.spawnX;
       enemy.y = enemy.spawnY;
@@ -2784,6 +2798,8 @@
     for (const pickup of pickups) {
       pickup.active = getZoneIndexAt(pickup.x) >= restartZoneIndex;
     }
+
+    game.kills = enemies.reduce((count, enemy) => count + (enemy.countedKill ? 1 : 0), 0);
 
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
@@ -3525,6 +3541,7 @@
 
     for (const pickup of pickups) {
       if (!pickup.active || !overlaps(player, pickup)) continue;
+      if (game.adminMode) continue;
       pickup.active = false;
       player.hp = Math.min(player.maxHp, player.hp + 2);
       player.airJumpAvailable = true;
@@ -3644,7 +3661,8 @@
     if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
       recoverEnemyToHome(enemy);
     } else if (enemy.y > WORLD_H + 100) {
-      killEnemy(enemy);
+      if (enemy.type === "boss") recoverEnemyToHome(enemy);
+      else killEnemy(enemy, { countKill: false });
     }
   }
 
@@ -3931,7 +3949,7 @@
       enemy.vx = Math.min(0, enemy.vx);
     }
     if (enemy.y > enemy.baseY + enemy.h + 260) {
-      killEnemy(enemy);
+      recoverEnemyToHome(enemy);
       return;
     }
 
@@ -4291,7 +4309,12 @@
       if (!horizontallyVisible) continue;
       const leftAboveScreen = enemy.y + enemy.h <= viewTop;
       const fellBelowScreen = enemy.y >= viewBottom;
-      if (leftAboveScreen || fellBelowScreen) killEnemy(enemy, { silent: true });
+      if (!leftAboveScreen && !fellBelowScreen) continue;
+      if (enemy.type === "boss") {
+        recoverEnemyToHome(enemy);
+        continue;
+      }
+      killEnemy(enemy, { silent: true, countKill: false });
     }
   }
 
