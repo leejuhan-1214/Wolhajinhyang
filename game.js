@@ -52,21 +52,21 @@
   const touchJoystickKnob = touchJoystick?.querySelector?.(".touch-joystick-knob") || null;
   const touchFullscreenButton = document.querySelector?.("[data-touch-action='fullscreen']") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
-  const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
   const adminWorldCreateButtons = [...(document.querySelectorAll?.("[data-admin-world-create]") || [])];
 
   const W = 1280;
   const H = 720;
   const ZONE_W = 4000;
-  const ZONES_PER_STAGE = 10;
+  const ZONES_PER_STAGE = 12;
+  const MID_BOSS_ZONE_INDEX = 5;
   const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
   const STAGE_W = ZONE_W * ZONES_PER_STAGE;
   const WORLD_W = STAGE_W * 5;
   const WORLD_H = 1450;
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
-  const TARGET_CAMPAIGN_MINUTES = 930;
+  const TARGET_CAMPAIGN_MINUTES = 1220;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -109,22 +109,22 @@
   let selectedAdminWorldObject = null;
 
   const stages = [
-    { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 150 },
-    { x: STAGE_W, end: STAGE_W * 2, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", bossKind: "furnace", targetMinutes: 170 },
-    { x: STAGE_W * 2, end: STAGE_W * 3, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", bossKind: "weaver", targetMinutes: 185 },
-    { x: STAGE_W * 3, end: STAGE_W * 4, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", bossKind: "censor", targetMinutes: 200 },
-    { x: STAGE_W * 4, end: WORLD_W, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", bossKind: "echo", targetMinutes: 225 },
+    { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 195 },
+    { x: STAGE_W, end: STAGE_W * 2, midBossX: STAGE_W + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", midBossKind: "hunter", bossKind: "furnace", targetMinutes: 220 },
+    { x: STAGE_W * 2, end: STAGE_W * 3, midBossX: STAGE_W * 2 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", midBossKind: "oracle", bossKind: "weaver", targetMinutes: 240 },
+    { x: STAGE_W * 3, end: STAGE_W * 4, midBossX: STAGE_W * 3 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", midBossKind: "revenant", bossKind: "censor", targetMinutes: 265 },
+    { x: STAGE_W * 4, end: WORLD_W, midBossX: STAGE_W * 4 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", midBossKind: "proxy", bossKind: "echo", targetMinutes: 300 },
   ];
 
   const stageZoneNames = [
-    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐기물 심층", "노동자 숙소 잔해", "폭우 운송교", "기억 매립 구덩이", "감독관 격납고"],
-    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "화염 터빈실", "반응 연료 저장고", "폐쇄 실험선", "노심 제어 회랑", "용광 심장부"],
-    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "합창 연산실", "금서 분류고", "열아홉 제단", "증언 봉인실", "직조 제단"],
-    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "새벽 안테나군", "시민권 말소국", "기록 송출교", "최후 중계실", "최종 검열실"],
-    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "거울의 핵"],
+    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐철 사냥터", "폐기물 심층", "노동자 숙소 잔해", "폭우 운송교", "기억 매립 구덩이", "감독 기록고", "감독관 격납고"],
+    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "탄도 시험장", "화염 터빈실", "반응 연료 저장고", "폐쇄 실험선", "노심 제어 회랑", "냉각 붕괴선", "용광 심장부"],
+    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "가면 심문정", "합창 연산실", "금서 분류고", "열아홉 제단", "증언 봉인실", "다중 진실 회랑", "직조 제단"],
+    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "삭제 집행장", "새벽 안테나군", "시민권 말소국", "기록 송출교", "최후 중계실", "증인 수배망", "최종 검열실"],
+    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "명명되지 않은 문", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
-  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "gauntlet", "crusher", "vertical", "gauntlet", "boss"];
+  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "midboss", "gauntlet", "crusher", "vertical", "gauntlet", "fork", "boss"];
   const zones = stages.flatMap((stage, stageIndex) => stageZoneNames[stageIndex].map((name, zoneIndex) => ({
     x: stage.x + zoneIndex * ZONE_W,
     name,
@@ -171,7 +171,51 @@
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "이중 도약 추격", "잔상 반격", "기억 반전"],
     },
+    breaker: {
+      name: "폐철 집행기 · 쇄우",
+      hp: 10,
+      size: [64, 74],
+      accent: "#ffcd70",
+      archetype: "warden",
+      patterns: ["파쇄 미사일", "궤도 들이받기", "천장 고철비", "압착 사격"],
+    },
+    hunter: {
+      name: "노심 추격자 · 적린",
+      hp: 13,
+      size: [58, 82],
+      accent: "#ff9b54",
+      archetype: "furnace",
+      patterns: ["추적 박격", "적탄 속사", "도약 포격", "노심 분출", "십자 연사"],
+    },
+    oracle: {
+      name: "가면 심문관 · 육화",
+      hp: 16,
+      size: [56, 78],
+      accent: "#bfa4ff",
+      archetype: "weaver",
+      patterns: ["심문 전이", "육화 마법진", "공중 화염문", "기억 역질문"],
+    },
+    revenant: {
+      name: "삭제 집행관 · 공문",
+      hp: 20,
+      size: [62, 84],
+      accent: "#ff6b9c",
+      archetype: "censor",
+      patterns: ["수배 탄막", "집행 돌진", "압수 포격", "삭제 격자", "추적 소환"],
+    },
+    proxy: {
+      name: "원본 판정체 · 대역-13",
+      hp: 24,
+      size: [34, 56],
+      accent: "#58d9c4",
+      archetype: "echo",
+      patterns: ["대리 발도", "판정 산탄", "복제 추격", "원본 반박", "자격 박탈"],
+    },
   };
+
+  function getBossArchetype(kind) {
+    return BOSS_DEFINITIONS[kind]?.archetype || kind || "warden";
+  }
 
   const SQUAD_FORMATIONS = {
     shield: {
@@ -219,7 +263,7 @@
     weapon: { name: "인간흉기", hp: 1, damage: 99, enemySpeed: 1.24, bulletSpeed: 1.2 },
   };
   let selectedDifficulty = "cadet";
-  const ADMIN_SEQUENCE = ["1", "2", "1", "4"];
+  const ADMIN_SEQUENCE = ["chick", "cadet", "chick", "weapon"];
   let adminSequenceProgress = 0;
   let adminModeUnlocked = false;
   const START_SCREEN_DEFAULTS = {
@@ -476,6 +520,92 @@
     ],
   ];
 
+  const MIDBOSS_STORY_CHAPTERS = [
+    [
+      [
+        { speaker: "감찰관 · 도담", text: "폐철 사냥터의 집행기 쇄우는 중앙국 명령을 따르지 않아. 사고 당일 노동자 대표가 빼앗아 구조 통로를 열었던 기체야.", tone: "control", duration: 6.2 },
+        { speaker: "서린", text: "그런 기체가 왜 지금 우리를 막지? 구조에 쓴 기억 위에 폐기 명령이 덮어씌워진 건가.", tone: "operative", duration: 5.6 },
+        { speaker: "새봄", text: "언니, 쇄우 안에서 윤태오 씨와 중앙국 감독관의 목소리가 동시에 들려. 어느 쪽도 완전히 사라지지 않았어.", tone: "archive", duration: 6.2 },
+      ],
+      [
+        { speaker: "노동자 기록 · 윤태오", text: "쇄우를 부순다고 내 선택이 사라지진 않는다. 조종 기록을 꺼내서 누가 구조문을 닫았는지 보여 줘.", tone: "archive", duration: 6.0 },
+        { speaker: "도담", text: "기록 서명은 내 상관이었지만 승인 키에는 내 감찰 번호도 있어. 나는 그날 명령을 의심하면서도 접근권을 빌려줬어.", tone: "control", duration: 6.4 },
+        { speaker: "서린", text: "도담의 죄와 구조하려던 사람의 선택을 함께 남긴다. 한쪽만 지우면 또 편리한 영웅담이 돼.", tone: "operative", duration: 6.0 },
+      ],
+    ],
+    [
+      [
+        { speaker: "노심 추격자 · 적린", text: "감정 연료 누출을 감지했다. 공포의 소유자는 생산 설비이며, 회수 대상은 저항할 권리가 없다.", tone: "hostile", duration: 6.1 },
+        { speaker: "R-19", text: "적린은 내 분노를 조준 장치로 썼다. 저 기체가 명중할 때마다 내가 누구를 미워했는지는 더 흐려졌어.", tone: "archive", duration: 6.2 },
+        { speaker: "서린", text: "분노를 없애지 않고 주인을 되찾는다. 네 감정은 무기가 아니라 네가 당한 일을 가리키는 증거야.", tone: "operative", duration: 6.0 },
+      ],
+      [
+        { speaker: "도담", text: "적린의 노심에서 송신탑으로 가는 비밀 회선이 나왔어. 검은 공장은 연료 생산뿐 아니라 시민 반응을 예측하고 있었어.", tone: "control", duration: 6.3 },
+        { speaker: "새봄", text: "예측 목록에 내 이름도 있어. 언니가 돌아오면 내가 어떤 말을 할지 열세 가지로 분류해 놨어.", tone: "archive", duration: 6.0 },
+        { speaker: "서린", text: "예측은 선택을 대신하지 못해. 네가 열네 번째 대답을 만들 수 있도록 계산 과정까지 공개하자.", tone: "operative", duration: 5.8 },
+      ],
+    ],
+    [
+      [
+        { speaker: "가면 심문관 · 육화", text: "상충하는 여섯 증언을 제시한다. 하나만 진실로 선택하지 않으면 모든 기억의 신뢰 등급을 박탈한다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린-12", text: "나는 중앙국에 협조했고, 서린-03은 도망쳤고, M-07은 싸웠어. 같은 출발점에서 다른 선택을 했다고 모두 거짓은 아니야.", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "육화가 원하는 건 정답이 아니라 서로를 고발하는 장면이야. 여섯 증언을 시간순으로 겹쳐서 질문 자체를 검증한다.", tone: "operative", duration: 6.2 },
+      ],
+      [
+        { speaker: "백면의 하위 기록", text: "육화의 심문 결과: 피심문자들은 서로를 삭제하지 않았다. 중앙국 기준으로 결론 도출 실패.", tone: "archive", duration: 5.9 },
+        { speaker: "도담", text: "실패가 아니야. 한 사람이 여러 진실을 견딜 수 있다는 첫 실험 결과지. 백면이 가장 숨기고 싶었던 기록이야.", tone: "control", duration: 6.1 },
+        { speaker: "서린", text: "성당의 목적은 진실 보관이 아니라 시민이 복잡한 진실을 감당하지 못한다고 증명하는 일이었군.", tone: "operative", duration: 6.0 },
+      ],
+    ],
+    [
+      [
+        { speaker: "삭제 집행관 · 공문", text: "한서린 관련 증인 83명에게 사후 수배를 발령한다. 사망자는 반론할 수 없으므로 판결은 즉시 확정된다.", tone: "hostile", duration: 6.3 },
+        { speaker: "새봄", text: "내가 모은 생존자 증언도 수배 목록에 들어갔어. 중앙국은 사람뿐 아니라 문장까지 범죄자로 만들고 있어.", tone: "archive", duration: 6.1 },
+        { speaker: "서린", text: "그러면 수배장을 역으로 쓴다. 지우려 한 문장마다 원본 위치와 검열 담당자의 서명을 붙여 송신해.", tone: "operative", duration: 6.0 },
+      ],
+      [
+        { speaker: "도담", text: "공문의 집행 키는 무명에게 이어져 있어. 그리고 내 감찰 권한이 아직 살아 있어서 삭제 명령을 취소할 수 있어.", tone: "control", duration: 6.3 },
+        { speaker: "서린", text: "취소만 하면 중앙국은 실수였다고 둘러댈 거야. 명령을 보존한 채 효력을 멈추고 누가 승인했는지 공개해.", tone: "operative", duration: 6.1 },
+        { speaker: "도담", text: "알겠어. 나도 승인 사슬에 포함된다. 이번에는 내 이름을 보고서 밖으로 빼지 않을게.", tone: "control", duration: 5.8 },
+      ],
+    ],
+    [
+      [
+        { speaker: "원본 판정체 · 대역-13", text: "한서린 후보 둘을 확인했다. 법적 원본 선정을 위해 기억 손실, 시민 기여도, 가족 선호도를 점수화한다.", tone: "hostile", duration: 6.4 },
+        { speaker: "잔영-00", text: "대역-13의 계산에서 내가 우세하다. 나는 사고 이후의 죄책감이 없고 중앙국 명령에 저항한 전력도 없다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린", text: "상처가 적고 복종을 잘한다는 이유로 사람의 진위를 정하는 판정은 거부한다. 너도 그 점수표 밖으로 나와.", tone: "operative", duration: 6.3 },
+      ],
+      [
+        { speaker: "새봄", text: "가족 선호도 질문에 답하지 않았어. 둘 중 하나를 고르면 다른 한 명의 존재를 내가 지우는 셈이잖아.", tone: "archive", duration: 6.2 },
+        { speaker: "잔영-00", text: "선택 거부는 판정 불능을 뜻한다. 판정 불능 상태에서는 우리 둘의 시민권이 모두 정지된다.", tone: "hostile", duration: 6.1 },
+        { speaker: "서린", text: "그 정지가 중앙국이 숨긴 마지막 함정이군. 잔영아, 우리가 싸우더라도 끝에는 함께 그 규칙을 증언해야 해.", tone: "operative", duration: 6.2 },
+      ],
+    ],
+  ];
+
+  const MIDBOSS_VICTORY_STORIES = [
+    [
+      { speaker: "폐철 집행기 · 쇄우", text: "윤태오 조종 기록 분리 완료. 구조문 폐쇄 승인자 12명의 서명을 외부 단말로 전송한다.", tone: "archive", duration: 5.8 },
+      { speaker: "서린", text: "기체는 멈춰도 기록은 동료들과 함께 간다. 쇄우, 네 마지막 명령은 폐기가 아니라 증언이다.", tone: "operative", duration: 5.8 },
+    ],
+    [
+      { speaker: "노심 추격자 · 적린", text: "R-19 감정 소유권 복구. 표적 예측률 급락. 미분류 반응: 안도.", tone: "archive", duration: 5.7 },
+      { speaker: "R-19", text: "분노만으로 만들어졌어도 지금 느끼는 안도는 내 것이야. 다음 선택도 내가 하겠다.", tone: "archive", duration: 5.8 },
+    ],
+    [
+      { speaker: "가면 심문관 · 육화", text: "단일 진실 선별 실패. 모순된 증언 여섯 건을 삭제하지 않고 병렬 보존한다.", tone: "archive", duration: 5.8 },
+      { speaker: "서린-12", text: "처음으로 내 대답이 다른 서린의 대답을 지우지 않았어. 이 실패 기록을 반드시 가져가 줘.", tone: "archive", duration: 6.0 },
+    ],
+    [
+      { speaker: "삭제 집행관 · 공문", text: "사후 수배 효력 정지. 삭제 명령 원본은 증거 보전을 위해 유지한다.", tone: "archive", duration: 5.8 },
+      { speaker: "도담", text: "내 감찰 번호까지 공개 채널에 올렸어. 이제 나도 기록 뒤에 숨을 수 없어.", tone: "control", duration: 5.8 },
+    ],
+    [
+      { speaker: "원본 판정체 · 대역-13", text: "원본 점수표 폐기. 후보자 상호 인정이라는 미등록 기준을 임시 채택한다.", tone: "archive", duration: 6.0 },
+      { speaker: "잔영-00", text: "임시 기준은 법이 아니다. 하지만 네가 만든 빈틈이 우리 둘에게 결투 이후를 남겼다.", tone: "hostile", duration: 6.1 },
+    ],
+  ];
+
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
     x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W - 620,
@@ -483,6 +613,10 @@
   }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
     x: stages[stageIndex].x + (eventIndex + 7) * ZONE_W - 620,
+    lines,
+  })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
+    id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
+    x: stages[stageIndex].x + (eventIndex === 0 ? 4.42 : 6.55) * ZONE_W,
     lines,
   }))));
 
@@ -612,6 +746,63 @@
       ],
     },
   ];
+
+  const MIDBOSS_CUTSCENE_DATA = [
+    {
+      title: "중간 장면 · 명령을 훔친 기체",
+      visual: "scrap",
+      shots: [
+        { speaker: "폐철 집행기 · 쇄우", text: "구조 통로 개방 기록과 현장 소각 명령이 충돌한다. 중앙국 우선순위에 따라 구조 기록을 파쇄한다.", tone: "hostile", duration: 6.0 },
+        { speaker: "윤태오", text: "저 기체를 빼앗은 건 나야. 하지만 마지막에 감독관이 제어권을 되찾았어. 내 선택과 저들의 명령이 한 몸에 갇혀 있어.", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "기체를 멈추고 두 기록을 분리한다. 누가 영웅인지 고르는 대신 누가 문을 열고 누가 닫았는지 남기겠다.", tone: "operative", duration: 6.1 },
+      ],
+    },
+    {
+      title: "중간 장면 · 분노의 소유권",
+      visual: "furnace",
+      shots: [
+        { speaker: "노심 추격자 · 적린", text: "R-19 분노 반응은 중앙국 전투 자산이다. 감정 반환 요청은 생산 손실로 기각한다.", tone: "hostile", duration: 6.0 },
+        { speaker: "R-19", text: "내가 무엇을 좋아했는지는 잊었어도 무엇이 부당했는지는 알아. 내 분노를 내게 돌려줘.", tone: "archive", duration: 6.1 },
+        { speaker: "서린", text: "적린의 노심을 열고 소유권 표식을 지운다. 감정은 효율표의 연료가 아니라 사람에게 일어난 일의 흔적이다.", tone: "operative", duration: 6.2 },
+      ],
+    },
+    {
+      title: "중간 장면 · 정답 없는 심문",
+      visual: "choir",
+      shots: [
+        { speaker: "가면 심문관 · 육화", text: "여섯 명의 한서린이 서로 다른 책임자를 지목했다. 다섯 증언을 폐기하면 하나의 진실이 완성된다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린-12", text: "우리는 다른 방에서 다른 명령을 들었어. 모순은 누군가 거짓말했다는 뜻이 아니라 중앙국이 우리를 나눴다는 흔적이야.", tone: "archive", duration: 6.4 },
+        { speaker: "서린", text: "다섯 사람을 지우지 않는다. 육화의 질문과 배치 기록부터 공개해서 왜 답이 달라졌는지 증명한다.", tone: "operative", duration: 6.2 },
+      ],
+    },
+    {
+      title: "중간 장면 · 죽은 문장의 수배",
+      visual: "broadcast",
+      shots: [
+        { speaker: "삭제 집행관 · 공문", text: "사망자의 반론권은 소멸했다. 수배된 문장을 소지한 모든 시민을 공범으로 분류한다.", tone: "hostile", duration: 6.1 },
+        { speaker: "새봄", text: "그 문장들은 내가 여섯 해 동안 모은 사람들이야. 종이에 적혔다고 사람이 아니게 되는 건 아니야.", tone: "archive", duration: 6.2 },
+        { speaker: "도담", text: "내 감찰 키로 집행 절차를 멈출 수 있어. 서린, 공문을 상대하는 동안 승인 사슬 전체를 복사할게.", tone: "control", duration: 6.2 },
+      ],
+    },
+    {
+      title: "중간 장면 · 원본 점수표",
+      visual: "duel",
+      shots: [
+        { speaker: "원본 판정체 · 대역-13", text: "가족의 선호, 기억 완전성, 법 집행 순응도를 비교한다. 낮은 점수의 한서린은 증거물로 환원한다.", tone: "hostile", duration: 6.3 },
+        { speaker: "잔영-00", text: "그 기준대로라면 내가 원본이다. 나는 네가 저지른 불복종과 실패를 보존했지만 직접 선택하지 않았다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린", text: "복종을 진짜의 조건으로 삼는 순간 판정은 이미 중앙국의 명령이야. 대역-13부터 그 계산에서 해방한다.", tone: "operative", duration: 6.3 },
+      ],
+    },
+  ];
+
+  CUTSCENE_EVENTS.push(...MIDBOSS_CUTSCENE_DATA.map((scene, stageIndex) => ({
+    id: `cutscene-midboss-${stageIndex + 1}`,
+    x: stages[stageIndex].x + MID_BOSS_ZONE_INDEX * ZONE_W + 460,
+    title: scene.title,
+    location: `${stages[stageIndex].name} / ${stageZoneNames[stageIndex][MID_BOSS_ZONE_INDEX]}`,
+    visual: scene.visual,
+    shots: scene.shots,
+  })));
 
   CUTSCENE_EVENTS.push(
     {
@@ -862,6 +1053,19 @@
 
   function getZoneRemaining(zoneIndex) {
     return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive).length;
+  }
+
+  function getBossArenaBounds(enemy, inset = 140) {
+    const stage = stages[enemy?.stageIndex] || stages[0];
+    const fallbackZoneIndex = enemy?.isMidBoss ? MID_BOSS_ZONE_INDEX : BOSS_ZONE_INDEX;
+    const homeZoneIndex = Number.isInteger(enemy?.homeZoneIndex)
+      ? enemy.homeZoneIndex
+      : enemy?.stageIndex * ZONES_PER_STAGE + fallbackZoneIndex;
+    const zone = zones[homeZoneIndex] || { x: stage.x + fallbackZoneIndex * ZONE_W };
+    return {
+      left: zone.x + inset,
+      right: Math.min(zone.x + ZONE_W - inset, stage.gateX - 70),
+    };
   }
 
   function getEnemyLockdownBounds(enemy) {
@@ -1885,18 +2089,18 @@
     combatRooms.length = 0;
 
     const floorHeights = [
-      [650, 690, 630, 710, 650, 680, 640, 700, 660, 650],
-      [700, 720, 660, 700, 670, 710, 650, 690, 720, 680],
-      [650, 690, 720, 630, 680, 650, 710, 620, 690, 670],
-      [710, 670, 630, 720, 660, 610, 690, 640, 700, 660],
-      [690, 620, 740, 600, 700, 630, 680, 610, 720, 670],
+      [650, 690, 630, 710, 650, 670, 680, 640, 700, 660, 690, 650],
+      [700, 720, 660, 700, 670, 690, 710, 650, 690, 720, 660, 680],
+      [650, 690, 720, 630, 680, 660, 650, 710, 620, 690, 640, 670],
+      [710, 670, 630, 720, 660, 680, 610, 690, 640, 700, 620, 660],
+      [690, 620, 740, 600, 700, 650, 630, 680, 610, 720, 640, 670],
     ];
     const platformKinds = {
-      scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "cargo", "roof", "factory", "gate"],
-      foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "crusher", "channel", "turbine", "gate"],
-      archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "archive", "shrine", "lab", "gate"],
-      tower: ["rail", "city", "tower", "tower", "firewall", "array", "city", "tower", "array", "gate"],
-      mirror: ["glass", "mirror", "habitat", "maze", "capsule", "arena", "glass", "mirror", "arena", "gate"],
+      scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "factory", "cargo", "roof", "factory", "cargo", "gate"],
+      foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "turbine", "crusher", "channel", "turbine", "channel", "gate"],
+      archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "lab", "archive", "shrine", "lab", "archive", "gate"],
+      tower: ["rail", "city", "tower", "tower", "firewall", "array", "array", "city", "tower", "array", "firewall", "gate"],
+      mirror: ["glass", "mirror", "habitat", "maze", "capsule", "arena", "arena", "glass", "mirror", "arena", "glass", "gate"],
     };
     const enemyPools = [
       ["runner", "runner", "gunner", "drone", "shield"],
@@ -1950,6 +2154,54 @@
         addBoostNode(origin + 1880, floorY - 78, 140, -570);
         addBoostNode(origin + 2080, floorY - 78, -140, -570);
       }
+    }
+
+    function addMidBossArena(stageIndex, origin, floorY, kind) {
+      addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+      if (stageIndex === 0) {
+        [[310, -125, 330], [930, -240, 280], [1570, -155, 360], [2390, -300, 300], [3170, -145, 390]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, "cargo"));
+        [760, 2080, 2920].forEach((x, index) => addHazard(origin + x, floorY - 22, 150 + index * 25, 22, "spike"));
+      } else if (stageIndex === 1) {
+        [[420, -145, 360], [1180, -260, 300], [2020, -170, 420], [2920, -285, 340]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "turbine"));
+        [880, 1710, 2660, 3450].forEach((x, index) => addHazard(origin + x, floorY - 310, 28, 310, "steam", index * 0.62));
+      } else if (stageIndex === 2) {
+        [[300, -170, 300], [840, -340, 280], [1420, -500, 300], [2080, -320, 350], [2720, -480, 300], [3380, -190, 300]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "shrine"));
+        addBoostNode(origin + 660, floorY - 76, 160, -650);
+        addBoostNode(origin + 1880, floorY - 76, 0, -700);
+        addBoostNode(origin + 3240, floorY - 76, -180, -620);
+      } else if (stageIndex === 3) {
+        [[280, -190, 320], [880, -360, 300], [1510, -220, 330], [2180, -430, 320], [2860, -240, 350], [3440, -380, 290]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "firewall"));
+        [1210, 1980, 3160].forEach((x, index) => addHazard(origin + x, floorY - 24, 180, 24, "laser", 0.35 + index * 0.55));
+      } else {
+        [[330, -160, 340], [900, -310, 300], [1490, -450, 300], [2210, -450, 300], [2800, -310, 300], [3380, -160, 340]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, x < 2000 ? "glass" : "mirror"));
+        addBoostNode(origin + 1180, floorY - 80, 120, -620);
+        addBoostNode(origin + 2820, floorY - 80, -120, -620);
+        addHazard(origin + 1930, floorY - 420, 24, 420, "laser", 0.4);
+        addHazard(origin + 2046, floorY - 420, 24, 420, "laser", 1.45);
+      }
+    }
+
+    function configureBossEntity(boss, bossKind, floorY, isMidBoss = false) {
+      const definition = BOSS_DEFINITIONS[bossKind];
+      boss.bossKind = bossKind;
+      boss.isMidBoss = isMidBoss;
+      boss.w = definition.size[0];
+      boss.h = definition.size[1];
+      boss.hp = definition.hp;
+      boss.maxHp = definition.hp;
+      boss.y = floorY - boss.h;
+      boss.originX = boss.x;
+      boss.spawnX = boss.x;
+      boss.spawnY = boss.y;
+      boss.baseY = boss.y;
+      boss.homeZoneIndex = getZoneIndexAt(boss.x);
+      if (getBossArchetype(bossKind) === "echo") boss.speed = isMidBoss ? 160 : 175;
+      return boss;
     }
 
     for (const zone of zones) {
@@ -2008,29 +2260,23 @@
         [720, 1260, 1840, 2420, 3000].forEach((x, index) => addHazard(origin + x, floorY - (index % 2 ? 330 : 430), 26, index % 2 ? 330 : 430, zone.stageIndex === 1 ? "steam" : "laser", index * 0.47));
         spawns.push([470, floorY - 130], [970, floorY - 250], [1510, floorY - 360], [2080, floorY - 230], [2660, floorY - 390], [3280, floorY - 210], [3700, floorY]);
         combatRooms.push({ left: origin + 180, right: origin + 3780, name: `${zone.name} 봉쇄전`, stageIndex: zone.stageIndex, triggered: false, cleared: false });
+      } else if (zone.template === "midboss") {
+        addMidBossArena(zone.stageIndex, origin, floorY, kind);
+        const stage = stages[zone.stageIndex];
+        const definition = BOSS_DEFINITIONS[stage.midBossKind];
+        const midBoss = addEnemy("boss", stage.midBossX, floorY, 540);
+        configureBossEntity(midBoss, stage.midBossKind, floorY, true);
+        addSign(origin + 2050, floorY - 104, `중간보스 · ${definition.name}`, "MID-STAGE TARGET");
       } else {
         addBossArena(zone.stageIndex, origin, floorY, kind);
         const stage = stages[zone.stageIndex];
         const definition = BOSS_DEFINITIONS[stage.bossKind];
         const boss = addEnemy("boss", stage.bossX, floorY, 620);
-        boss.bossKind = stage.bossKind;
-        boss.hp = definition.hp;
-        boss.maxHp = definition.hp;
-        boss.spawnX = boss.x;
-        boss.spawnY = boss.y;
-        boss.baseY = boss.y;
-        if (stage.bossKind === "echo") {
-          boss.w = player.w;
-          boss.h = player.h;
-          boss.y = floorY - boss.h;
-          boss.spawnY = boss.y;
-          boss.baseY = boss.y;
-          boss.speed = 175;
-        }
+        configureBossEntity(boss, stage.bossKind, floorY, false);
         addSign(origin + 2140, floorY - 100, definition.name);
       }
 
-      if (zone.stageIndex === 4 && zone.template !== "boss") {
+      if (zone.stageIndex === 4 && zone.template !== "boss" && zone.template !== "midboss") {
         const mirrorKind = localZoneIndex % 2 ? "mirror" : "glass";
         const ridge = floorY - 520 - (localZoneIndex % 3) * 55;
         [[420, 220], [820, 190], [1190, 240], [1550, 180], [1910, 240], [2290, 190], [2670, 220], [3070, 190], [3450, 250]]
@@ -2064,8 +2310,8 @@
         if (recoveryOffset !== undefined) addPickup(origin + recoveryOffset, floorY - 62, "repair");
       }
 
-      if (zone.template !== "boss") addZoneEnemies(zone, floorY, spawns);
-      if (zone.template !== "fork" && zone.template !== "boss") addPickup(origin + 2200, floorY - 310);
+      if (zone.template !== "boss" && zone.template !== "midboss") addZoneEnemies(zone, floorY, spawns);
+      if (zone.template !== "fork" && zone.template !== "boss" && zone.template !== "midboss") addPickup(origin + 2200, floorY - 310);
       addSign(origin + 110, floorY - 66, zone.name, zone.code);
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
@@ -3058,7 +3304,7 @@
       return;
     }
 
-    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
+    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "censor" && enemy.barrierTimer > 0) {
       enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (player.chargedAttack ? 0.5 : 0.16));
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 18, 320, 0.42, 0);
       game.hint = "무명 · 공허 장막이 참격을 무효화했습니다";
@@ -3140,7 +3386,7 @@
     }
     if (enemy.hitShotId === bullet.shotId) return true;
     enemy.hitShotId = bullet.shotId;
-    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
+    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "censor" && enemy.barrierTimer > 0) {
       enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (bullet.piercing ? 0.45 : 0.12));
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 16, 300, 0.38, 0);
       game.hint = "무명 · 공허 장막이 총격을 흡수했습니다";
@@ -3219,6 +3465,16 @@
       for (const summon of enemies) {
         if (summon.alive && summon.summonedByBossId === enemy.id) killEnemy(summon, { silent: true, countKill: false });
       }
+      if (enemy.isMidBoss) {
+        player.hp = Math.min(player.maxHp, player.hp + 2);
+        player.airJumpAvailable = true;
+        game.hint = `${BOSS_DEFINITIONS[kind].name} 격파 · 후반 작전 구역 개방`;
+        game.hintTimer = 6;
+        queueStory(MIDBOSS_VICTORY_STORIES[rank]);
+        saveCampaign();
+        if (deathIsNearPlayer) sound.tone(118, 0.62, "sawtooth", 0.065, 0.42);
+        return;
+      }
       game.defeatedBosses.add(kind);
       game.stageClearTimes[rank] = game.runTime;
       game.stageBossDefeated = game.defeatedBosses.has("warden");
@@ -3295,6 +3551,12 @@
     const checkpointPosition = setRespawnCheckpoint(checkpoint, checkpointIndex);
     const restartZoneIndex = getZoneIndexAt(checkpoint.x);
     let restartedEnemyCount = 0;
+
+    // 무명이 전투 중 만든 사역마는 스테이지 원본 배치가 아니다.
+    // 체크포인트 재시작 시 배열에서 완전히 제거해 중복 부활과 처치 수 오염을 막는다.
+    for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex -= 1) {
+      if (enemies[enemyIndex].summonedByBossId) enemies.splice(enemyIndex, 1);
+    }
 
     for (const enemy of enemies) {
       const enemyZoneIndex = getZoneIndexAt(enemy.originX);
@@ -3423,6 +3685,23 @@
     sound.tone(enemy.type === "boss" ? 130 : 210, 0.08, "square", 0.018, 0.65);
   }
 
+  function fireFurnaceRedBurst(enemy, target, count = 5, spreadStep = 0.055, baseSpeed = 430) {
+    const center = (count - 1) / 2;
+    for (let index = 0; index < count; index += 1) {
+      const offset = index - center;
+      fireBullet(enemy, baseSpeed + index * 22, offset * spreadStep, "standard", target);
+    }
+    spawnParticles(
+      enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.48,
+      enemy.y + enemy.h * 0.38,
+      "#ff304f",
+      12 + count,
+      330,
+      0.35,
+      80,
+    );
+  }
+
   function fireMortar(enemy, lockedTargetX = null) {
     const sourceX = enemy.x + enemy.w / 2;
     const sourceY = enemy.y + 12;
@@ -3483,6 +3762,7 @@
       damage: 0,
       color: "#ff5b67",
       ownerStage: enemy.stageIndex,
+      ownerZone: enemy.homeZoneIndex,
       ceilingY: Math.max(45, enemy.baseY - 650),
     });
   }
@@ -3503,6 +3783,7 @@
       gravity: 0,
       color: "#ff566c",
       ownerStage: bullet.ownerStage,
+      ownerZone: bullet.ownerZone,
       ceilingY: bullet.ceilingY,
       spawnTimer: 0,
       spawnSerial: 0,
@@ -3514,8 +3795,9 @@
 
   function spawnRainBomb(controller) {
     const stage = stages[controller.ownerStage] || stages[1];
-    const arenaLeft = stage.x + ZONE_W * BOSS_ZONE_INDEX + 170;
-    const arenaRight = stage.gateX - 110;
+    const zone = zones[controller.ownerZone] || zones[controller.ownerStage * ZONES_PER_STAGE + BOSS_ZONE_INDEX];
+    const arenaLeft = zone.x + 170;
+    const arenaRight = Math.min(zone.x + ZONE_W - 110, stage.gateX - 110);
     const serial = controller.spawnSerial++;
     const randomX = hash(serial * 17.31 + game.time * 7.17);
     const randomSize = hash(serial * 31.73 + 4.9);
@@ -3613,8 +3895,8 @@
   }
 
   function summonMagicSigil(enemy, spell, x, y, delay = 0.72) {
-    const stage = stages[enemy.stageIndex] || stages[2];
-    const safeX = clamp(x, stage.x + ZONE_W * BOSS_ZONE_INDEX + 150, stage.gateX - 110);
+    const arena = getBossArenaBounds(enemy, 150);
+    const safeX = clamp(x, arena.left, arena.right);
     const safeY = clamp(y, 50, enemy.baseY - 70);
     bullets.push({
       x: safeX - 30,
@@ -3662,9 +3944,9 @@
     const centerY = sigil.y + sigil.h / 2;
     const owner = enemies.find((candidate) => candidate.alive && candidate.id === sigil.ownerId);
     if (sigil.spell === "teleport" && owner) {
-      const stage = stages[owner.stageIndex];
-      const arenaLeft = stage.x + ZONE_W * BOSS_ZONE_INDEX + 150;
-      const arenaRight = stage.gateX - 100;
+      const arena = getBossArenaBounds(owner, 150);
+      const arenaLeft = arena.left;
+      const arenaRight = arena.right;
       spawnParticles(owner.x + owner.w / 2, owner.y + owner.h / 2, "#d7a0ff", 26, 380, 0.5, 0);
       owner.x = clamp(centerX - owner.w / 2, arenaLeft, arenaRight - owner.w);
       owner.y = Math.min(owner.baseY - 125, centerY - owner.h / 2);
@@ -3739,20 +4021,22 @@
         break;
       case "furnace-mortar":
         [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        fireFurnaceRedBurst(enemy, target, 5, 0.06, 425);
         break;
       case "furnace-volley":
         [-360, -180, 0, 180, 360].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        fireFurnaceRedBurst(enemy, target, 7, 0.048, 440);
         break;
       case "furnace-eruption":
         [-420, -280, -140, 0, 140, 280, 420].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        fireFurnaceRedBurst(enemy, target, 7, 0.068, 455);
         break;
       case "furnace-rain":
         launchRainCore(enemy);
+        fireFurnaceRedBurst(enemy, target, 9, 0.042, 470);
         break;
       case "furnace-rifle":
-        [390, 440, 490, 540, 590, 640].forEach((speed, index) => {
-          fireBullet(enemy, speed, (index - 2.5) * 0.012, "standard", target);
-        });
+        fireFurnaceRedBurst(enemy, target, 8, 0.018, 400);
         spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#ffb064", 16, 310, 0.36, 80);
         break;
       case "weaver-lance":
@@ -4424,7 +4708,9 @@
 
   function updateBoss(enemy, dt, dx, distance) {
     const rank = enemy.stageIndex;
-    const kind = enemy.bossKind || stages[rank]?.bossKind || "warden";
+    const bossKind = enemy.bossKind || stages[rank]?.bossKind || "warden";
+    const definition = BOSS_DEFINITIONS[bossKind] || BOSS_DEFINITIONS.warden;
+    const kind = getBossArchetype(bossKind);
     const hpRatio = enemy.hp / enemy.maxHp;
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
     const enrage = hpRatio < 0.45 ? 1.2 : 1;
@@ -4465,7 +4751,8 @@
         const summonPool = ["runner", "gunner", "piercer", "drone", "shield", "mortar"];
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
-        const summonX = clamp(enemy.x + summonDirection * (180 + (enemy.summonCount % 3) * 65), stages[rank].x + ZONE_W * BOSS_ZONE_INDEX + 180, stages[rank].gateX - 180);
+        const summonArena = getBossArenaBounds(enemy, 180);
+        const summonX = clamp(enemy.x + summonDirection * (180 + (enemy.summonCount % 3) * 65), summonArena.left, summonArena.right);
         const floorY = enemy.baseY + enemy.h;
         const summon = addEnemy(summonType, summonX, summonType === "drone" ? floorY - 210 : floorY, 260);
         enemy.summonCount += 1;
@@ -4494,8 +4781,9 @@
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
     }
-    const arenaLeft = Math.max(stages[rank].x + ZONE_W * BOSS_ZONE_INDEX + 120, enemy.originX - 920);
-    const arenaRight = Math.min(stages[rank].gateX - 70, enemy.originX + 820);
+    const homeArena = getBossArenaBounds(enemy, 120);
+    const arenaLeft = Math.max(homeArena.left, enemy.originX - 920);
+    const arenaRight = Math.min(homeArena.right, enemy.originX + 820);
     if (kind === "weaver" && !chargingShot) {
       const hoverTarget = enemy.baseY - 185 + Math.sin(enemy.anim * 1.75) * 72;
       const hoverVelocity = clamp((hoverTarget - enemy.y) * 3.1, -330, 330);
@@ -4529,7 +4817,7 @@
     }
 
     if (enemy.cooldown <= 0 && distance < 900) {
-      const phaseCount = BOSS_DEFINITIONS[kind].patterns.length;
+      const phaseCount = definition.patterns.length;
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
 
@@ -5960,7 +6248,7 @@
   function drawEnemyTelegraph(enemy) {
     if (enemy.windup <= 0) return;
     const pulse = 0.45 + Math.sin(game.time * 28) * 0.22;
-    if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && enemy.bossKind !== "weaver") {
+    if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && getBossArchetype(enemy.bossKind) !== "weaver") {
       const duration = Math.max(0.01, enemy.bossChargeDuration || enemy.windup);
       const progress = clamp(1 - enemy.windup / duration, 0, 1);
       const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
@@ -6385,12 +6673,13 @@
   function drawEnemy(enemy) {
     if (!enemy.alive) return;
     drawEnemyTelegraph(enemy);
-    if (enemy.type === "boss" && enemy.bossKind === "echo") {
+    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "echo") {
       const echoPulse = 0.5 + Math.sin(game.time * 5.4) * 0.2;
       const echoCharge = enemy.bossAction === "chargeShot" && enemy.windup > 0
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
         : 0;
-      drawBossIdentityHalo(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.5, "echo", BOSS_DEFINITIONS.echo.accent, echoPulse, echoCharge);
+      const echoAccent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || BOSS_DEFINITIONS.echo.accent;
+      drawBossIdentityHalo(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.5, "echo", echoAccent, echoPulse, echoCharge);
       const playerPose = {
         vx: player.vx,
         vy: player.vy,
@@ -6747,8 +7036,9 @@
     } else if (enemy.type === "boss") {
       const pulse = 0.5 + Math.sin(game.time * 6) * 0.2;
       const shoulder = Math.sin(enemy.anim * 3.5) * 5;
-      const bossKind = enemy.bossKind || "warden";
-      const bossAccent = BOSS_DEFINITIONS[bossKind]?.accent || palette.red;
+      const rawBossKind = enemy.bossKind || "warden";
+      const bossKind = getBossArchetype(rawBossKind);
+      const bossAccent = BOSS_DEFINITIONS[rawBossKind]?.accent || palette.red;
       const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
       const chargeProgress = chargingShot
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
@@ -8289,12 +8579,12 @@
     }
   }
 
-  function registerAdminSequence(stageNumber) {
+  function registerAdminSequence(difficultyKey) {
     if (game.mode !== "menu" || adminModeUnlocked) return false;
-    if (stageNumber === ADMIN_SEQUENCE[adminSequenceProgress]) {
+    if (difficultyKey === ADMIN_SEQUENCE[adminSequenceProgress]) {
       adminSequenceProgress += 1;
     } else {
-      adminSequenceProgress = stageNumber === ADMIN_SEQUENCE[0] ? 1 : 0;
+      adminSequenceProgress = difficultyKey === ADMIN_SEQUENCE[0] ? 1 : 0;
     }
     sound.wake();
     if (adminSequenceProgress < ADMIN_SEQUENCE.length) {
@@ -8701,16 +8991,10 @@
   adminWorldSave?.addEventListener("click", saveAdminWorldSelection);
   adminWorldDelete?.addEventListener("click", deleteAdminWorldSelection);
   adminWorldReset?.addEventListener("click", resetAdminWorldSelection);
-  for (const button of stageCodeButtons) {
-    button.addEventListener("click", () => {
-      button.classList.add("sequence-hit");
-      setTimeout(() => button.classList.remove("sequence-hit"), 180);
-      registerAdminSequence(button.dataset.adminStage);
-    });
-  }
   for (const button of difficultyButtons) {
     button.addEventListener("click", () => {
       selectedDifficulty = button.dataset.difficulty;
+      registerAdminSequence(button.dataset.difficulty);
       for (const item of difficultyButtons) {
         const selected = item === button;
         item.classList.toggle("selected", selected);
