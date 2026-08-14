@@ -27,14 +27,14 @@ jobs:
       - name: Check JavaScript
         run: node --check game.js
 
-      - name: Verify v2.0.0 release root
+      - name: Verify v2.0.1 release root
         shell: bash
         run: |
           test -f index.html
           test -f VERSION.txt
-          test "$(tr -d '\r\n' < VERSION.txt)" = "2.0.0"
-          grep -q "v=2.0.0" index.html
-          grep -q "VERSION 2.0.0" index.html
+          test "$(tr -d '\r\n' < VERSION.txt)" = "2.0.1"
+          grep -q "v=2.0.1" index.html
+          grep -q "VERSION 2.0.1" index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
