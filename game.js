@@ -94,6 +94,9 @@
   const OVERCHARGED_SHOTGUN_DAMAGE = 2.2;
   const OVERCHARGED_SHOTGUN_PELLET_LIFE = 0.4;
   const OVERCHARGED_SHOTGUN_PELLETS = 7;
+  const SHIELD_GUARD_HITS = 2;
+  const SHIELD_BREAK_SECONDS = 3.2;
+  const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -1408,8 +1411,8 @@
       hitAttackId: -1,
       hitShotId: -1,
       blockedAttackId: -1,
-      shieldGuard: type === "shield" ? 2 : 0,
-      shieldGuardMax: type === "shield" ? 2 : 0,
+      shieldGuard: type === "shield" ? SHIELD_GUARD_HITS : 0,
+      shieldGuardMax: type === "shield" ? SHIELD_GUARD_HITS : 0,
       shieldBreakTimer: 0,
       shieldGuardRegen: 0,
       bossPhase: 0,
@@ -1431,6 +1434,16 @@
   function getCombatRoomForEnemy(enemy) {
     if (!Number.isFinite(enemy?.squadRoomLeft)) return null;
     return combatRooms.find((room) => room.left === enemy.squadRoomLeft) || null;
+  }
+
+  function ensureShieldState(enemy) {
+    if (enemy?.type !== "shield") return false;
+    enemy.shieldGuardMax = SHIELD_GUARD_HITS;
+    if (!Number.isFinite(enemy.shieldGuard)) enemy.shieldGuard = SHIELD_GUARD_HITS;
+    if (!Number.isFinite(enemy.shieldBreakTimer)) enemy.shieldBreakTimer = 0;
+    if (!Number.isFinite(enemy.shieldGuardRegen)) enemy.shieldGuardRegen = 0;
+    enemy.shieldGuard = clamp(enemy.shieldGuard, 0, SHIELD_GUARD_HITS);
+    return enemy.shieldBreakTimer <= 0 && enemy.shieldGuard > 0;
   }
 
   function getEnemyFormation(enemy) {
@@ -3649,18 +3662,16 @@
     const playerCenter = player.x + player.w / 2;
     const enemyCenter = enemy.x + enemy.w / 2;
     const incomingSide = Math.sign(playerCenter - enemyCenter) || 1;
-    const shielded = enemy.type === "shield"
+    const shielded = ensureShieldState(enemy)
       && incomingSide === enemy.facing
-      && player.grounded
       && !player.chargedAttack
       && player.slashChain !== 3
-      && enemy.shieldBreakTimer <= 0
-      && enemy.shieldGuard > 0;
+      && enemy.shieldBreakTimer <= 0;
 
     if (shielded) {
       enemy.blockedAttackId = player.attackId;
       enemy.shieldGuard = Math.max(0, enemy.shieldGuard - 1);
-      enemy.shieldGuardRegen = 2.4;
+      enemy.shieldGuardRegen = SHIELD_GUARD_REGEN_SECONDS;
       if (enemy.shieldGuard > 0) {
         player.vx = -player.facing * 150;
         player.vy = Math.min(player.vy, -105);
@@ -3670,7 +3681,7 @@
         sound.tone(170, 0.08, "square", 0.032, 0.72);
         return;
       }
-      enemy.shieldBreakTimer = 3.2;
+      enemy.shieldBreakTimer = SHIELD_BREAK_SECONDS;
       enemy.hurt = 0.34;
       enemy.windup = 0;
       enemy.cooldown = Math.max(enemy.cooldown, 1.1);
@@ -3728,19 +3739,18 @@
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
     if (enemy.hitShotId === bullet.shotId) return true;
-    const shielded = enemy.type === "shield"
+    const shielded = ensureShieldState(enemy)
       && Math.sign(bullet.vx || 1) === -enemy.facing
       && !bullet.piercing
-      && enemy.shieldBreakTimer <= 0
-      && enemy.shieldGuard > 0;
+      && enemy.shieldBreakTimer <= 0;
     if (shielded) {
       enemy.hitShotId = bullet.shotId;
       enemy.shieldGuard = Math.max(0, enemy.shieldGuard - 1);
-      enemy.shieldGuardRegen = 2.4;
+      enemy.shieldGuardRegen = SHIELD_GUARD_REGEN_SECONDS;
       spawnParticles(bullet.x, bullet.y, palette.amber, 8, 260, 0.3, 300);
       sound.tone(150, 0.08, "square", 0.035, 0.65);
       if (enemy.shieldGuard > 0) return false;
-      enemy.shieldBreakTimer = 3.2;
+      enemy.shieldBreakTimer = SHIELD_BREAK_SECONDS;
       enemy.hurt = 0.34;
       enemy.windup = 0;
       enemy.cooldown = Math.max(enemy.cooldown, 1.1);
@@ -4374,6 +4384,7 @@
   }
 
   function launchBossFunnels(enemy, count = 6) {
+    if (enemy?.bossKind === "breaker") return;
     const formationSide = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? -1 : 1;
     for (let index = 0; index < count; index += 1) {
       bullets.push({
@@ -5170,16 +5181,17 @@
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
     if (enemy.type === "shield") {
+      ensureShieldState(enemy);
       const wasBroken = enemy.shieldBreakTimer > 0;
       enemy.shieldBreakTimer = Math.max(0, enemy.shieldBreakTimer - dt);
       if (wasBroken && enemy.shieldBreakTimer <= 0) {
         enemy.shieldGuard = 1;
-        enemy.shieldGuardRegen = 2.2;
+        enemy.shieldGuardRegen = SHIELD_GUARD_REGEN_SECONDS;
       } else if (enemy.shieldBreakTimer <= 0 && enemy.shieldGuard < enemy.shieldGuardMax) {
         enemy.shieldGuardRegen = Math.max(0, enemy.shieldGuardRegen - dt);
         if (enemy.shieldGuardRegen <= 0) {
           enemy.shieldGuard += 1;
-          enemy.shieldGuardRegen = enemy.shieldGuard < enemy.shieldGuardMax ? 2.2 : 0;
+          enemy.shieldGuardRegen = enemy.shieldGuard < enemy.shieldGuardMax ? SHIELD_GUARD_REGEN_SECONDS : 0;
         }
       }
     }
@@ -5440,7 +5452,22 @@
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
 
-      if (bossKind === "hunter") {
+      if (bossKind === "breaker") {
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "warden-volley", dx, 0.76);
+          enemy.cooldown = 2.05 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          enemy.windup = 0.68;
+          enemy.bossAction = "dash";
+          enemy.cooldown = 2.2 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "warden-air", dx, 0.66);
+          enemy.cooldown = 2.15 * recovery;
+        } else {
+          startBossChargedShot(enemy, "warden-suppress", dx, 0.86);
+          enemy.cooldown = 2.35 * recovery;
+        }
+      } else if (bossKind === "hunter") {
         if (enemy.bossPhase === 0) {
           enemy.windup = 0.44;
           enemy.bossAction = "reflectRush";
@@ -10103,7 +10130,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.3",
+    version: "2.1.4",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10127,10 +10154,13 @@
     shotgunDamage: SHOTGUN_DAMAGE,
     shotgunPelletLife: SHOTGUN_PELLET_LIFE,
     overchargedShotgunPelletLife: OVERCHARGED_SHOTGUN_PELLET_LIFE,
+    breakerFunnels: false,
+    shieldGuardHits: SHIELD_GUARD_HITS,
+    shieldAirGuard: true,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.3",
+    gameVersion: "2.1.4",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10162,6 +10192,9 @@
     shotgunDamage: String(SHOTGUN_DAMAGE),
     shotgunPelletLife: String(SHOTGUN_PELLET_LIFE),
     overchargedShotgunPelletLife: String(OVERCHARGED_SHOTGUN_PELLET_LIFE),
+    breakerFunnels: "false",
+    shieldGuardHits: String(SHIELD_GUARD_HITS),
+    shieldAirGuard: "true",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
