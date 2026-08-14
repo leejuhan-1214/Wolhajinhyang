@@ -137,11 +137,11 @@
 
   const BOSS_DEFINITIONS = {
     warden: {
-      name: "폐기장 감독관 · 철각",
+      name: "붉은 중장 지휘기 · 철각",
       hp: 12,
-      size: [88, 82],
-      accent: "#65f5ea",
-      patterns: ["오연장 포화", "궤도 돌진", "대공 오연사", "제압 탄막"],
+      size: [82, 102],
+      accent: "#ff496c",
+      patterns: ["육익 판넬", "유도 포화", "중장 돌진", "대공 미사일", "제압 탄막"],
     },
     furnace: {
       name: "용광 심장 · 홍련",
@@ -180,36 +180,36 @@
       patterns: ["파쇄 미사일", "궤도 들이받기", "천장 고철비", "압착 사격"],
     },
     hunter: {
-      name: "노심 추격자 · 적린",
+      name: "반사 사냥꾼 · 적린",
       hp: 13,
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
-      patterns: ["추적 박격", "적탄 속사", "도약 포격", "노심 분출", "십자 연사"],
+      patterns: ["산탄 반사막", "추적 박격", "적탄 속사", "노심 분출", "십자 연사"],
     },
     oracle: {
-      name: "가면 심문관 · 육화",
+      name: "전위 심문관 · 육화",
       hp: 16,
       size: [56, 78],
       accent: "#bfa4ff",
       archetype: "weaver",
-      patterns: ["심문 전이", "육화 마법진", "공중 화염문", "기억 역질문"],
+      patterns: ["강제 위치 교환", "육화 탄막", "공중 화염문", "기억 역질문"],
     },
     revenant: {
-      name: "삭제 집행관 · 공문",
+      name: "검기 집행관 · 공문",
       hp: 20,
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
-      patterns: ["수배 탄막", "집행 돌진", "압수 포격", "삭제 격자", "추적 소환"],
+      patterns: ["삼연 검기", "집행 돌진", "교차 검기", "월식 검무", "추적 참파"],
     },
     proxy: {
-      name: "원본 판정체 · 대역-13",
+      name: "광기 연구체 · 대역-13",
       hp: 24,
-      size: [34, 56],
-      accent: "#58d9c4",
+      size: [58, 78],
+      accent: "#78ff8b",
       archetype: "echo",
-      patterns: ["대리 발도", "판정 산탄", "복제 추격", "원본 반박", "자격 박탈"],
+      patterns: ["맹독 플라스크", "변이 포션", "독무 살포", "실험체 돌진", "연쇄 폭약"],
     },
   };
 
@@ -1321,6 +1321,9 @@
       summonCount: 0,
       barrierTimer: 0,
       barrierCooldown: 3.2,
+      reflectTimer: 0,
+      reflectCooldown: 2.8,
+      funnelCooldown: 0,
       countedKill: false,
     };
     enemies.push(enemy);
@@ -2464,7 +2467,10 @@
     continueButton.hidden = false;
     continueButton.disabled = !saved;
     const editData = normalizeStartScreenEdits(startScreenEditData) || START_SCREEN_DEFAULTS;
-    continueButton.textContent = editData.continueButton;
+    const savedStage = saved ? clamp((Number(saved.respawnStage) || 0) + 1, 1, stages.length) : 1;
+    continueButton.textContent = saved
+      ? `${editData.continueButton} · STAGE ${String(savedStage).padStart(2, "0")}`
+      : editData.continueButton;
   }
 
   function saveCampaign() {
@@ -3304,7 +3310,7 @@
       return;
     }
 
-    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "censor" && enemy.barrierTimer > 0) {
+    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
       enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (player.chargedAttack ? 0.5 : 0.16));
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 18, 320, 0.42, 0);
       game.hint = "무명 · 공허 장막이 참격을 무효화했습니다";
@@ -3386,7 +3392,11 @@
     }
     if (enemy.hitShotId === bullet.shotId) return true;
     enemy.hitShotId = bullet.shotId;
-    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "censor" && enemy.barrierTimer > 0) {
+    if (enemy.type === "boss" && enemy.bossKind === "hunter" && enemy.reflectTimer > 0) {
+      reflectShotgun(enemy);
+      return true;
+    }
+    if (enemy.type === "boss" && enemy.bossKind === "censor" && enemy.barrierTimer > 0) {
       enemy.barrierTimer = Math.max(0, enemy.barrierTimer - (bullet.piercing ? 0.45 : 0.12));
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 16, 300, 0.38, 0);
       game.hint = "무명 · 공허 장막이 총격을 흡수했습니다";
@@ -3597,6 +3607,9 @@
       enemy.summonCount = 0;
       enemy.barrierTimer = 0;
       enemy.barrierCooldown = 3.2;
+      enemy.reflectTimer = 0;
+      enemy.reflectCooldown = 2.8;
+      enemy.funnelCooldown = 0;
       enemy.stuckTimer = 0;
       enemy.hitAttackId = -1;
       enemy.hitShotId = -1;
@@ -3977,6 +3990,150 @@
     sound.tone(92, 0.18, "sawtooth", 0.04, 0.5);
   }
 
+  function firePointBullet(x, y, target, speed = 430, spread = 0, kind = "standard", color = palette.red) {
+    const angle = Math.atan2(target.y - y, target.x - x) + spread;
+    const scaledSpeed = speed * difficultySettings[game.difficulty].bulletSpeed;
+    bullets.push({
+      x: x - 6,
+      y: y - 6,
+      w: 12,
+      h: 12,
+      vx: Math.cos(angle) * scaledSpeed,
+      vy: Math.sin(angle) * scaledSpeed,
+      life: 4.2,
+      maxLife: 4.2,
+      enemy: true,
+      kind,
+      gravity: 0,
+      color,
+      damage: 1,
+    });
+  }
+
+  function launchBossFunnels(enemy, count = 6) {
+    for (let index = 0; index < count; index += 1) {
+      bullets.push({
+        x: enemy.x + enemy.w / 2 - 10,
+        y: enemy.y + 18,
+        w: 20,
+        h: 9,
+        vx: 0,
+        vy: 0,
+        life: 4.8,
+        maxLife: 4.8,
+        enemy: true,
+        harmless: true,
+        kind: "boss-funnel",
+        ownerId: enemy.id,
+        orbitIndex: index,
+        orbitCount: count,
+        shotTimer: 0.5 + index * 0.12,
+        shotsLeft: 3,
+        color: "#ff496c",
+      });
+    }
+    sound.tone(360, 0.28, "sawtooth", 0.035, 1.65);
+  }
+
+  function reflectShotgun(enemy) {
+    const originX = enemy.x + enemy.w / 2;
+    const originY = enemy.y + enemy.h * 0.42;
+    const target = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
+    [-0.12, 0, 0.12].forEach((spread) => firePointBullet(originX, originY, target, 520, spread, "reflected-shotgun", "#a6f7ff"));
+    enemy.reflectTimer = Math.max(0, enemy.reflectTimer - 0.28);
+    spawnParticles(originX, originY, "#a6f7ff", 22, 390, 0.48, 0);
+    game.shake = Math.max(game.shake, 12);
+    sound.tone(560, 0.13, "square", 0.04, 0.55);
+  }
+
+  function swapBossWithPlayer(enemy) {
+    const arena = getBossArenaBounds(enemy, 90);
+    const playerX = player.x;
+    const playerY = player.y;
+    const enemyX = enemy.x;
+    const enemyY = enemy.y;
+    spawnParticles(playerX + player.w / 2, playerY + player.h / 2, "#f1dcff", 28, 430, 0.55, 0);
+    spawnParticles(enemyX + enemy.w / 2, enemyY + enemy.h / 2, "#936cff", 28, 430, 0.55, 0);
+    player.x = clamp(enemyX + enemy.w / 2 - player.w / 2, arena.left, arena.right - player.w);
+    player.y = enemyY + enemy.h - player.h;
+    enemy.x = clamp(playerX + player.w / 2 - enemy.w / 2, arena.left, arena.right - enemy.w);
+    enemy.y = Math.min(enemy.baseY - 40, playerY + player.h - enemy.h);
+    player.vx = 0;
+    player.vy = 0;
+    enemy.vx = 0;
+    enemy.vy = 0;
+    player.invincible = Math.max(player.invincible, 0.62);
+    game.shake = Math.max(game.shake, 16);
+    sound.tone(210, 0.25, "sine", 0.045, 2.1);
+  }
+
+  function fireSwordWave(enemy, target, spread = 0, speed = 520) {
+    const x = enemy.x + enemy.w / 2 + enemy.facing * 26;
+    const y = enemy.y + enemy.h * 0.43;
+    const angle = Math.atan2(target.y - y, target.x - x) + spread;
+    const scaledSpeed = speed * difficultySettings[game.difficulty].bulletSpeed;
+    bullets.push({
+      x: x - 21,
+      y: y - 8,
+      w: 42,
+      h: 16,
+      vx: Math.cos(angle) * scaledSpeed,
+      vy: Math.sin(angle) * scaledSpeed,
+      life: 3.6,
+      maxLife: 3.6,
+      enemy: true,
+      kind: "sword-wave",
+      gravity: 0,
+      color: "#ff6b9c",
+      damage: 1,
+    });
+  }
+
+  function throwPotion(enemy, targetX, variant = 0, offset = 0) {
+    const x = enemy.x + enemy.w / 2 + enemy.facing * 18;
+    const y = enemy.y + enemy.h * 0.35;
+    bullets.push({
+      x: x - 9,
+      y: y - 13,
+      w: 18,
+      h: 26,
+      vx: clamp((targetX + offset - x) * 0.8, -470, 470),
+      vy: -570 - Math.abs(offset) * 0.22,
+      life: 3.8,
+      maxLife: 3.8,
+      enemy: true,
+      kind: "potion",
+      gravity: 980,
+      color: variant % 2 ? "#ce72ff" : "#78ff8b",
+      potionVariant: variant,
+      damage: 1,
+    });
+  }
+
+  function explodePotion(bullet) {
+    const centerX = bullet.x + bullet.w / 2;
+    const centerY = bullet.y + bullet.h / 2;
+    bullets.push({
+      x: centerX - 62,
+      y: centerY - 42,
+      w: 124,
+      h: 84,
+      vx: 0,
+      vy: 0,
+      life: 3.2,
+      maxLife: 3.2,
+      enemy: true,
+      harmless: true,
+      kind: "poison-gas",
+      color: bullet.potionVariant % 2 ? "#ce72ff" : "#78ff8b",
+      damageTimer: 0,
+      particleTimer: 0,
+    });
+    spawnParticles(centerX, centerY, bullet.color, 24, 360, 0.62, 180);
+    game.shake = Math.max(game.shake, 9);
+    sound.tone(118, 0.18, "sawtooth", 0.038, 0.48);
+  }
+
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
     const rank = enemy.stageIndex;
     enemy.windup = duration;
@@ -4003,6 +4160,9 @@
   function releaseBossChargedShot(enemy) {
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
+      case "warden-funnels":
+        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 8 : 6);
+        break;
       case "warden-volley":
         [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
@@ -4091,6 +4251,24 @@
           fireBullet(enemy, 465, index * 0.078, index % 2 === 0 ? "phase" : "standard", target);
         }
         [-330, -110, 110, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        break;
+      case "revenant-triple":
+        [-0.16, 0, 0.16].forEach((spread) => fireSwordWave(enemy, target, spread));
+        break;
+      case "revenant-cross":
+        [-0.28, -0.14, 0, 0.14, 0.28].forEach((spread) => fireSwordWave(enemy, target, spread, 560));
+        break;
+      case "revenant-rain":
+        [-360, -180, 0, 180, 360].forEach((offset) => fireSwordWave(enemy, { x: enemy.targetX + offset, y: enemy.targetY }, 0, 590));
+        break;
+      case "proxy-potion":
+        [-160, 0, 160].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index, offset));
+        break;
+      case "proxy-toxic-ring":
+        [-360, -240, -120, 0, 120, 240, 360].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index, offset));
+        break;
+      case "proxy-flask-rain":
+        [-420, -280, -140, 0, 140, 280, 420].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index + 1, offset));
         break;
       case "echo-shotgun":
         for (let index = -2; index <= 2; index += 1) {
@@ -4719,13 +4897,13 @@
     const desiredSpeed = (mobility[kind] + rank * 10) * speedScale * enrage * echoSpeedFactor;
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
-      if (kind === "warden") {
+      if (bossKind === "warden") {
         enemy.halfPhaseTriggered = true;
         startBossChargedShot(enemy, "warden-core", dx, 2.08);
         enemy.cooldown = 3.5;
         game.hint = "철각 · 장거리 후퇴 · 초대형 관통 차지빔 충전";
         game.hintTimer = 3.1;
-      } else if (kind === "furnace") {
+      } else if (bossKind === "furnace") {
         enemy.halfPhaseTriggered = true;
         startBossChargedShot(enemy, "furnace-rain", dx, 1.76);
         enemy.cooldown = 3.45;
@@ -4734,7 +4912,18 @@
       }
     }
 
-    if (kind === "censor") {
+    if (bossKind === "hunter") {
+      enemy.reflectTimer = Math.max(0, (enemy.reflectTimer || 0) - dt);
+      enemy.reflectCooldown = Math.max(0, (enemy.reflectCooldown || 0) - dt);
+      if (enemy.reflectCooldown <= 0 && enemy.reflectTimer <= 0 && distance < 820) {
+        enemy.reflectTimer = hpRatio < 0.5 ? 1.7 : 1.35;
+        enemy.reflectCooldown = hpRatio < 0.5 ? 3.5 : 4.3;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 24, 340, 0.55, 0);
+        sound.tone(480, 0.22, "sine", 0.035, 1.6);
+      }
+    }
+
+    if (bossKind === "censor") {
       enemy.barrierTimer = Math.max(0, (enemy.barrierTimer || 0) - dt);
       enemy.barrierCooldown = Math.max(0, (enemy.barrierCooldown || 0) - dt);
       if (enemy.barrierCooldown <= 0 && enemy.barrierTimer <= 0 && distance < 900) {
@@ -4773,7 +4962,7 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     if (chargingShot) {
-      const beamRetreatBoost = kind === "warden" && enemy.bossShotPattern === "warden-core" ? 2.25 : 1;
+      const beamRetreatBoost = bossKind === "warden" && enemy.bossShotPattern === "warden-core" ? 2.25 : 1;
       const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor * beamRetreatBoost;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
     } else if (distance < 760 && Math.abs(dx) > 115) {
@@ -4821,15 +5010,89 @@
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
 
-      if (kind === "warden") {
+      if (bossKind === "hunter") {
         if (enemy.bossPhase === 0) {
+          enemy.reflectTimer = Math.max(enemy.reflectTimer, 1.65);
+          enemy.reflectCooldown = 4.2;
+          startBossChargedShot(enemy, "furnace-rifle", dx, 0.58);
+          enemy.cooldown = 2.05 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          startBossChargedShot(enemy, "furnace-mortar", dx, 0.86);
+          enemy.cooldown = 2.2 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "furnace-rifle", dx, 0.42);
+          enemy.cooldown = 1.35 * recovery;
+        } else if (enemy.bossPhase === 3) {
+          startBossChargedShot(enemy, "furnace-volley", dx, 0.9);
+          enemy.cooldown = 2.35 * recovery;
+        } else {
+          startBossChargedShot(enemy, "furnace-eruption", dx, 1.04);
+          enemy.cooldown = 2.65 * recovery;
+        }
+      } else if (bossKind === "oracle") {
+        if (enemy.bossPhase === 0) {
+          enemy.windup = 0.72;
+          enemy.bossAction = "positionSwap";
+          enemy.cooldown = 2.35 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          startBossChargedShot(enemy, "weaver-fan", dx, 0.84);
+          enemy.cooldown = 2.05 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          const teleportX = clamp(player.x - Math.sign(dx || 1) * 330, arenaLeft + 80, arenaRight - 80);
+          summonMagicSigil(enemy, "teleport", teleportX, enemy.baseY - 245, 0.58);
+          enemy.cooldown = 1.85 * recovery;
+        } else {
+          startBossChargedShot(enemy, "weaver-lance", dx, 0.92);
+          enemy.cooldown = 2.4 * recovery;
+        }
+      } else if (bossKind === "revenant") {
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "revenant-triple", dx, 0.56);
+          enemy.cooldown = 1.55 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          enemy.windup = 0.48;
+          enemy.bossAction = "swordDash";
+          enemy.cooldown = 1.7 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "revenant-cross", dx, 0.76);
+          enemy.cooldown = 1.9 * recovery;
+        } else if (enemy.bossPhase === 3) {
+          startBossChargedShot(enemy, "revenant-rain", dx, 0.92);
+          enemy.cooldown = 2.2 * recovery;
+        } else {
+          startBossChargedShot(enemy, "revenant-cross", dx, 0.64);
+          enemy.cooldown = 1.65 * recovery;
+        }
+      } else if (bossKind === "proxy") {
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "proxy-potion", dx, 0.72);
+          enemy.cooldown = 1.9 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          startBossChargedShot(enemy, "proxy-toxic-ring", dx, 0.98);
+          enemy.cooldown = 2.55 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          enemy.windup = 0.52;
+          enemy.bossAction = "madDash";
+          enemy.cooldown = 1.75 * recovery;
+        } else if (enemy.bossPhase === 3) {
+          startBossChargedShot(enemy, "proxy-flask-rain", dx, 1.08);
+          enemy.cooldown = 2.75 * recovery;
+        } else {
+          startBossChargedShot(enemy, "proxy-potion", dx, 0.58);
+          enemy.cooldown = 1.6 * recovery;
+        }
+      } else if (kind === "warden") {
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "warden-funnels", dx, 0.72);
+          enemy.cooldown = 2.3 * recovery;
+        } else if (enemy.bossPhase === 1) {
           startBossChargedShot(enemy, "warden-volley", dx, 0.82);
           enemy.cooldown = 1.95 * recovery;
-        } else if (enemy.bossPhase === 1) {
+        } else if (enemy.bossPhase === 2) {
           enemy.windup = 0.72;
           enemy.bossAction = "dash";
           enemy.cooldown = 2.25 * recovery;
-        } else if (enemy.bossPhase === 2) {
+        } else if (enemy.bossPhase === 3) {
           startBossChargedShot(enemy, "warden-air", dx, 0.68);
           enemy.cooldown = 2.1 * recovery;
         } else {
@@ -4945,6 +5208,16 @@
           enemy.vx = Math.sign(dx) * 690;
           if (Math.abs(dx) < 190 && Math.abs(player.y - enemy.y) < 115) damagePlayer(1, enemy.x);
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 20, 480, 0.4, 0);
+        } else if (enemy.bossAction === "positionSwap") {
+          swapBossWithPlayer(enemy);
+        } else if (enemy.bossAction === "swordDash") {
+          enemy.vx = Math.sign(dx || 1) * 720;
+          fireSwordWave(enemy, { x: player.x + player.w / 2, y: player.y + player.h / 2 }, 0, 620);
+          if (Math.abs(dx) < 180 && Math.abs(player.y - enemy.y) < 105) damagePlayer(1, enemy.x);
+        } else if (enemy.bossAction === "madDash") {
+          enemy.vx = Math.sign(dx || 1) * 500;
+          throwPotion(enemy, player.x + player.w / 2, 1, -110);
+          throwPotion(enemy, player.x + player.w / 2, 0, 110);
         } else if (enemy.bossAction === "chargeShot") {
           releaseBossChargedShot(enemy);
         }
@@ -5020,6 +5293,55 @@
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
       const bullet = bullets[i];
 
+      if (bullet.kind === "boss-funnel") {
+        bullet.life -= dt;
+        const owner = enemies.find((candidate) => candidate.alive && candidate.id === bullet.ownerId);
+        if (!owner || bullet.life <= 0) {
+          spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.color, 7, 170, 0.3, 0);
+          bullets.splice(i, 1);
+          continue;
+        }
+        const angle = game.time * 1.75 + bullet.orbitIndex * TAU / bullet.orbitCount;
+        const targetX = player.x + player.w / 2 + Math.cos(angle) * 205;
+        const targetY = player.y + player.h / 2 - 72 + Math.sin(angle) * 125;
+        const follow = 1 - Math.pow(0.006, dt);
+        bullet.x = lerp(bullet.x, targetX - bullet.w / 2, follow);
+        bullet.y = lerp(bullet.y, targetY - bullet.h / 2, follow);
+        bullet.shotTimer -= dt;
+        if (bullet.shotTimer <= 0 && bullet.shotsLeft > 0) {
+          firePointBullet(
+            bullet.x + bullet.w / 2,
+            bullet.y + bullet.h / 2,
+            { x: player.x + player.w / 2, y: player.y + player.h / 2 },
+            470,
+            0,
+            "funnel-shot",
+            "#ff496c",
+          );
+          bullet.shotsLeft -= 1;
+          bullet.shotTimer = 0.62 + bullet.orbitIndex * 0.025;
+        }
+        continue;
+      }
+
+      if (bullet.kind === "poison-gas") {
+        bullet.life -= dt;
+        bullet.damageTimer -= dt;
+        bullet.particleTimer -= dt;
+        if (bullet.particleTimer <= 0) {
+          bullet.particleTimer = 0.16;
+          const px = bullet.x + hash(game.time * 41 + i) * bullet.w;
+          const py = bullet.y + hash(game.time * 67 + i) * bullet.h;
+          spawnParticles(px, py, bullet.color, 2, 55, 0.5, -35);
+        }
+        if (bullet.damageTimer <= 0 && overlaps(bullet, player)) {
+          damagePlayer(1, bullet.x + bullet.w / 2);
+          bullet.damageTimer = 0.78;
+        }
+        if (bullet.life <= 0) bullets.splice(i, 1);
+        continue;
+      }
+
       if (bullet.kind === "rain-controller") {
         bullet.life -= dt;
         bullet.spawnTimer -= dt;
@@ -5085,6 +5407,9 @@
       if (remove && bullet.kind === "rain-core") {
         explodeRainCore(bullet);
         exploded = true;
+      } else if (remove && bullet.kind === "potion") {
+        explodePotion(bullet);
+        exploded = true;
       }
       const steps = Math.max(1, Math.ceil(Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)) / 6));
       const stepTime = dt / steps;
@@ -5100,6 +5425,9 @@
             exploded = true;
           } else if (bullet.kind === "fireball") {
             explodeFireball(bullet);
+            exploded = true;
+          } else if (bullet.kind === "potion") {
+            explodePotion(bullet);
             exploded = true;
           } else {
             damagePlayer(bullet.damage || 1, bullet.x);
@@ -5130,6 +5458,9 @@
               exploded = true;
             } else if (bullet.kind === "fireball") {
               explodeFireball(bullet);
+              exploded = true;
+            } else if (bullet.kind === "potion") {
+              explodePotion(bullet);
               exploded = true;
             }
             remove = true;
@@ -6413,10 +6744,130 @@
     ctx.restore();
   }
 
-  function drawDetailedBossCharacter(enemy, bossKind, accent, pulse, chargeProgress, chargingShot) {
+  function drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot) {
+    const flash = enemy.hurt > 0;
+    const motion = Math.sin(enemy.anim * 5.2);
+    const shell = flash ? "#ffffff" : "#1b202b";
+    const limb = (x1, y1, x2, y2, width, color = shell) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    };
+
+    if (rawBossKind === "warden") {
+      // 붉은 중장갑 지휘기. 특정 기체 복제가 아닌 초승달 장갑과 육익 판넬의 오리지널 실루엣이다.
+      limb(-17, 69, -23 - motion * 3, 98, 15, flash ? "#fff" : "#4a101d");
+      limb(17, 69, 23 + motion * 3, 98, 15, flash ? "#fff" : "#4a101d");
+      ctx.fillStyle = flash ? "#fff" : "#7b1730";
+      ctx.beginPath();
+      ctx.moveTo(-42, 47); ctx.lineTo(-30, 24); ctx.lineTo(-15, 31); ctx.lineTo(-22, 69); ctx.lineTo(-48, 77); ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(42, 47); ctx.lineTo(30, 24); ctx.lineTo(15, 31); ctx.lineTo(22, 69); ctx.lineTo(48, 77); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ff8ca2"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = flash ? "#fff" : "#9b1d39";
+      ctx.beginPath(); ctx.moveTo(-27, 24); ctx.lineTo(-17, 8); ctx.lineTo(18, 8); ctx.lineTo(31, 30); ctx.lineTo(20, 68); ctx.lineTo(-20, 68); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#2b1019"; ctx.fillRect(-14, 26, 28, 21);
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(0, 37, 6 + pulse * 2, 0, TAU); ctx.fill();
+      ctx.fillStyle = flash ? "#fff" : "#651428";
+      ctx.beginPath(); ctx.arc(-34, 27, 18, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(34, 27, 18, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#ff9caf"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-34, 27, 15, 0, TAU); ctx.arc(34, 27, 15, 0, TAU); ctx.stroke();
+      ctx.fillStyle = "#3a111c"; ctx.beginPath(); ctx.moveTo(-12, 4); ctx.lineTo(0, -11); ctx.lineTo(6, 4); ctx.lineTo(16, 11); ctx.lineTo(-15, 13); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#ffced7"; ctx.fillRect(1, 5, 10, 3);
+      // 후방 육익 판넬 랙.
+      for (const side of [-1, 1]) for (let panel = 0; panel < 3; panel += 1) {
+        ctx.save(); ctx.translate(side * (34 + panel * 8), 8 + panel * 17); ctx.rotate(side * (0.45 + panel * 0.12));
+        ctx.fillStyle = "#5b1022"; ctx.beginPath(); ctx.moveTo(-5, -14); ctx.lineTo(7, -10); ctx.lineTo(8, 11); ctx.lineTo(-7, 14); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+      }
+      ctx.fillStyle = "#35121a"; ctx.fillRect(24, 42, 56, 11);
+      ctx.fillStyle = "#d05061"; ctx.fillRect(65, 44, 28, 6);
+    } else if (rawBossKind === "breaker") {
+      limb(-19, 57, -27 - motion * 3, 77, 16, flash ? "#fff" : "#55421e");
+      limb(19, 57, 27 + motion * 3, 77, 16, flash ? "#fff" : "#55421e");
+      ctx.fillStyle = flash ? "#fff" : "#4c3d22"; ctx.fillRect(-32, 20, 64, 43);
+      ctx.fillStyle = "#17150f"; ctx.fillRect(-19, 28, 38, 23);
+      ctx.fillStyle = accent; ctx.fillRect(-15, 33, 30, 5);
+      ctx.strokeStyle = accent; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(-30, 28); ctx.lineTo(-56, 10); ctx.lineTo(-67, 34); ctx.lineTo(-44, 53); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(30, 28); ctx.lineTo(56, 10); ctx.lineTo(67, 34); ctx.lineTo(44, 53); ctx.stroke();
+      ctx.fillStyle = "#837345"; ctx.beginPath(); ctx.moveTo(-18, 18); ctx.lineTo(0, 2); ctx.lineTo(18, 18); ctx.closePath(); ctx.fill();
+    } else if (rawBossKind === "hunter") {
+      limb(-12, 56, -18 - motion * 4, 81, 10, flash ? "#fff" : "#553129");
+      limb(12, 56, 18 + motion * 4, 81, 10, flash ? "#fff" : "#553129");
+      ctx.fillStyle = flash ? "#fff" : "#6b352b"; ctx.beginPath(); ctx.moveTo(-20, 17); ctx.lineTo(17, 13); ctx.lineTo(26, 56); ctx.lineTo(0, 69); ctx.lineTo(-24, 53); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#14222b"; ctx.fillRect(-13, 25, 30, 19);
+      ctx.fillStyle = "#a6f7ff"; ctx.fillRect(-8, 29, 20, 4);
+      // 반사 방패와 짧은 산탄총.
+      ctx.fillStyle = "rgba(166,247,255,0.22)"; ctx.strokeStyle = "#a6f7ff"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-32, 8); ctx.lineTo(-52, 24); ctx.lineTo(-48, 65); ctx.lineTo(-27, 74); ctx.lineTo(-18, 31); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#30201e"; ctx.fillRect(17, 28, 45, 13);
+      for (let barrel = 0; barrel < 3; barrel += 1) { ctx.fillStyle = "#c88a70"; ctx.fillRect(53, 28 + barrel * 5, 22, 3); }
+      if (enemy.reflectTimer > 0) {
+        ctx.strokeStyle = `rgba(166,247,255,${0.58 + pulse * 0.35})`; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(-5, 42, 61, -1.85, 1.85); ctx.stroke();
+      }
+    } else if (rawBossKind === "oracle") {
+      ctx.fillStyle = flash ? "#fff" : "#231a38";
+      ctx.beginPath(); ctx.moveTo(-18, 28); ctx.lineTo(-34, 76 + motion * 3); ctx.lineTo(-4, 65); ctx.lineTo(0, 82); ctx.lineTo(6, 64); ctx.lineTo(35, 76 - motion * 3); ctx.lineTo(18, 27); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#e8e3ef"; ctx.beginPath(); ctx.moveTo(-16, 8); ctx.lineTo(0, 1); ctx.lineTo(16, 8); ctx.lineTo(12, 27); ctx.lineTo(0, 34); ctx.lineTo(-12, 27); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#603ea0"; ctx.fillRect(-10, 17, 8, 3); ctx.fillStyle = "#ff6b9c"; ctx.fillRect(3, 17, 8, 3);
+      for (const side of [-1, 1]) {
+        const orbit = side * (39 + Math.sin(game.time * 2.2) * 5);
+        ctx.fillStyle = side < 0 ? "#dcd5ee" : "#493169";
+        ctx.beginPath(); ctx.ellipse(orbit, 38 + Math.cos(game.time * 2.5 + side) * 10, 10, 15, side * 0.2, 0, TAU); ctx.fill();
+        ctx.strokeStyle = side < 0 ? "#ff6b9c" : "#bfa4ff"; ctx.stroke();
+      }
+    } else if (rawBossKind === "revenant") {
+      limb(-11, 57, -18 - motion * 4, 84, 9, flash ? "#fff" : "#29121e");
+      limb(11, 57, 18 + motion * 4, 84, 9, flash ? "#fff" : "#29121e");
+      ctx.fillStyle = flash ? "#fff" : "#1b101b"; ctx.beginPath(); ctx.moveTo(-18, 18); ctx.lineTo(13, 11); ctx.lineTo(25, 57); ctx.lineTo(0, 68); ctx.lineTo(-24, 54); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#eadce5"; ctx.beginPath(); ctx.moveTo(-11, 3); ctx.lineTo(11, 3); ctx.lineTo(15, 20); ctx.lineTo(-13, 21); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = accent; ctx.fillRect(1, 10, 11, 3);
+      // 몸보다 긴 월식도.
+      ctx.save(); ctx.translate(20, 38); ctx.rotate(-0.6 + motion * 0.03);
+      ctx.fillStyle = "#12121a"; ctx.fillRect(-4, -4, 14, 8);
+      ctx.fillStyle = "#d8e5e8"; ctx.beginPath(); ctx.moveTo(8, -5); ctx.lineTo(87, -2); ctx.lineTo(96, 2); ctx.lineTo(8, 5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = accent; ctx.fillRect(16, -2, 72, 2); ctx.restore();
+    } else if (rawBossKind === "proxy") {
+      limb(-12, 56, -18 - motion * 4, 80, 9, flash ? "#fff" : "#263b35");
+      limb(12, 56, 18 + motion * 4, 80, 9, flash ? "#fff" : "#263b35");
+      // 찢어진 실험복과 등짐 혼합 탱크.
+      ctx.fillStyle = "#243b35"; ctx.fillRect(-31, 22, 13, 42); ctx.fillRect(19, 22, 13, 42);
+      ctx.fillStyle = flash ? "#fff" : "#d9e3dc"; ctx.beginPath(); ctx.moveTo(-22, 20); ctx.lineTo(22, 20); ctx.lineTo(31, 72); ctx.lineTo(12, 64); ctx.lineTo(0, 79); ctx.lineTo(-12, 64); ctx.lineTo(-31, 72); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#2b3036"; ctx.beginPath(); ctx.arc(0, 13, 17, 0, TAU); ctx.fill();
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(-7, 12, 7, 0, TAU); ctx.arc(7, 12, 7, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#07100c"; ctx.beginPath(); ctx.arc(-7, 12, 3, 0, TAU); ctx.arc(7, 12, 3, 0, TAU); ctx.fill();
+      for (let bottle = 0; bottle < 3; bottle += 1) {
+        ctx.fillStyle = bottle % 2 ? "#ce72ff" : accent; ctx.fillRect(-19 + bottle * 13, 46, 8, 16);
+        ctx.fillStyle = "#eaffef"; ctx.fillRect(-17 + bottle * 13, 43, 4, 4);
+      }
+      ctx.save(); ctx.translate(28, 34); ctx.rotate(-0.35 + motion * 0.05); ctx.fillStyle = "#26343b"; ctx.fillRect(0, -5, 34, 10); ctx.fillStyle = accent; ctx.fillRect(29, -3, 9, 6); ctx.restore();
+    } else {
+      return false;
+    }
+
+    if (chargingShot) {
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = accent; ctx.lineWidth = 2 + chargeProgress * 3;
+      ctx.beginPath(); ctx.arc(58, 35, 7 + chargeProgress * 13, 0, TAU); ctx.stroke(); ctx.restore();
+    }
+    return true;
+  }
+
+  function drawDetailedBossCharacter(enemy, bossKind, accent, pulse, chargeProgress, chargingShot, rawBossKind = bossKind) {
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
     const fastMotion = Math.sin(enemy.anim * 10.5);
+
+    if (drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot)) return;
 
     if (bossKind === "warden") {
       // 저중심 무한궤도 포격 기체: 전차 하부와 인간형 포수 상부를 분리한다.
@@ -6673,7 +7124,7 @@
   function drawEnemy(enemy) {
     if (!enemy.alive) return;
     drawEnemyTelegraph(enemy);
-    if (enemy.type === "boss" && getBossArchetype(enemy.bossKind) === "echo") {
+    if (enemy.type === "boss" && enemy.bossKind === "echo") {
       const echoPulse = 0.5 + Math.sin(game.time * 5.4) * 0.2;
       const echoCharge = enemy.bossAction === "chargeShot" && enemy.windup > 0
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
@@ -7044,7 +7495,7 @@
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
         : 0;
       drawBossIdentityHalo(0, 49, bossKind, bossAccent, pulse, chargeProgress);
-      drawDetailedBossCharacter(enemy, bossKind, bossAccent, pulse, chargeProgress, chargingShot);
+      drawDetailedBossCharacter(enemy, bossKind, bossAccent, pulse, chargeProgress, chargingShot, rawBossKind);
       ctx.restore();
       return;
       if (bossKind === "weaver") {
@@ -7457,6 +7908,95 @@
     const centerY = bullet.y + bullet.h / 2;
     const radius = Math.max(bullet.w, bullet.h) * 1.15;
     if (bullet.kind === "rain-controller") return;
+    if (bullet.kind === "boss-funnel") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(player.y + player.h / 2 - centerY, player.x + player.w / 2 - centerX));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255, 73, 108, 0.22)";
+      ctx.fillRect(-19, -7, 38, 14);
+      ctx.fillStyle = "#6f132a";
+      ctx.beginPath();
+      ctx.moveTo(17, 0);
+      ctx.lineTo(-6, -7);
+      ctx.lineTo(-16, -3);
+      ctx.lineTo(-16, 3);
+      ctx.lineTo(-6, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#ffb0be";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = "#fff3f5";
+      ctx.fillRect(9, -2, 7, 4);
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "poison-gas") {
+      const alpha = clamp(bullet.life / bullet.maxLife, 0, 1);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.16 + alpha * 0.22;
+      ctx.fillStyle = bullet.color;
+      for (let cloud = 0; cloud < 7; cloud += 1) {
+        const angle = cloud * TAU / 7 + game.time * 0.45;
+        ctx.beginPath();
+        ctx.arc(centerX + Math.cos(angle) * 35, centerY + Math.sin(angle) * 18, 25 + Math.sin(game.time * 2 + cloud) * 7, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "potion") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx) + Math.PI / 2);
+      ctx.fillStyle = "#dfeff1";
+      ctx.fillRect(-5, -12, 10, 7);
+      ctx.fillStyle = bullet.color;
+      ctx.beginPath();
+      ctx.moveTo(-8, -5);
+      ctx.lineTo(8, -5);
+      ctx.lineTo(10, 9);
+      ctx.quadraticCurveTo(0, 15, -10, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#f3ffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "sword-wave") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(255, 107, 156, 0.32)";
+      ctx.lineWidth = 13;
+      ctx.beginPath();
+      ctx.arc(-7, 0, 31, -0.72, 0.72);
+      ctx.stroke();
+      ctx.strokeStyle = "#fff0f7";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(-7, 0, 31, -0.72, 0.72);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "reflected-shotgun" || bullet.kind === "funnel-shot") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = `${bullet.color}48`;
+      ctx.fillRect(-26, -5, 38, 10);
+      ctx.fillStyle = bullet.color;
+      ctx.fillRect(-7, -2, 19, 4);
+      ctx.restore();
+      return;
+    }
     if (bullet.kind === "warden-beam") {
       const alpha = clamp(bullet.life / bullet.maxLife, 0, 1);
       const endX = bullet.x + bullet.beamDX * bullet.beamLength;
@@ -8272,6 +8812,9 @@
       ctx.textAlign = "left";
     }
 
+    ctx.save();
+    ctx.translate(7, 7);
+    ctx.scale(0.84, 0.84);
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
     ctx.fillRect(28, 28, 320, 224);
     const hudSweep = 30 + ((game.time * 34) % 190);
@@ -8348,6 +8891,7 @@
     ctx.fillRect(207, 165, 116, 7);
     ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.cyan;
     ctx.fillRect(207, 165, 116 * (player.shotgunCharge / 3), 7);
+    ctx.restore();
 
     const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
@@ -8435,20 +8979,6 @@
       ctx.fillRect(W - 198, H - 96, 144, 4);
       ctx.fillStyle = rank.color;
       ctx.fillRect(W - 198, H - 96, 144 * (player.styleScore / 100), 4);
-    }
-
-    if (game.hintTimer > 0) {
-      const fade = clamp(game.hintTimer / 0.4, 0, 1);
-      ctx.globalAlpha = fade;
-      ctx.font = "800 15px 'Malgun Gothic', sans-serif";
-      const measure = ctx.measureText(game.hint).width;
-      ctx.fillStyle = "rgba(3, 8, 15, 0.82)";
-      ctx.fillRect(W / 2 - measure / 2 - 32, H - 82, measure + 64, 42);
-      ctx.fillStyle = palette.white;
-      ctx.textAlign = "center";
-      ctx.fillText(game.hint, W / 2, H - 69);
-      ctx.textAlign = "left";
-      ctx.globalAlpha = 1;
     }
 
     if (game.arenaTitle > 0) {

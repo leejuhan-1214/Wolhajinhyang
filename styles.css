@@ -136,6 +136,16 @@ h1 {
   -webkit-text-stroke: 1px rgba(255, 255, 255, 0.35);
 }
 
+.version-badge {
+  margin: 9px 0 14px;
+  padding: 4px 10px;
+  color: #9ff8ef;
+  background: rgba(8, 20, 30, 0.72);
+  border-left: 2px solid var(--cyan);
+  font: 800 10px/1 monospace;
+  letter-spacing: 0.18em;
+}
+
 h2 {
   font-size: clamp(2.5rem, 7vw, 5.8rem);
 }
