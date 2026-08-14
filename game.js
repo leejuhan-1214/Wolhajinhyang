@@ -246,7 +246,7 @@
       id: "bulwark",
       name: "철벽 호위망",
       target: "방패병",
-      description: "방패병이 후방 기체의 피해를 40% 경감",
+      description: "방패병이 후방 기체의 피해를 25% 경감",
       accent: "#ffcd70",
     },
     drone: {
@@ -1312,7 +1312,7 @@
       piercer: [46, 58, 3],
       mortar: [54, 64, 4],
       drone: [50, 34, 1],
-      shield: [50, 66, 4],
+      shield: [50, 66, 3],
       boss: [...(BOSS_DEFINITIONS[stages[stageIndex].bossKind]?.size || [78, 92]), 16],
     };
     const [w, h, baseHp] = sizes[type];
@@ -1350,6 +1350,10 @@
       hitAttackId: -1,
       hitShotId: -1,
       blockedAttackId: -1,
+      shieldGuard: type === "shield" ? 2 : 0,
+      shieldGuardMax: type === "shield" ? 2 : 0,
+      shieldBreakTimer: 0,
+      shieldGuardRegen: 0,
       bossPhase: 0,
       bossKind: null,
       halfPhaseTriggered: false,
@@ -3394,24 +3398,39 @@
     const shielded = enemy.type === "shield"
       && incomingSide === enemy.facing
       && player.grounded
-      && !player.chargedAttack;
+      && !player.chargedAttack
+      && player.slashChain !== 3
+      && enemy.shieldBreakTimer <= 0
+      && enemy.shieldGuard > 0;
 
     if (shielded) {
       enemy.blockedAttackId = player.attackId;
-      player.vx = -player.facing * 250;
-      player.vy = Math.min(player.vy, -180);
-      game.shake = 7;
-      game.freeze = 0.045;
-      spawnParticles(enemy.x + enemy.w / 2, enemy.y + 24, palette.amber, 9, 220, 0.35, 320);
-      sound.tone(170, 0.09, "square", 0.04, 0.7);
-      return;
+      enemy.shieldGuard = Math.max(0, enemy.shieldGuard - 1);
+      enemy.shieldGuardRegen = 2.4;
+      if (enemy.shieldGuard > 0) {
+        player.vx = -player.facing * 150;
+        player.vy = Math.min(player.vy, -105);
+        game.shake = 4;
+        game.freeze = 0.025;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + 24, palette.amber, 7, 180, 0.3, 260);
+        sound.tone(170, 0.08, "square", 0.032, 0.72);
+        return;
+      }
+      enemy.shieldBreakTimer = 3.2;
+      enemy.hurt = 0.34;
+      enemy.windup = 0;
+      enemy.cooldown = Math.max(enemy.cooldown, 1.1);
+      game.hint = "방패 파괴 · 3초 동안 정면 공격 가능";
+      game.hintTimer = 1.8;
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + 26, palette.red, 17, 340, 0.5, 420);
+      sound.tone(105, 0.16, "sawtooth", 0.045, 1.5);
     }
 
     const chainFinisher = player.grounded && player.slashChain === 3 ? 1 : 0;
     let dealtDamage = (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") {
-      dealtDamage *= 0.6;
+      dealtDamage *= 0.75;
       const room = getCombatRoomForEnemy(enemy);
       if (room && (!room.guardHintAt || game.time - room.guardHintAt > 2.6)) {
         room.guardHintAt = game.time;
@@ -3450,15 +3469,27 @@
 
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
+    if (enemy.hitShotId === bullet.shotId) return true;
     const shielded = enemy.type === "shield"
       && Math.sign(bullet.vx || 1) === -enemy.facing
-      && !bullet.piercing;
+      && !bullet.piercing
+      && enemy.shieldBreakTimer <= 0
+      && enemy.shieldGuard > 0;
     if (shielded) {
+      enemy.hitShotId = bullet.shotId;
+      enemy.shieldGuard = Math.max(0, enemy.shieldGuard - 1);
+      enemy.shieldGuardRegen = 2.4;
       spawnParticles(bullet.x, bullet.y, palette.amber, 8, 260, 0.3, 300);
       sound.tone(150, 0.08, "square", 0.035, 0.65);
-      return false;
+      if (enemy.shieldGuard > 0) return false;
+      enemy.shieldBreakTimer = 3.2;
+      enemy.hurt = 0.34;
+      enemy.windup = 0;
+      enemy.cooldown = Math.max(enemy.cooldown, 1.1);
+      game.hint = "방패 파괴 · 3초 동안 정면 사격 가능";
+      game.hintTimer = 1.8;
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + 26, palette.red, 18, 360, 0.5, 440);
     }
-    if (enemy.hitShotId === bullet.shotId) return true;
     enemy.hitShotId = bullet.shotId;
     if (enemy.type === "boss" && enemy.bossKind === "hunter" && enemy.reflectTimer > 0) {
       reflectShotgun(enemy);
@@ -3474,7 +3505,7 @@
     }
     let shotgunDamage = bullet.damage;
     const formation = getEnemyFormation(enemy);
-    if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.6;
+    if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.75;
     enemy.hp -= shotgunDamage;
     enemy.hurt = 0.22;
     enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
@@ -3682,6 +3713,9 @@
       enemy.hitAttackId = -1;
       enemy.hitShotId = -1;
       enemy.blockedAttackId = -1;
+      enemy.shieldGuard = enemy.shieldGuardMax || 0;
+      enemy.shieldBreakTimer = 0;
+      enemy.shieldGuardRegen = 0;
     }
 
     for (const room of combatRooms) {
@@ -4827,6 +4861,20 @@
     enemy.anim += dt;
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
+    if (enemy.type === "shield") {
+      const wasBroken = enemy.shieldBreakTimer > 0;
+      enemy.shieldBreakTimer = Math.max(0, enemy.shieldBreakTimer - dt);
+      if (wasBroken && enemy.shieldBreakTimer <= 0) {
+        enemy.shieldGuard = 1;
+        enemy.shieldGuardRegen = 2.2;
+      } else if (enemy.shieldBreakTimer <= 0 && enemy.shieldGuard < enemy.shieldGuardMax) {
+        enemy.shieldGuardRegen = Math.max(0, enemy.shieldGuardRegen - dt);
+        if (enemy.shieldGuardRegen <= 0) {
+          enemy.shieldGuard += 1;
+          enemy.shieldGuardRegen = enemy.shieldGuard < enemy.shieldGuardMax ? 2.2 : 0;
+        }
+      }
+    }
     if (game.adminMode) {
       enemy.windup = 0;
       enemy.bossAction = "idle";
@@ -4946,9 +4994,9 @@
     if (enemy.x < enemy.originX - enemy.range && enemy.vx < 0) enemy.vx = speed * 0.45;
     moveEnemyPhysics(enemy, dt);
 
-    if (Math.abs(dx) < (enemy.type === "shield" ? 84 : 70) && Math.abs(dy) < 62 && enemy.cooldown <= 0) {
-      enemy.windup = enemy.type === "shield" ? 0.52 : 0.3;
-      enemy.cooldown = enemy.type === "shield" ? 1.5 : 1.05;
+    if (Math.abs(dx) < (enemy.type === "shield" ? 76 : 70) && Math.abs(dy) < 62 && enemy.cooldown <= 0) {
+      enemy.windup = enemy.type === "shield" ? 0.68 : 0.3;
+      enemy.cooldown = enemy.type === "shield" ? 2.15 : 1.05;
     }
 
     if (enemy.windup > 0) {
@@ -7524,8 +7572,9 @@
       ctx.fillRect(-10, 9, 3, 7);
       ctx.fillStyle = palette.red;
       ctx.fillRect(5, 10, 6, 4);
-      const shieldPush = enemy.windup > 0 ? 6 + Math.sin(enemy.windup * 25) * 2 : 0;
-      ctx.fillStyle = "#283f4d";
+      const guardBroken = enemy.shieldBreakTimer > 0;
+      const shieldPush = guardBroken ? -10 : enemy.windup > 0 ? 6 + Math.sin(enemy.windup * 25) * 2 : 0;
+      ctx.fillStyle = guardBroken ? "#4d2830" : "#283f4d";
       ctx.beginPath();
       ctx.moveTo(14 + shieldPush, 8);
       ctx.lineTo(31 + shieldPush, 13);
@@ -7534,7 +7583,7 @@
       ctx.lineTo(13 + shieldPush, 58);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = "#5c717b";
+      ctx.fillStyle = guardBroken ? "#8f4b53" : "#5c717b";
       ctx.beginPath();
       ctx.moveTo(18 + shieldPush, 14);
       ctx.lineTo(27 + shieldPush, 17);
@@ -7543,18 +7592,20 @@
       ctx.lineTo(18 + shieldPush, 53);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = palette.amber;
+      ctx.fillStyle = guardBroken ? palette.red : palette.amber;
       ctx.fillRect(28 + shieldPush, 18, 3, 36);
       ctx.fillStyle = "#111925";
       ctx.beginPath();
       ctx.arc(21 + shieldPush, 22, 2, 0, TAU);
       ctx.arc(23 + shieldPush, 49, 2, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = palette.amber;
+      ctx.fillStyle = guardBroken ? palette.red : palette.amber;
       ctx.globalAlpha = 0.45 + Math.sin(enemy.anim * 7) * 0.2;
       ctx.fillRect(18 + shieldPush, 33, 8, 3);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = `rgba(255, 205, 112, ${0.18 + Math.sin(enemy.anim * 5) * 0.08})`;
+      ctx.strokeStyle = guardBroken
+        ? `rgba(255, 73, 108, ${0.42 + Math.sin(enemy.anim * 12) * 0.16})`
+        : `rgba(255, 205, 112, ${0.18 + Math.sin(enemy.anim * 5) * 0.08})`;
       ctx.beginPath();
       ctx.moveTo(14 + shieldPush, 8);
       ctx.lineTo(31 + shieldPush, 13);
@@ -7563,6 +7614,10 @@
       ctx.lineTo(13 + shieldPush, 58);
       ctx.closePath();
       ctx.stroke();
+      for (let guardIndex = 0; guardIndex < enemy.shieldGuardMax; guardIndex += 1) {
+        ctx.fillStyle = guardIndex < enemy.shieldGuard ? palette.amber : "rgba(255,255,255,0.14)";
+        ctx.fillRect(14 + guardIndex * 9, 70, 6, 3);
+      }
     } else if (enemy.type === "boss") {
       const pulse = 0.5 + Math.sin(game.time * 6) * 0.2;
       const shoulder = Math.sin(enemy.anim * 3.5) * 5;
@@ -9620,7 +9675,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.0.0",
+    version: "2.0.1",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -9633,7 +9688,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.0.0",
+    gameVersion: "2.0.1",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -9643,6 +9698,11 @@
     enemyCount: String(enemies.length),
     activeEnemyCount: String(getActiveEnemies().length),
     platformCount: String(platforms.length),
+    shieldBaseHp: "3",
+    shieldGuardMax: "2",
+    shieldBreakSeconds: "3.2",
+    shieldAttackCooldown: "2.15",
+    bulwarkDamageMultiplier: "0.75",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
