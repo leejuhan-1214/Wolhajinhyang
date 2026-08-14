@@ -6082,7 +6082,7 @@
       game.hint = "오른쪽 클릭 샷건 · 아래로 쏘면 반동으로 다시 상승";
       game.hintTimer = 4.2;
     } else if (player.x > 2050 && player.x < 2450 && game.hintTimer <= 0) {
-      game.hint = "왼쪽 클릭 발도 · 공중 적중 시 이중 점프 회복·샷건 강화";
+      game.hint = "왼쪽 클릭 발도 · 적 총알 쳐내기 · 공중 적중 시 이중 점프 회복";
       game.hintTimer = 4.2;
     } else if (player.x > 9400 && player.x < 9800 && game.hintTimer <= 0) {
       game.hint = "발도로 샷건 게이지 3칸 충전 · 강화탄으로 방패 파괴";
@@ -10100,7 +10100,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.1",
+    version: "2.1.2",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10120,10 +10120,11 @@
     empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
+    slashBulletDeflect: true,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.1",
+    gameVersion: "2.1.2",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10151,6 +10152,7 @@
     chargedSlashBonus: String(CHARGED_SLASH_BONUS),
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
+    slashBulletDeflect: "true",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
