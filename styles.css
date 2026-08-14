@@ -688,6 +688,110 @@ button:focus-visible {
 .admin-enemy-grid b { font-size: 10px; }
 .admin-enemy-grid span { color: #77919d; font: 700 8px/1.1 "Malgun Gothic", sans-serif; }
 
+.admin-world-tools {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(4, 1fr);
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.admin-world-tools button {
+  min-width: 0;
+  min-height: 45px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+  border-color: rgba(255, 205, 112, 0.34);
+  background: rgba(39, 32, 27, 0.86);
+  color: #fff1c8;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.admin-world-tools button:first-child {
+  border-color: rgba(101, 245, 234, 0.58);
+  background: rgba(13, 46, 52, 0.9);
+  color: #dffffb;
+}
+
+.admin-world-tools b { font-size: 10px; }
+.admin-world-tools span { color: #93a7ac; font: 700 8px/1.1 "Malgun Gothic", sans-serif; }
+
+.admin-world-editor {
+  margin-top: 9px;
+  padding: 9px 10px 8px;
+  border: 1px solid rgba(101, 245, 234, 0.42);
+  background: rgba(5, 15, 25, 0.96);
+}
+
+.admin-world-editor[hidden] { display: none; }
+.admin-world-editor header { margin-bottom: 7px; }
+
+#admin-world-editor-close {
+  min-width: 32px;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border-color: rgba(101, 245, 234, 0.5);
+  background: #14242e;
+  color: #dffffb;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.admin-world-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(72px, 0.7fr)) 1.1fr 1.4fr;
+  gap: 7px;
+}
+
+.admin-world-fields label {
+  display: grid;
+  gap: 3px;
+  color: #8fa9b2;
+  font: 800 8px/1 monospace;
+  letter-spacing: 0.08em;
+}
+
+.admin-world-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 7px;
+  border: 1px solid rgba(101, 245, 234, 0.28);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(13, 28, 40, 0.96);
+  color: #ecffff;
+  font: 700 10px/1 monospace;
+}
+
+.admin-world-fields input:focus { border-color: var(--amber); }
+.admin-world-fields input:disabled { opacity: 0.34; }
+
+.admin-world-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.admin-world-actions button {
+  min-width: 112px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-color: rgba(101, 245, 234, 0.44);
+  background: #13303a;
+  color: #dffffb;
+  box-shadow: none;
+  clip-path: none;
+  font-size: 9px;
+}
+
+#admin-world-delete { border-color: rgba(255, 73, 108, 0.55); background: #351c28; color: #ffd5dc; }
+#admin-world-reset { border-color: rgba(255, 205, 112, 0.48); background: #332b1d; color: #ffe9b5; }
+.admin-world-editor > p { margin: 7px 0 0; color: #708993; font-size: 8px; text-align: left; }
+
 .enemy-token {
   position: relative;
   display: block;
@@ -766,6 +870,12 @@ button:focus-visible {
   .admin-spawn-panel { top: 6px; max-height: calc(100% - 12px); padding: 7px 9px 6px; overflow-y: auto; }
   .admin-enemy-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
+  .admin-world-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-world-tools button { min-height: 38px; padding: 4px; }
+  .admin-world-fields { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
+  .admin-world-fields label:nth-child(n+5) { grid-column: span 2; }
+  .admin-world-actions { justify-content: stretch; }
+  .admin-world-actions button { flex: 1; min-width: 0; padding-inline: 4px; }
   .enemy-token { transform: scale(0.78); margin-block: -3px; }
   .enemy-token.boss { transform: scale(0.82); }
   .admin-spawn-panel > p { display: none; }

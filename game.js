@@ -15,6 +15,22 @@
   const adminStatus = document.getElementById("admin-status");
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
+  const adminWorldEditor = document.getElementById("admin-world-editor");
+  const adminWorldEditNearest = document.getElementById("admin-world-edit-nearest");
+  const adminWorldEditorClose = document.getElementById("admin-world-editor-close");
+  const adminWorldSave = document.getElementById("admin-world-save");
+  const adminWorldDelete = document.getElementById("admin-world-delete");
+  const adminWorldReset = document.getElementById("admin-world-reset");
+  const adminWorldSelected = document.getElementById("admin-world-selected");
+  const adminWorldInputs = {
+    x: document.getElementById("admin-world-x"),
+    y: document.getElementById("admin-world-y"),
+    w: document.getElementById("admin-world-w"),
+    h: document.getElementById("admin-world-h"),
+    kind: document.getElementById("admin-world-kind"),
+    text: document.getElementById("admin-world-text"),
+    sub: document.getElementById("admin-world-sub"),
+  };
   const touchControls = document.getElementById("touch-controls");
   const touchControlButtons = [...(document.querySelectorAll?.("[data-touch-key], [data-touch-action]") || [])];
   const touchJoystick = document.querySelector?.("[data-touch-action='move']") || null;
@@ -23,6 +39,7 @@
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
+  const adminWorldCreateButtons = [...(document.querySelectorAll?.("[data-admin-world-create]") || [])];
 
   const W = 1280;
   const H = 720;
@@ -37,8 +54,10 @@
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
   const ADMIN_PLACED_OBJECTS_KEY = "moonlit-echo-admin-placed-objects-v1";
+  const ADMIN_WORLD_EDITS_KEY = "moonlit-echo-admin-world-edits-v1";
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
+  const MAX_ADMIN_WORLD_EDITS = 1200;
 
   const keys = new Set();
   const pressed = new Set();
@@ -53,6 +72,7 @@
   const particles = [];
   const pickups = [];
   const signs = [];
+  const adminBackdrops = [];
   const rain = [];
   const boostNodes = [];
   const combatRooms = [];
@@ -61,8 +81,14 @@
   let adminRemovedEnemyIds = readAdminRemovedEnemies();
   let adminSpawnedEnemyData = readAdminSpawnedEnemies();
   let adminPlacedObjectData = readAdminPlacedObjects();
+  let adminWorldEditData = readAdminWorldEdits();
   let adminSpawnSerial = 0;
   let adminPlacedSerial = 0;
+  let adminWorldSerial = 0;
+  let platformSerial = 0;
+  let hazardSerial = 0;
+  let signSerial = 0;
+  let selectedAdminWorldObject = null;
 
   const stages = [
     { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 90 },
@@ -104,7 +130,7 @@
       hp: 18,
       size: [72, 98],
       accent: "#ff7b62",
-      patterns: ["공중 사련 박격", "총열 부채", "포신 강하", "노심 폭발"],
+      patterns: ["공중 사련 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
     },
     weaver: {
       name: "기억 직조기 · 백면",
@@ -764,7 +790,19 @@
   }
 
   function addPlatform(x, y, w, h = 36, kind = "roof") {
-    platforms.push({ x, y, originalY: y, w, h, kind });
+    const platform = {
+      id: `platform:${platformSerial++}`,
+      adminWorldType: "platform",
+      x,
+      y,
+      originalY: y,
+      w,
+      h,
+      kind,
+    };
+    platform.adminWorldBase = { x, y, originalY: y, w, h, kind, hidden: false };
+    platforms.push(platform);
+    return platform;
   }
 
   function addHazard(x, y, w, h, kind = "spike", phase = 0) {
@@ -777,7 +815,20 @@
       ));
       if (support) adjustedY += support.y - support.originalY;
     }
-    hazards.push({ x, y: adjustedY, w, h, kind, phase, active: true });
+    const hazard = {
+      id: `hazard:${hazardSerial++}`,
+      adminWorldType: "hazard",
+      x,
+      y: adjustedY,
+      w,
+      h,
+      kind,
+      phase,
+      active: true,
+    };
+    hazard.adminWorldBase = { x, y: adjustedY, w, h, kind, phase, active: true, hidden: false };
+    hazards.push(hazard);
+    return hazard;
   }
 
   function addCheckpoint(x, y, label) {
@@ -788,7 +839,7 @@
     const centerX = checkpoint.x + checkpoint.w / 2;
     const expectedFloorY = checkpoint.y + checkpoint.h;
     const support = platforms
-      .filter((platform) => centerX >= platform.x && centerX <= platform.x + platform.w)
+      .filter((platform) => !platform.hidden && centerX >= platform.x && centerX <= platform.x + platform.w)
       .sort((first, second) => (
         Math.abs(first.originalY - expectedFloorY) - Math.abs(second.originalY - expectedFloorY)
       ))[0];
@@ -834,7 +885,19 @@
   }
 
   function addSign(x, y, text, sub = "") {
-    signs.push({ x, y, text, sub });
+    const sign = {
+      id: `sign:${signSerial++}`,
+      adminWorldType: "sign",
+      x,
+      y,
+      w: 174,
+      h: 60,
+      text,
+      sub,
+    };
+    sign.adminWorldBase = { x, y, w: 174, h: 60, text, sub, hidden: false };
+    signs.push(sign);
+    return sign;
   }
 
   function addEnemy(type, x, surfaceY, range = 150) {
@@ -1092,6 +1155,134 @@
       window.localStorage?.setItem(ADMIN_PLACED_OBJECTS_KEY, JSON.stringify(adminPlacedObjectData));
     } catch {
       // Administrator placements remain active for this session if storage is blocked.
+    }
+  }
+
+  function readAdminWorldEdits() {
+    try {
+      const raw = window.localStorage?.getItem(ADMIN_WORLD_EDITS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      const validTypes = new Set(["platform", "hazard", "sign", "backdrop"]);
+      const seenIds = new Set();
+      return parsed.filter((record) => {
+        if (!record || typeof record.id !== "string" || seenIds.has(record.id)) return false;
+        if (!validTypes.has(record.type)) return false;
+        if (!Number.isFinite(Number(record.x)) || !Number.isFinite(Number(record.y))) return false;
+        seenIds.add(record.id);
+        return true;
+      }).slice(-MAX_ADMIN_WORLD_EDITS);
+    } catch {
+      return [];
+    }
+  }
+
+  function persistAdminWorldEdits() {
+    try {
+      window.localStorage?.setItem(ADMIN_WORLD_EDITS_KEY, JSON.stringify(adminWorldEditData));
+    } catch {
+      // World edits stay active for this session if storage is unavailable.
+    }
+  }
+
+  function serializeAdminWorldObject(object) {
+    return {
+      id: object.id,
+      type: object.adminWorldType,
+      custom: Boolean(object.adminWorldCustom),
+      x: Number(object.x) || 0,
+      y: Number(object.y) || 0,
+      w: Number(object.w) || 24,
+      h: Number(object.h) || 24,
+      kind: String(object.kind || ""),
+      text: String(object.text || "").slice(0, 80),
+      sub: String(object.sub || "").slice(0, 120),
+      phase: Number(object.phase) || 0,
+      hidden: Boolean(object.hidden),
+    };
+  }
+
+  function recordAdminWorldObject(object) {
+    if (!object?.id || !object.adminWorldType) return;
+    const record = serializeAdminWorldObject(object);
+    adminWorldEditData = adminWorldEditData.filter((saved) => saved.id !== object.id);
+    adminWorldEditData.push(record);
+    if (adminWorldEditData.length > MAX_ADMIN_WORLD_EDITS) {
+      adminWorldEditData = adminWorldEditData.slice(-MAX_ADMIN_WORLD_EDITS);
+    }
+    persistAdminWorldEdits();
+  }
+
+  function removeAdminWorldObjectData(objectId) {
+    adminWorldEditData = adminWorldEditData.filter((record) => record.id !== objectId);
+    persistAdminWorldEdits();
+  }
+
+  function findAdminWorldObject(id, type) {
+    const source = type === "platform"
+      ? platforms
+      : type === "hazard"
+        ? hazards
+        : type === "sign"
+          ? signs
+          : adminBackdrops;
+    return source.find((object) => object.id === id) || null;
+  }
+
+  function addAdminBackdrop(record) {
+    const backdrop = {
+      id: record.id,
+      adminWorldType: "backdrop",
+      adminWorldCustom: true,
+      x: Number(record.x) || 0,
+      y: Number(record.y) || 0,
+      w: Math.max(24, Number(record.w) || 260),
+      h: Math.max(24, Number(record.h) || 180),
+      kind: String(record.kind || "panel"),
+      text: String(record.text || "ADMIN STRUCTURE"),
+      sub: String(record.sub || "EDITABLE BACKDROP"),
+      hidden: Boolean(record.hidden),
+    };
+    backdrop.adminWorldBase = { ...serializeAdminWorldObject(backdrop), hidden: false };
+    adminBackdrops.push(backdrop);
+    return backdrop;
+  }
+
+  function applyAdminWorldEdits() {
+    for (const record of adminWorldEditData) {
+      if (record.custom) {
+        let customObject = null;
+        if (record.type === "backdrop") customObject = addAdminBackdrop(record);
+        else if (record.type === "sign") customObject = addSign(Number(record.x), Number(record.y), record.text || "", record.sub || "");
+        else if (record.type === "platform") customObject = addPlatform(Number(record.x), Number(record.y), Number(record.w) || 260, Number(record.h) || 28, record.kind || "factory");
+        else if (record.type === "hazard") customObject = addHazard(Number(record.x), Number(record.y), Number(record.w) || 140, Number(record.h) || 24, record.kind || "spike", Number(record.phase) || 0);
+        if (customObject) {
+          customObject.id = record.id;
+          customObject.adminWorldCustom = true;
+          customObject.x = clamp(Number(record.x), 0, WORLD_W - 12);
+          customObject.y = clamp(Number(record.y), -600, WORLD_H - 8);
+          customObject.w = clamp(Number(record.w) || customObject.w, 12, 1800);
+          customObject.h = clamp(Number(record.h) || customObject.h, 8, 900);
+          customObject.kind = String(record.kind || customObject.kind || "roof");
+          customObject.text = String(record.text || customObject.text || "").slice(0, 80);
+          customObject.sub = String(record.sub || customObject.sub || "").slice(0, 120);
+          customObject.hidden = Boolean(record.hidden);
+          if (record.type === "platform") customObject.originalY = customObject.y;
+          customObject.adminWorldBase = { ...serializeAdminWorldObject(customObject), hidden: false };
+        }
+        continue;
+      }
+      const object = findAdminWorldObject(record.id, record.type);
+      if (!object) continue;
+      object.x = clamp(Number(record.x), 0, WORLD_W - 12);
+      object.y = clamp(Number(record.y), -600, WORLD_H - 8);
+      object.w = clamp(Number(record.w) || object.w, 12, 1800);
+      object.h = clamp(Number(record.h) || object.h, 8, 900);
+      object.kind = String(record.kind || object.kind || "roof");
+      object.text = String(record.text || object.text || "").slice(0, 80);
+      object.sub = String(record.sub || object.sub || "").slice(0, 120);
+      object.hidden = Boolean(record.hidden);
+      if (object.adminWorldType === "platform") object.originalY = object.y;
     }
   }
 
@@ -1514,6 +1705,9 @@
   }
 
   function buildLevel() {
+    platformSerial = 0;
+    hazardSerial = 0;
+    signSerial = 0;
     platforms.length = 0;
     hazards.length = 0;
     checkpoints.length = 0;
@@ -1522,6 +1716,7 @@
     particles.length = 0;
     pickups.length = 0;
     signs.length = 0;
+    adminBackdrops.length = 0;
     boostNodes.length = 0;
     combatRooms.length = 0;
 
@@ -1711,6 +1906,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
+    applyAdminWorldEdits();
     restoreAdminPlacedObjects();
     restoreAdminSpawnedEnemies();
     configureCombatRooms();
@@ -1958,11 +2154,151 @@
     const shouldOpen = Boolean(open && game.adminMode && game.mode === "playing");
     adminSpawnPanel.hidden = !shouldOpen;
     adminSpawnPanel.classList.toggle?.("visible", shouldOpen);
+    if (!shouldOpen) setAdminWorldEditor(false);
     return shouldOpen;
   }
 
   function toggleAdminSpawnPanel() {
     return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
+  }
+
+  function setAdminWorldEditor(open, object = selectedAdminWorldObject) {
+    if (!adminWorldEditor) return false;
+    const shouldOpen = Boolean(open && object && game.adminMode && game.mode === "playing");
+    selectedAdminWorldObject = shouldOpen ? object : null;
+    adminWorldEditor.hidden = !shouldOpen;
+    if (!shouldOpen) return false;
+    const typeNames = { platform: "발판/구조물", hazard: "위험 구조물", sign: "배경 표지판", backdrop: "배경 장식" };
+    if (adminWorldSelected) adminWorldSelected.textContent = `${typeNames[object.adminWorldType] || object.adminWorldType} · ${object.id}`;
+    adminWorldInputs.x.value = Math.round(object.x);
+    adminWorldInputs.y.value = Math.round(object.y);
+    adminWorldInputs.w.value = Math.round(object.w || 24);
+    adminWorldInputs.h.value = Math.round(object.h || 24);
+    adminWorldInputs.kind.value = object.kind || "";
+    adminWorldInputs.text.value = object.text || "";
+    adminWorldInputs.sub.value = object.sub || "";
+    const supportsText = object.adminWorldType === "sign" || object.adminWorldType === "backdrop";
+    adminWorldInputs.text.disabled = !supportsText;
+    adminWorldInputs.sub.disabled = !supportsText;
+    return true;
+  }
+
+  function getAdminWorldBounds(object) {
+    if (object.adminWorldType === "sign") {
+      const height = object.h || 60;
+      return { x: object.x - 12, y: object.y - height + 14, w: object.w || 174, h: height };
+    }
+    return { x: object.x, y: object.y, w: object.w || 24, h: object.h || 24 };
+  }
+
+  function findNearestAdminWorldObject() {
+    const centerX = player.x + player.w / 2;
+    const centerY = player.y + player.h / 2;
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const object of [...signs, ...platforms, ...hazards, ...adminBackdrops]) {
+      if (object.hidden) continue;
+      const bounds = getAdminWorldBounds(object);
+      const closestX = clamp(centerX, bounds.x, bounds.x + bounds.w);
+      const closestY = clamp(centerY, bounds.y, bounds.y + bounds.h);
+      const distance = Math.hypot(centerX - closestX, centerY - closestY);
+      if (distance < nearestDistance) {
+        nearest = object;
+        nearestDistance = distance;
+      }
+    }
+    if (!nearest || nearestDistance > 900) {
+      game.hint = "관리자 편집 · 900px 안에 수정할 배경 요소가 없습니다";
+      game.hintTimer = 2.8;
+      return null;
+    }
+    setAdminWorldEditor(true, nearest);
+    return nearest;
+  }
+
+  function createAdminWorldObject(type) {
+    if (!game.adminMode || game.mode !== "playing") return null;
+    adminWorldSerial += 1;
+    const id = `admin-world:${Date.now().toString(36)}:${adminWorldSerial.toString(36)}:${type}`;
+    const x = clamp(player.x + player.w + 72, 0, WORLD_W - 320);
+    const y = clamp(player.y + player.h + 50, 40, WORLD_H - 80);
+    let object = null;
+    if (type === "sign") {
+      object = addSign(x, y, "새 표지판", "관리자 편집으로 문구를 바꾸세요");
+    } else if (type === "platform") {
+      object = addPlatform(x, y, 260, 28, "factory");
+    } else if (type === "hazard") {
+      object = addHazard(x, y, 140, 24, "spike", 0);
+    } else if (type === "backdrop") {
+      object = addAdminBackdrop({ id, type, custom: true, x, y: y - 210, w: 280, h: 210, kind: "panel", text: "ADMIN SECTOR", sub: "CUSTOM BACKDROP" });
+    }
+    if (!object) return null;
+    object.id = id;
+    object.adminWorldCustom = true;
+    object.adminWorldBase = { ...serializeAdminWorldObject(object), hidden: false };
+    recordAdminWorldObject(object);
+    setAdminWorldEditor(true, object);
+    game.hint = "관리자 편집 · 새 배경 요소 생성";
+    game.hintTimer = 2.4;
+    return object;
+  }
+
+  function saveAdminWorldSelection() {
+    const object = selectedAdminWorldObject;
+    if (!object || !game.adminMode) return false;
+    object.x = clamp(Number(adminWorldInputs.x.value) || 0, 0, WORLD_W - 12);
+    object.y = clamp(Number(adminWorldInputs.y.value) || 0, -600, WORLD_H - 8);
+    object.w = clamp(Number(adminWorldInputs.w.value) || object.w || 24, 12, 1800);
+    object.h = clamp(Number(adminWorldInputs.h.value) || object.h || 24, 8, 900);
+    object.kind = String(adminWorldInputs.kind.value || object.kind || "roof").trim().slice(0, 30);
+    if (object.adminWorldType === "sign" || object.adminWorldType === "backdrop") {
+      object.text = String(adminWorldInputs.text.value || "").trim().slice(0, 80);
+      object.sub = String(adminWorldInputs.sub.value || "").trim().slice(0, 120);
+    }
+    object.hidden = false;
+    if (object.adminWorldType === "platform") object.originalY = object.y;
+    recordAdminWorldObject(object);
+    game.hint = "관리자 편집 · 위치·크기·문구 저장 완료";
+    game.hintTimer = 2.6;
+    setAdminWorldEditor(true, object);
+    sound.tone(690, 0.12, "sine", 0.025, 1.25);
+    return true;
+  }
+
+  function deleteAdminWorldSelection() {
+    const object = selectedAdminWorldObject;
+    if (!object || !game.adminMode) return false;
+    if (object.adminWorldCustom) {
+      const source = object.adminWorldType === "platform"
+        ? platforms
+        : object.adminWorldType === "hazard"
+          ? hazards
+          : object.adminWorldType === "sign"
+            ? signs
+            : adminBackdrops;
+      const index = source.indexOf(object);
+      if (index >= 0) source.splice(index, 1);
+      removeAdminWorldObjectData(object.id);
+    } else {
+      object.hidden = true;
+      recordAdminWorldObject(object);
+    }
+    game.hint = "관리자 편집 · 배경 요소 숨김/삭제 완료";
+    game.hintTimer = 2.6;
+    setAdminWorldEditor(false);
+    return true;
+  }
+
+  function resetAdminWorldSelection() {
+    const object = selectedAdminWorldObject;
+    if (!object || !game.adminMode) return false;
+    if (object.adminWorldCustom) return deleteAdminWorldSelection();
+    Object.assign(object, object.adminWorldBase || {});
+    removeAdminWorldObjectData(object.id);
+    setAdminWorldEditor(true, object);
+    game.hint = "관리자 편집 · 기본 맵 상태로 복원";
+    game.hintTimer = 2.6;
+    return true;
   }
 
   function toggleAdminCadetMode() {
@@ -3183,6 +3519,12 @@
       case "furnace-rain":
         launchRainCore(enemy);
         break;
+      case "furnace-rifle":
+        [390, 440, 490, 540, 590, 640].forEach((speed, index) => {
+          fireBullet(enemy, speed, (index - 2.5) * 0.012, "standard", target);
+        });
+        spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#ffb064", 16, 310, 0.36, 80);
+        break;
       case "weaver-lance":
         [-220, 0, 220].forEach((offset, index) => summonMagicSigil(
           enemy,
@@ -3321,6 +3663,7 @@
       player.x += player.vx * stepTime;
       player.x = clamp(player.x, 0, WORLD_W - player.w);
       for (const platform of platforms) {
+        if (platform.hidden) continue;
         if (!overlaps(player, platform)) continue;
         if (previousX + player.w <= platform.x + 1 && player.vx > 0) {
           player.x = platform.x - player.w;
@@ -3348,6 +3691,7 @@
       const previousBottom = previousY + player.h;
       player.y += player.vy * stepTime;
       for (const platform of platforms) {
+        if (platform.hidden) continue;
         if (!overlaps(player, platform)) continue;
         if (previousBottom <= platform.y + 2 && player.vy >= 0) {
           player.y = platform.y - player.h;
@@ -3375,6 +3719,7 @@
     const leftProbe = { x: player.x - 3, y: player.y + 5, w: 3, h: player.h - 10 };
     const rightProbe = { x: player.x + player.w, y: player.y + 5, w: 3, h: player.h - 10 };
     for (const platform of platforms) {
+      if (platform.hidden) continue;
       if (overlaps(leftProbe, platform)) player.wallLeft = true;
       if (overlaps(rightProbe, platform)) player.wallRight = true;
     }
@@ -3530,7 +3875,7 @@
     }
 
     for (const hazard of hazards) {
-      if (hazard.active && overlaps(player, hazard)) damagePlayer(1, hazard.x + hazard.w / 2);
+      if (!hazard.hidden && hazard.active && overlaps(player, hazard)) damagePlayer(1, hazard.x + hazard.w / 2);
     }
 
     for (const checkpoint of checkpoints) {
@@ -3610,6 +3955,7 @@
         blocked = true;
       }
       for (const platform of platforms) {
+        if (platform.hidden) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldX + enemy.w <= platform.x + 1 && enemy.vx > 0) enemy.x = platform.x - enemy.w;
         else if (oldX >= platform.x + platform.w - 1 && enemy.vx < 0) enemy.x = platform.x + platform.w;
@@ -3624,6 +3970,7 @@
       const oldBottom = oldY + enemy.h;
       enemy.y += enemy.vy * stepTime;
       for (const platform of platforms) {
+        if (platform.hidden) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldBottom <= platform.y + 2 && enemy.vy >= 0) {
           enemy.y = platform.y - enemy.h;
@@ -3706,7 +4053,7 @@
     if (!direction) return true;
     const probeX = direction > 0 ? entity.x + entity.w + distance - 8 : entity.x - distance;
     const probe = { x: probeX, y: entity.y + entity.h, w: 8, h: 34 };
-    return platforms.some((platform) => overlaps(probe, platform));
+    return platforms.some((platform) => !platform.hidden && overlaps(probe, platform));
   }
 
   function updateEnemy(enemy, dt) {
@@ -3747,7 +4094,7 @@
         enemy.x += clamp(dx, -1, 1) * 42 * enemySpeedScale * dt;
         enemy.x = clamp(enemy.x, enemy.originX - enemy.range, enemy.originX + enemy.range);
       }
-      if (platforms.some((platform) => overlaps(enemy, platform))) {
+      if (platforms.some((platform) => !platform.hidden && overlaps(enemy, platform))) {
         enemy.x = previousDroneX;
         enemy.y = previousDroneY;
         enemy.baseY -= Math.sign(Math.sin(enemy.anim * 2.2) || 1) * 8;
@@ -3982,9 +4329,12 @@
           startBossChargedShot(enemy, "furnace-mortar", dx, 0.94);
           enemy.cooldown = 2.35 * recovery;
         } else if (enemy.bossPhase === 1) {
+          startBossChargedShot(enemy, "furnace-rifle", dx, 0.44);
+          enemy.cooldown = 1.22 * recovery;
+        } else if (enemy.bossPhase === 2) {
           startBossChargedShot(enemy, "furnace-volley", dx, 0.82);
           enemy.cooldown = 1.85 * recovery;
-        } else if (enemy.bossPhase === 2) {
+        } else if (enemy.bossPhase === 3) {
           enemy.windup = 0.82;
           enemy.bossAction = "slam";
           enemy.cooldown = 2.45 * recovery;
@@ -4254,6 +4604,7 @@
 
         if (remove) break;
         for (const platform of platforms) {
+          if (platform.hidden) continue;
           if (bullet.piercePlatforms) continue;
           if (overlaps(bullet, platform)) {
             if (bullet.kind === "mortar") {
@@ -4358,6 +4709,7 @@
     }
 
     for (const hazard of hazards) {
+      if (hazard.hidden) continue;
       if (hazard.kind === "laser") {
         const pulse = (game.time + hazard.phase) % 2.8;
         hazard.active = pulse < 1.45;
@@ -4852,16 +5204,60 @@
   }
 
   function drawSign(sign) {
+    const width = sign.w || 174;
+    const height = sign.h || 60;
     ctx.fillStyle = "rgba(6, 12, 22, 0.88)";
-    ctx.fillRect(sign.x - 12, sign.y - 46, 174, 60);
+    ctx.fillRect(sign.x - 12, sign.y - height + 14, width, height);
     ctx.strokeStyle = "rgba(101, 245, 234, 0.35)";
-    ctx.strokeRect(sign.x - 12, sign.y - 46, 174, 60);
+    ctx.strokeRect(sign.x - 12, sign.y - height + 14, width, height);
     ctx.fillStyle = "#e7ffff";
     ctx.font = "900 21px 'Malgun Gothic', sans-serif";
     ctx.fillText(sign.text, sign.x, sign.y - 18);
     ctx.fillStyle = "#6f97a4";
     ctx.font = "10px monospace";
     ctx.fillText(sign.sub, sign.x, sign.y);
+  }
+
+  function drawAdminBackdrop(backdrop) {
+    if (backdrop.hidden) return;
+    const accent = backdrop.kind === "scaffold" ? palette.amber : backdrop.kind === "warning" ? palette.red : palette.cyan;
+    ctx.save();
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = "rgba(5, 12, 22, 0.76)";
+    ctx.fillRect(backdrop.x, backdrop.y, backdrop.w, backdrop.h);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(backdrop.x + 1.5, backdrop.y + 1.5, backdrop.w - 3, backdrop.h - 3);
+    ctx.globalAlpha = 0.28;
+    for (let offset = -backdrop.h; offset < backdrop.w; offset += 42) {
+      ctx.beginPath();
+      ctx.moveTo(backdrop.x + offset, backdrop.y + backdrop.h);
+      ctx.lineTo(backdrop.x + offset + backdrop.h, backdrop.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "#efffff";
+    ctx.font = "900 18px 'Malgun Gothic', sans-serif";
+    ctx.fillText(backdrop.text || "", backdrop.x + 16, backdrop.y + 32, Math.max(20, backdrop.w - 32));
+    ctx.fillStyle = accent;
+    ctx.font = "700 10px monospace";
+    ctx.fillText(backdrop.sub || "", backdrop.x + 16, backdrop.y + 52, Math.max(20, backdrop.w - 32));
+    ctx.restore();
+  }
+
+  function drawAdminWorldSelection() {
+    if (!game.adminMode || adminWorldEditor?.hidden !== false || !selectedAdminWorldObject || selectedAdminWorldObject.hidden) return;
+    const bounds = getAdminWorldBounds(selectedAdminWorldObject);
+    ctx.save();
+    ctx.strokeStyle = palette.amber;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 7]);
+    ctx.strokeRect(bounds.x - 7, bounds.y - 7, bounds.w + 14, bounds.h + 14);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255, 205, 112, 0.92)";
+    ctx.font = "900 11px monospace";
+    ctx.fillText("ADMIN EDIT", bounds.x, bounds.y - 14);
+    ctx.restore();
   }
 
   function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player") {
@@ -6923,12 +7319,14 @@
     const left = camera.x - 200;
     const right = camera.x + W + 200;
     drawBossArenaBackdrop(left, right);
-    for (const sign of signs) if (sign.x > left - 200 && sign.x < right) drawSign(sign);
-    for (const platform of platforms) if (platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
-    for (const hazard of hazards) if (hazard.x + hazard.w > left && hazard.x < right) drawHazard(hazard);
+    for (const backdrop of adminBackdrops) if (!backdrop.hidden && backdrop.x + backdrop.w > left && backdrop.x < right) drawAdminBackdrop(backdrop);
+    for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
+    for (const platform of platforms) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
+    for (const hazard of hazards) if (!hazard.hidden && hazard.x + hazard.w > left && hazard.x < right) drawHazard(hazard);
     for (const checkpoint of checkpoints) if (checkpoint.x > left && checkpoint.x < right) drawCheckpoint(checkpoint);
     for (const pickup of pickups) if (pickup.x > left && pickup.x < right) drawPickup(pickup);
     for (const node of boostNodes) if (node.x > left && node.x < right) drawBoostNode(node);
+    drawAdminWorldSelection();
     if (!game.adminMode) {
       for (const room of combatRooms) {
         if (!room.triggered || room.cleared) continue;
@@ -8033,6 +8431,16 @@
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
+    if (event.target?.matches?.("input")) {
+      if (event.code === "Escape") {
+        event.preventDefault();
+        setAdminWorldEditor(false);
+      } else if (event.code === "Enter") {
+        event.preventDefault();
+        saveAdminWorldSelection();
+      }
+      return;
+    }
     const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
     if (handled.includes(event.code)) event.preventDefault();
     const firstPress = !keys.has(event.code);
@@ -8046,7 +8454,8 @@
       pressed.delete("KeyR");
     }
     if (event.code === "Escape") {
-      if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
+      if (adminWorldEditor?.hidden === false) setAdminWorldEditor(false);
+      else if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
       else togglePause();
     }
     if (event.code === "Enter" && game.mode === "menu") resetGame();
@@ -8102,6 +8511,14 @@
   for (const button of adminSpawnButtons) {
     button.addEventListener("click", () => spawnAdminSelection(button.dataset.adminSpawn));
   }
+  for (const button of adminWorldCreateButtons) {
+    button.addEventListener("click", () => createAdminWorldObject(button.dataset.adminWorldCreate));
+  }
+  adminWorldEditNearest?.addEventListener("click", findNearestAdminWorldObject);
+  adminWorldEditorClose?.addEventListener("click", () => setAdminWorldEditor(false));
+  adminWorldSave?.addEventListener("click", saveAdminWorldSelection);
+  adminWorldDelete?.addEventListener("click", deleteAdminWorldSelection);
+  adminWorldReset?.addEventListener("click", resetAdminWorldSelection);
   for (const button of stageCodeButtons) {
     button.addEventListener("click", () => {
       button.classList.add("sequence-hit");
