@@ -89,7 +89,10 @@
   });
   const EMPOWERED_SLASH_BONUS = 0.5;
   const CHARGED_SLASH_BONUS = 0.5;
-  const OVERCHARGED_SHOTGUN_DAMAGE = 2;
+  const SHOTGUN_DAMAGE = 1.15;
+  const SHOTGUN_PELLET_LIFE = 0.3;
+  const OVERCHARGED_SHOTGUN_DAMAGE = 2.2;
+  const OVERCHARGED_SHOTGUN_PELLET_LIFE = 0.4;
   const OVERCHARGED_SHOTGUN_PELLETS = 7;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
@@ -3478,12 +3481,12 @@
         h: overcharged ? 6 : 4,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: overcharged ? 0.36 : 0.25,
+        life: overcharged ? OVERCHARGED_SHOTGUN_PELLET_LIFE : SHOTGUN_PELLET_LIFE,
         enemy: false,
         kind: "shotgun",
         gravity: 0,
         color: overcharged ? palette.amber : palette.cyan,
-        damage: overcharged ? OVERCHARGED_SHOTGUN_DAMAGE : 1,
+        damage: overcharged ? OVERCHARGED_SHOTGUN_DAMAGE : SHOTGUN_DAMAGE,
         shotId: player.shotId,
         piercing: overcharged,
       });
@@ -10100,7 +10103,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.2",
+    version: "2.1.3",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10121,10 +10124,13 @@
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
     slashBulletDeflect: true,
+    shotgunDamage: SHOTGUN_DAMAGE,
+    shotgunPelletLife: SHOTGUN_PELLET_LIFE,
+    overchargedShotgunPelletLife: OVERCHARGED_SHOTGUN_PELLET_LIFE,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.2",
+    gameVersion: "2.1.3",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10153,6 +10159,9 @@
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
     slashBulletDeflect: "true",
+    shotgunDamage: String(SHOTGUN_DAMAGE),
+    shotgunPelletLife: String(SHOTGUN_PELLET_LIFE),
+    overchargedShotgunPelletLife: String(OVERCHARGED_SHOTGUN_PELLET_LIFE),
   });
   updateContinueButton();
   requestAnimationFrame(frame);
