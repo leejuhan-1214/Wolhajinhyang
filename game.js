@@ -1,6 +1,9 @@
 (() => {
   "use strict";
 
+  if (window.__MOONLIT_ECHO_RUNTIME_ACTIVE__) return;
+  window.__MOONLIT_ECHO_RUNTIME_ACTIVE__ = true;
+
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
   const startScreen = document.getElementById("start-screen");
@@ -58,15 +61,27 @@
   const W = 1280;
   const H = 720;
   const ZONE_W = 4000;
-  const ZONES_PER_STAGE = 12;
-  const MID_BOSS_ZONE_INDEX = 5;
+  const ZONES_PER_STAGE = 24;
+  const MID_BOSS_ZONE_INDEX = 11;
   const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
   const STAGE_W = ZONE_W * ZONES_PER_STAGE;
   const WORLD_W = STAGE_W * 5;
   const WORLD_H = 1450;
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
-  const TARGET_CAMPAIGN_MINUTES = 1220;
+  const TARGET_CAMPAIGN_MINUTES = 2440;
+  const SCREEN_SHAKE_SCALE = 0.42;
+  const INPUT_TUNING = Object.freeze({
+    moveSpeed: 445,
+    groundAcceleration: 3600,
+    groundFriction: 3300,
+    airFriction: 650,
+    airControl: 0.88,
+    attackControl: 0.62,
+    jumpBuffer: 0.16,
+    coyoteTime: 0.14,
+    joystickDeadzone: 0.08,
+  });
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -107,13 +122,15 @@
   let hazardSerial = 0;
   let signSerial = 0;
   let selectedAdminWorldObject = null;
+  let levelReady = false;
+  let lastResetAt = -Infinity;
 
   const stages = [
-    { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 195 },
-    { x: STAGE_W, end: STAGE_W * 2, midBossX: STAGE_W + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", midBossKind: "hunter", bossKind: "furnace", targetMinutes: 220 },
-    { x: STAGE_W * 2, end: STAGE_W * 3, midBossX: STAGE_W * 2 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", midBossKind: "oracle", bossKind: "weaver", targetMinutes: 240 },
-    { x: STAGE_W * 3, end: STAGE_W * 4, midBossX: STAGE_W * 3 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", midBossKind: "revenant", bossKind: "censor", targetMinutes: 265 },
-    { x: STAGE_W * 4, end: WORLD_W, midBossX: STAGE_W * 4 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", midBossKind: "proxy", bossKind: "echo", targetMinutes: 300 },
+    { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 390 },
+    { x: STAGE_W, end: STAGE_W * 2, midBossX: STAGE_W + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", midBossKind: "hunter", bossKind: "furnace", targetMinutes: 440 },
+    { x: STAGE_W * 2, end: STAGE_W * 3, midBossX: STAGE_W * 2 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", midBossKind: "oracle", bossKind: "weaver", targetMinutes: 480 },
+    { x: STAGE_W * 3, end: STAGE_W * 4, midBossX: STAGE_W * 3 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", midBossKind: "revenant", bossKind: "censor", targetMinutes: 530 },
+    { x: STAGE_W * 4, end: WORLD_W, midBossX: STAGE_W * 4 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", midBossKind: "proxy", bossKind: "echo", targetMinutes: 600 },
   ];
 
   const stageZoneNames = [
@@ -124,10 +141,17 @@
     ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "명명되지 않은 문", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
-  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "midboss", "gauntlet", "crusher", "vertical", "gauntlet", "fork", "boss"];
-  const zones = stages.flatMap((stage, stageIndex) => stageZoneNames[stageIndex].map((name, zoneIndex) => ({
+  const zoneTemplates = [
+    "terrace", "chasm", "crusher", "vertical", "fork", "gauntlet",
+    "terrace", "crusher", "vertical", "gauntlet", "fork", "midboss",
+    "terrace", "chasm", "gauntlet", "vertical", "crusher", "fork",
+    "gauntlet", "chasm", "crusher", "vertical", "fork", "boss",
+  ];
+  const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => ({
     x: stage.x + zoneIndex * ZONE_W,
-    name,
+    name: zoneIndex < stageZoneNames[stageIndex].length
+      ? stageZoneNames[stageIndex][zoneIndex]
+      : `${stageZoneNames[stageIndex][zoneIndex % stageZoneNames[stageIndex].length]} · 심층`,
     code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
     color: stage.color,
     kind: stage.kind,
@@ -608,15 +632,15 @@
 
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
-    x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W - 620,
+    x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W * 2 - 620,
     lines,
   }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
-    x: stages[stageIndex].x + (eventIndex + 7) * ZONE_W - 620,
+    x: stages[stageIndex].x + (eventIndex + 13) * ZONE_W - 620,
     lines,
   })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
-    x: stages[stageIndex].x + (eventIndex === 0 ? 4.42 : 6.55) * ZONE_W,
+    x: stages[stageIndex].x + (eventIndex === 0 ? MID_BOSS_ZONE_INDEX - 0.58 : MID_BOSS_ZONE_INDEX + 1.55) * ZONE_W,
     lines,
   }))));
 
@@ -807,7 +831,7 @@
   CUTSCENE_EVENTS.push(
     {
       id: "cutscene-workers-names",
-      x: stages[0].x + ZONE_W * 8 + 420,
+      x: stages[0].x + ZONE_W * 18 + 420,
       title: "추가 장면 · 이름이 묻힌 곳",
       location: "백야 폐기장 / 기억 매립 구덩이",
       visual: "rain",
@@ -819,7 +843,7 @@
     },
     {
       id: "cutscene-fuel-testimony",
-      x: stages[1].x + ZONE_W * 8 + 420,
+      x: stages[1].x + ZONE_W * 18 + 420,
       title: "추가 장면 · 공포의 사용 설명서",
       location: "검은 공장 / 노심 제어 회랑",
       visual: "furnace",
@@ -831,7 +855,7 @@
     },
     {
       id: "cutscene-nineteen-voices",
-      x: stages[2].x + ZONE_W * 8 + 420,
+      x: stages[2].x + ZONE_W * 18 + 420,
       title: "추가 장면 · 열아홉 개의 답",
       location: "기억 성당 / 증언 봉인실",
       visual: "choir",
@@ -843,7 +867,7 @@
     },
     {
       id: "cutscene-public-broadcast",
-      x: stages[3].x + ZONE_W * 8 + 420,
+      x: stages[3].x + ZONE_W * 18 + 420,
       title: "추가 장면 · 편집되지 않은 증인",
       location: "새벽 송신탑 / 최후 중계실",
       visual: "broadcast",
@@ -855,7 +879,7 @@
     },
     {
       id: "cutscene-two-seats",
-      x: stages[4].x + ZONE_W * 8 + 420,
+      x: stages[4].x + ZONE_W * 18 + 420,
       title: "추가 장면 · 두 개의 빈자리",
       location: "원형 보관소 / 두 사람의 회랑",
       visual: "duel",
@@ -1111,8 +1135,20 @@
     constrainEnemyToLockdown(enemy);
   }
 
-  function enforceEnemyLockdowns() {
-    for (const enemy of enemies) {
+  function getActiveEnemies() {
+    const minZone = Math.max(0, game.zone - 1);
+    const maxZone = Math.min(zones.length - 1, game.zone + 1);
+    return enemies.filter((enemy) => {
+      if (!enemy.alive) return false;
+      if (Math.abs(enemy.x + enemy.w / 2 - (player.x + player.w / 2)) < ZONE_W * 1.2) return true;
+      return Number.isInteger(enemy.homeZoneIndex)
+        && enemy.homeZoneIndex >= minZone
+        && enemy.homeZoneIndex <= maxZone;
+    });
+  }
+
+  function enforceEnemyLockdowns(collection = enemies) {
+    for (const enemy of collection) {
       if (!enemy.alive) continue;
       constrainEnemyToLockdown(enemy);
       if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
@@ -1399,7 +1435,8 @@
 
   function updateCombatTerrain(dt) {
     for (const room of combatRooms) {
-      const active = room.triggered && !room.cleared && !game.adminMode;
+      const nearRoom = player.x > room.left - 220 && player.x < room.right + 220;
+      const active = room.triggered && !room.cleared && !game.adminMode && nearRoom;
       if (active) room.terrainTimer += dt;
       const nextStep = active ? Math.floor(room.terrainTimer / room.terrainInterval) : 0;
       if (active && nextStep > room.terrainStep) {
@@ -2091,20 +2128,36 @@
     boostNodes.length = 0;
     combatRooms.length = 0;
 
-    const floorHeights = [
+    const baseFloorHeights = [
       [650, 690, 630, 710, 650, 670, 680, 640, 700, 660, 690, 650],
       [700, 720, 660, 700, 670, 690, 710, 650, 690, 720, 660, 680],
       [650, 690, 720, 630, 680, 660, 650, 710, 620, 690, 640, 670],
       [710, 670, 630, 720, 660, 680, 610, 690, 640, 700, 620, 660],
       [690, 620, 740, 600, 700, 650, 630, 680, 610, 720, 640, 670],
     ];
-    const platformKinds = {
+    const floorHeights = baseFloorHeights.map((row, stageIndex) => Array.from(
+      { length: ZONES_PER_STAGE },
+      (_, zoneIndex) => clamp(
+        row[(zoneIndex * 5 + Math.floor(zoneIndex / 6) + stageIndex) % row.length]
+          + ((zoneIndex % 4) - 1) * 10,
+        590,
+        740,
+      ),
+    ));
+    const basePlatformKinds = {
       scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "factory", "cargo", "roof", "factory", "cargo", "gate"],
       foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "turbine", "crusher", "channel", "turbine", "channel", "gate"],
       archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "lab", "archive", "shrine", "lab", "archive", "gate"],
       tower: ["rail", "city", "tower", "tower", "firewall", "array", "array", "city", "tower", "array", "firewall", "gate"],
       mirror: ["glass", "mirror", "habitat", "maze", "capsule", "arena", "arena", "glass", "mirror", "arena", "glass", "gate"],
     };
+    const platformKinds = Object.fromEntries(Object.entries(basePlatformKinds).map(([kind, row]) => [
+      kind,
+      Array.from(
+        { length: ZONES_PER_STAGE },
+        (_, zoneIndex) => row[(zoneIndex * 5 + Math.floor(zoneIndex / 6)) % row.length],
+      ),
+    ]));
     const enemyPools = [
       ["runner", "runner", "gunner", "drone", "shield"],
       ["runner", "gunner", "drone", "shield", "piercer", "mortar"],
@@ -2526,10 +2579,16 @@
       room.cleared = Boolean(state.cleared);
     }
     const legacyZonesPerStage = Number.isInteger(saved.zonesPerStage) ? saved.zonesPerStage : 7;
+    const savedStageIndex = clamp(saved.respawnStage || 0, 0, stages.length - 1);
+    const legacyLocalCheckpoint = Number.isInteger(saved.respawnCheckpointIndex)
+      ? clamp(saved.respawnCheckpointIndex - savedStageIndex * legacyZonesPerStage, 0, legacyZonesPerStage - 1)
+      : 0;
+    const migratedLocalCheckpoint = legacyZonesPerStage === ZONES_PER_STAGE
+      ? legacyLocalCheckpoint
+      : Math.round((legacyLocalCheckpoint / Math.max(1, legacyZonesPerStage - 1)) * (ZONES_PER_STAGE - 1));
     const migratedCheckpointIndex = Number.isInteger(saved.respawnCheckpointIndex)
       ? clamp(
-        (saved.respawnStage || 0) * ZONES_PER_STAGE
-          + Math.max(0, saved.respawnCheckpointIndex - (saved.respawnStage || 0) * legacyZonesPerStage),
+        savedStageIndex * ZONES_PER_STAGE + migratedLocalCheckpoint,
         0,
         checkpoints.length - 1,
       )
@@ -2573,13 +2632,19 @@
   }
 
   function resetGame(resume = false) {
+    const requestedAt = performance.now();
+    if (requestedAt - lastResetAt < 700) return;
+    lastResetAt = requestedAt;
     setStartScreenEditor(false);
     const saved = resume ? readCampaignSave() : null;
     if (saved?.difficulty && difficultySettings[saved.difficulty]) selectedDifficulty = saved.difficulty;
     if (!resume) {
       try { window.localStorage?.removeItem(SAVE_KEY); } catch { /* Ignore unavailable storage. */ }
     }
-    buildLevel();
+    if (!levelReady || game.mode !== "menu") {
+      buildLevel();
+      levelReady = true;
+    }
     const difficulty = difficultySettings[selectedDifficulty];
     Object.assign(player, {
       x: 150,
@@ -3045,6 +3110,9 @@
     game.cutsceneShotElapsed = 0;
     game.story = null;
     game.storyTimer = 0;
+    game.shake = 0;
+    game.flash = 0;
+    game.freeze = 0;
     player.vx = 0;
     player.attackTimer = 0;
     bullets.length = 0;
@@ -4444,29 +4512,37 @@
     if (player.comboTimer <= 0) player.combo = 0;
     if (player.slashChainTimer <= 0 && player.attackTimer <= 0) player.slashChain = 0;
 
-    if (pressed.has("Space") || pressed.has("KeyK")) player.jumpBuffer = 0.12;
+    if (pressed.has("Space") || pressed.has("KeyK")) player.jumpBuffer = INPUT_TUNING.jumpBuffer;
     if (pressed.has("KeyJ") || (pressed.has("KeyX") && !game.adminMode)) startAttack();
     if (pressed.has("KeyZ") && game.adminMode) startAdminEraseAttack();
     if (pressed.has("KeyX") && game.adminMode) toggleAdminSpawnPanel();
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
     if (pressed.has("KeyE")) startBurst();
 
-    const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
-    const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
+    const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.06);
+    const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.06);
     const keyboardDirection = Number(right) - Number(left);
     const direction = moveStick.active && Math.abs(moveStick.x) > 0.04 ? moveStick.x : keyboardDirection;
 
     if (Math.abs(direction) > 0.04) {
       player.facing = direction > 0 ? 1 : -1;
-      const control = player.attackTimer > 0 ? 0.5 : player.grounded ? 1 : 0.78;
+      const control = player.attackTimer > 0 ? INPUT_TUNING.attackControl : player.grounded ? 1 : INPUT_TUNING.airControl;
       const buffSpeed = player.buffTimer > 0 ? 1.22 : 1;
-      player.vx = moveToward(player.vx, direction * 415 * buffSpeed, 2800 * control * dt);
+      player.vx = moveToward(
+        player.vx,
+        direction * INPUT_TUNING.moveSpeed * buffSpeed,
+        INPUT_TUNING.groundAcceleration * control * dt,
+      );
     } else if (player.attackTimer <= 0) {
-      player.vx = moveToward(player.vx, 0, (player.grounded ? 2500 : 420) * dt);
+      player.vx = moveToward(
+        player.vx,
+        0,
+        (player.grounded ? INPUT_TUNING.groundFriction : INPUT_TUNING.airFriction) * dt,
+      );
     }
 
     if (player.grounded) {
-      player.coyote = 0.11;
+      player.coyote = INPUT_TUNING.coyoteTime;
     } else {
       player.coyote = Math.max(0, player.coyote - dt);
     }
@@ -4518,7 +4594,7 @@
     if (player.grounded && !wasGrounded) {
       if (player.landingImpactArmed && impactVelocity > 260) {
         player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
-        game.shake = Math.max(game.shake, Math.min(7, impactVelocity / 120));
+        game.shake = Math.max(game.shake, Math.min(3.5, impactVelocity / 240));
         spawnParticles(player.x + player.w / 2, player.y + player.h, "#8aa7ad", 9, 145, 0.34, 260);
       }
       player.landingImpactArmed = false;
@@ -4703,8 +4779,8 @@
     }
   }
 
-  function resolveEnemySeparation() {
-    const solidEnemies = enemies.filter((enemy) => enemy.alive && enemy.type !== "drone");
+  function resolveEnemySeparation(collection = enemies) {
+    const solidEnemies = collection.filter((enemy) => enemy.alive && enemy.type !== "drone");
     for (let a = 0; a < solidEnemies.length; a += 1) {
       for (let b = a + 1; b < solidEnemies.length; b += 1) {
         const first = solidEnemies[a];
@@ -4724,9 +4800,9 @@
     for (const enemy of solidEnemies) constrainEnemyToLockdown(enemy);
   }
 
-  function resolvePlayerEnemyOverlap() {
+  function resolvePlayerEnemyOverlap(collection = enemies) {
     if (game.adminMode) return;
-    for (const enemy of enemies) {
+    for (const enemy of collection) {
       if (!enemy.alive || enemy.type === "drone" || !overlaps(player, enemy)) continue;
       const playerCenter = player.x + player.w / 2;
       const enemyCenter = enemy.x + enemy.w / 2;
@@ -5231,6 +5307,8 @@
   function updateCombatRooms() {
     if (game.adminMode) return;
     for (const room of combatRooms) {
+      const nearRoom = player.x > room.left - 180 && player.x < room.right + 180;
+      if (!nearRoom) continue;
       room.anchorAlive = enemies.some((enemy) => (
         enemy.alive
         && enemy.type === room.formationAnchorType
@@ -5263,8 +5341,8 @@
         continue;
       }
 
-      const nearRoom = player.x > room.left - 70 && player.x < room.right + 70;
-      if (nearRoom) {
+      const insideSealRange = player.x > room.left - 70 && player.x < room.right + 70;
+      if (insideSealRange) {
         if (player.x < room.left + 24) {
           player.x = room.left + 24;
           player.vx = Math.max(0, player.vx);
@@ -5488,11 +5566,11 @@
   }
 
   function updateCamera(dt) {
-    camera.lookX = lerp(camera.lookX, player.vx * 0.46, 1 - Math.pow(0.0006, dt));
+    camera.lookX = lerp(camera.lookX, player.vx * 0.38, 1 - Math.pow(0.00008, dt));
     const targetX = clamp(player.x + player.w / 2 - W * 0.42 + camera.lookX, 0, WORLD_W - W);
     const targetY = clamp(player.y + player.h / 2 - H * 0.58, 0, WORLD_H - H);
-    camera.x = lerp(camera.x, targetX, 1 - Math.pow(0.0008, dt));
-    camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.008, dt));
+    camera.x = lerp(camera.x, targetX, 1 - Math.pow(0.00008, dt));
+    camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.0007, dt));
   }
 
   function cullEnemiesOutsideVerticalView() {
@@ -5528,6 +5606,8 @@
     }
 
     if (game.mode !== "playing") return;
+    game.shake = Math.max(0, game.shake - (game.cutscene || game.story ? 140 : 46) * dt);
+    game.flash = Math.max(0, game.flash - dt);
     if (game.cutscene) {
       updateCutscene(dt);
       updateParticles(dt * 0.2);
@@ -5540,8 +5620,6 @@
     }
 
     game.runTime += dt;
-    game.shake = Math.max(0, game.shake - 34 * dt);
-    game.flash = Math.max(0, game.flash - dt);
     game.stageTitle = Math.max(0, game.stageTitle - dt);
     game.zoneTitle = Math.max(0, game.zoneTitle - dt);
     game.arenaTitle = Math.max(0, game.arenaTitle - dt);
@@ -5566,14 +5644,15 @@
     }
 
     updateCombatTerrain(dt);
-    enforceEnemyLockdowns();
+    const activeEnemies = getActiveEnemies();
+    enforceEnemyLockdowns(activeEnemies);
     updatePlayer(dt);
-    for (const enemy of enemies) updateEnemy(enemy, dt);
-    resolveEnemySeparation();
-    resolvePlayerEnemyOverlap();
+    for (const enemy of activeEnemies) updateEnemy(enemy, dt);
+    resolveEnemySeparation(activeEnemies);
+    resolvePlayerEnemyOverlap(activeEnemies);
     updateCombatRooms();
     updateBullets(dt);
-    enforceEnemyLockdowns();
+    enforceEnemyLockdowns(activeEnemies);
     updateParticles(dt);
     updateCamera(dt);
     cullEnemiesOutsideVerticalView();
@@ -8343,8 +8422,9 @@
   }
 
   function drawWorld() {
-    const shakeX = game.shake > 0 ? (hash(game.time * 1000) - 0.5) * game.shake : 0;
-    const shakeY = game.shake > 0 ? (hash(game.time * 1300 + 12) - 0.5) * game.shake : 0;
+    const effectiveShake = game.cutscene || game.story ? 0 : game.shake * SCREEN_SHAKE_SCALE;
+    const shakeX = effectiveShake > 0 ? (hash(game.time * 1000) - 0.5) * effectiveShake : 0;
+    const shakeY = effectiveShake > 0 ? (hash(game.time * 1300 + 12) - 0.5) * effectiveShake : 0;
     ctx.save();
     ctx.translate(Math.round(-camera.x + shakeX), Math.round(-camera.y + shakeY));
 
@@ -8367,9 +8447,10 @@
       }
       for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
         const zone = zones[zoneIndex];
-        if (zone.template === "boss" || getZoneRemaining(zoneIndex) === 0) continue;
+        if (zone.template === "boss") continue;
         const boundary = zone.x + ZONE_W - 48;
-        if (boundary > left - 40 && boundary < right + 40) drawCombatSeal(boundary);
+        if (boundary <= left - 40 || boundary >= right + 40) continue;
+        if (getZoneRemaining(zoneIndex) > 0) drawCombatSeal(boundary);
       }
     }
     for (const stage of stages) {
@@ -9226,12 +9307,14 @@
     const deltaX = clientX - centerX;
     const deltaY = clientY - centerY;
     const rawLength = Math.hypot(deltaX, deltaY);
-    const radius = Math.max(28, Math.min(bounds.width, bounds.height) * 0.36);
+    const radius = Math.max(28, Math.min(bounds.width, bounds.height) * 0.4);
     const normalizedX = rawLength > 0 ? deltaX / rawLength : 0;
     const normalizedY = rawLength > 0 ? deltaY / rawLength : 0;
     const clampedLength = Math.min(rawLength, radius);
     const rawMagnitude = clamp(clampedLength / radius, 0, 1);
-    const magnitude = rawMagnitude < 0.12 ? 0 : clamp((rawMagnitude - 0.12) / 0.88, 0, 1);
+    const magnitude = rawMagnitude < INPUT_TUNING.joystickDeadzone
+      ? 0
+      : clamp((rawMagnitude - INPUT_TUNING.joystickDeadzone) / (1 - INPUT_TUNING.joystickDeadzone), 0, 1);
 
     moveStick.active = true;
     moveStick.magnitude = magnitude;
@@ -9535,6 +9618,32 @@
 
   applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
   buildLevel();
+  levelReady = true;
+  window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
+    version: "2.0.0",
+    worldWidth: WORLD_W,
+    stages: stages.length,
+    zones: zones.length,
+    zonesPerStage: ZONES_PER_STAGE,
+    midBossZone: MID_BOSS_ZONE_INDEX + 1,
+    finalBossZone: BOSS_ZONE_INDEX + 1,
+    enemies: enemies.length,
+    activeEnemies: getActiveEnemies().length,
+    platforms: platforms.length,
+    storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
+  });
+  Object.assign(document.documentElement.dataset, {
+    gameVersion: "2.0.0",
+    worldWidth: String(WORLD_W),
+    stageCount: String(stages.length),
+    zoneCount: String(zones.length),
+    zonesPerStage: String(ZONES_PER_STAGE),
+    midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
+    finalBossZone: String(BOSS_ZONE_INDEX + 1),
+    enemyCount: String(enemies.length),
+    activeEnemyCount: String(getActiveEnemies().length),
+    platformCount: String(platforms.length),
+  });
   updateContinueButton();
   requestAnimationFrame(frame);
 })();

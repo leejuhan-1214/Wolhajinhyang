@@ -12,7 +12,8 @@ const types = {
 };
 
 createServer(async (request, response) => {
-  const requested = request.url === "/" ? "/index.html" : request.url.split("?")[0];
+  const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
+  const requested = pathname === "/" ? "/index.html" : pathname;
   const file = normalize(join(root, requested.replace(/^\/+/, "")));
   if (!file.startsWith(normalize(root))) {
     response.writeHead(403).end("Forbidden");
