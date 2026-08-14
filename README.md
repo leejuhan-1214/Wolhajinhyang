@@ -266,7 +266,7 @@ git push -u origin main
 
 저장소의 `Settings → Pages → Build and deployment → Source`를 `GitHub Actions`로 선택하면 `main` 브랜치에 푸시할 때 게임이 자동 배포됩니다. 배포 주소는 Actions의 `Deploy GitHub Pages` 작업에서 확인할 수 있습니다.
 
-업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.6`이 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
+업데이트 확인은 배포 주소 끝에 `/VERSION.txt`를 붙여 접속하세요. `1.6.7`이 보이면 새 루트가 정상 배포된 것입니다. Actions 작업이 끝나기 전에 새로고침하거나 Pages Source가 `Deploy from a branch`로 남아 있으면 이전 버전이 보일 수 있습니다.
 
 로컬 실행과 문법 검사는 다음 명령으로 할 수 있습니다.
 
