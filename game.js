@@ -13,6 +13,27 @@
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
   const adminStatus = document.getElementById("admin-status");
+  const startTitle = document.getElementById("start-title");
+  const startSubtitle = document.getElementById("start-subtitle");
+  const startStoryTitle = document.getElementById("start-story-title");
+  const startStoryBody = document.getElementById("start-story-body");
+  const startTip = document.getElementById("start-tip");
+  const startScreenEditToggle = document.getElementById("start-screen-edit-toggle");
+  const startScreenEditor = document.getElementById("start-screen-editor");
+  const startScreenEditorClose = document.getElementById("start-screen-editor-close");
+  const startScreenEditSave = document.getElementById("start-screen-edit-save");
+  const startScreenEditReset = document.getElementById("start-screen-edit-reset");
+  const startEditStageSelect = document.getElementById("start-edit-stage-select");
+  const startScreenEditInputs = {
+    title: document.getElementById("start-edit-title"),
+    subtitle: document.getElementById("start-edit-subtitle"),
+    storyTitle: document.getElementById("start-edit-story-title"),
+    storyBody: document.getElementById("start-edit-story-body"),
+    button: document.getElementById("start-edit-button"),
+    tip: document.getElementById("start-edit-tip"),
+    stageName: document.getElementById("start-edit-stage-name"),
+    stageBoss: document.getElementById("start-edit-stage-boss"),
+  };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
   const adminWorldEditor = document.getElementById("admin-world-editor");
@@ -38,6 +59,8 @@
   const touchFullscreenButton = document.querySelector?.("[data-touch-action='fullscreen']") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
+  const startStageNameElements = stageCodeButtons.map((button) => button.querySelector(".stage-name"));
+  const startStageBossElements = stageCodeButtons.map((button) => button.querySelector(".stage-boss"));
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
   const adminWorldCreateButtons = [...(document.querySelectorAll?.("[data-admin-world-create]") || [])];
 
@@ -55,6 +78,7 @@
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
   const ADMIN_PLACED_OBJECTS_KEY = "moonlit-echo-admin-placed-objects-v1";
   const ADMIN_WORLD_EDITS_KEY = "moonlit-echo-admin-world-edits-v1";
+  const START_SCREEN_EDITS_KEY = "moonlit-echo-start-screen-edits-v1";
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
@@ -204,6 +228,21 @@
   const ADMIN_SEQUENCE = ["1", "2", "1", "4"];
   let adminSequenceProgress = 0;
   let adminModeUnlocked = false;
+  const START_SCREEN_DEFAULTS = {
+    title: startTitle?.textContent || "월하잔향",
+    subtitle: startSubtitle?.textContent || "",
+    storyTitle: startStoryTitle?.textContent || "",
+    storyBody: startStoryBody?.textContent || "",
+    button: startButton?.textContent || "새 작전",
+    tip: startTip?.textContent || "",
+    stages: stageCodeButtons.map((button, index) => ({
+      name: startStageNameElements[index]?.textContent || "",
+      boss: startStageBossElements[index]?.textContent || "",
+    })),
+  };
+  let startScreenEditData = readStartScreenEdits();
+  let startScreenDraft = null;
+  let startScreenEditorStageIndex = 0;
 
   const INTRO_STORY = [
     {
@@ -1927,6 +1966,141 @@
     }
   }
 
+  function sanitizeStartScreenText(value, fallback, maxLength) {
+    const text = typeof value === "string" ? value.trim() : "";
+    return (text || fallback).slice(0, maxLength);
+  }
+
+  function normalizeStartScreenEdits(value) {
+    if (!value || typeof value !== "object") return null;
+    return {
+      title: sanitizeStartScreenText(value.title, START_SCREEN_DEFAULTS.title, 40),
+      subtitle: sanitizeStartScreenText(value.subtitle, START_SCREEN_DEFAULTS.subtitle, 100),
+      storyTitle: sanitizeStartScreenText(value.storyTitle, START_SCREEN_DEFAULTS.storyTitle, 140),
+      storyBody: sanitizeStartScreenText(value.storyBody, START_SCREEN_DEFAULTS.storyBody, 500),
+      button: sanitizeStartScreenText(value.button, START_SCREEN_DEFAULTS.button, 40),
+      tip: sanitizeStartScreenText(value.tip, START_SCREEN_DEFAULTS.tip, 180),
+      stages: START_SCREEN_DEFAULTS.stages.map((fallback, index) => ({
+        name: sanitizeStartScreenText(value.stages?.[index]?.name, fallback.name, 80),
+        boss: sanitizeStartScreenText(value.stages?.[index]?.boss, fallback.boss, 50),
+      })),
+    };
+  }
+
+  function readStartScreenEdits() {
+    try {
+      const raw = window.localStorage?.getItem(START_SCREEN_EDITS_KEY);
+      return raw ? normalizeStartScreenEdits(JSON.parse(raw)) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function persistStartScreenEdits() {
+    try {
+      if (startScreenEditData) window.localStorage?.setItem(START_SCREEN_EDITS_KEY, JSON.stringify(startScreenEditData));
+      else window.localStorage?.removeItem(START_SCREEN_EDITS_KEY);
+    } catch {
+      // The edited title screen remains active for this session if storage is unavailable.
+    }
+  }
+
+  function applyStartScreenEdits(value = START_SCREEN_DEFAULTS) {
+    const data = normalizeStartScreenEdits(value) || START_SCREEN_DEFAULTS;
+    if (startTitle) startTitle.textContent = data.title;
+    if (startSubtitle) startSubtitle.textContent = data.subtitle;
+    if (startStoryTitle) startStoryTitle.textContent = data.storyTitle;
+    if (startStoryBody) startStoryBody.textContent = data.storyBody;
+    if (startButton) startButton.textContent = data.button;
+    if (startTip) startTip.textContent = data.tip;
+    data.stages.forEach((stage, index) => {
+      if (startStageNameElements[index]) startStageNameElements[index].textContent = stage.name;
+      if (startStageBossElements[index]) startStageBossElements[index].textContent = stage.boss;
+    });
+  }
+
+  function buildStartScreenDraftFromDom() {
+    return {
+      title: startTitle?.textContent || START_SCREEN_DEFAULTS.title,
+      subtitle: startSubtitle?.textContent || START_SCREEN_DEFAULTS.subtitle,
+      storyTitle: startStoryTitle?.textContent || START_SCREEN_DEFAULTS.storyTitle,
+      storyBody: startStoryBody?.textContent || START_SCREEN_DEFAULTS.storyBody,
+      button: startButton?.textContent || START_SCREEN_DEFAULTS.button,
+      tip: startTip?.textContent || START_SCREEN_DEFAULTS.tip,
+      stages: stageCodeButtons.map((button, index) => ({
+        name: startStageNameElements[index]?.textContent || START_SCREEN_DEFAULTS.stages[index].name,
+        boss: startStageBossElements[index]?.textContent || START_SCREEN_DEFAULTS.stages[index].boss,
+      })),
+    };
+  }
+
+  function storeCurrentStageEditorDraft() {
+    if (!startScreenDraft) return;
+    const index = clamp(startScreenEditorStageIndex, 0, stageCodeButtons.length - 1);
+    startScreenDraft.stages[index] = {
+      name: startScreenEditInputs.stageName.value,
+      boss: startScreenEditInputs.stageBoss.value,
+    };
+  }
+
+  function loadStartStageEditor(index) {
+    if (!startScreenDraft) return;
+    startScreenEditorStageIndex = clamp(Number(index) || 0, 0, stageCodeButtons.length - 1);
+    startEditStageSelect.value = String(startScreenEditorStageIndex);
+    const stage = startScreenDraft.stages[startScreenEditorStageIndex];
+    startScreenEditInputs.stageName.value = stage.name;
+    startScreenEditInputs.stageBoss.value = stage.boss;
+  }
+
+  function setStartScreenEditor(open) {
+    if (!startScreenEditor) return false;
+    const shouldOpen = Boolean(open && adminModeUnlocked && game.mode === "menu");
+    startScreenEditor.hidden = !shouldOpen;
+    if (!shouldOpen) {
+      startScreenDraft = null;
+      return false;
+    }
+    startScreenDraft = buildStartScreenDraftFromDom();
+    startScreenEditInputs.title.value = startScreenDraft.title;
+    startScreenEditInputs.subtitle.value = startScreenDraft.subtitle;
+    startScreenEditInputs.storyTitle.value = startScreenDraft.storyTitle;
+    startScreenEditInputs.storyBody.value = startScreenDraft.storyBody;
+    startScreenEditInputs.button.value = startScreenDraft.button;
+    startScreenEditInputs.tip.value = startScreenDraft.tip;
+    loadStartStageEditor(startScreenEditorStageIndex);
+    return true;
+  }
+
+  function saveStartScreenEditor() {
+    if (!startScreenDraft || !adminModeUnlocked || game.mode !== "menu") return false;
+    storeCurrentStageEditorDraft();
+    startScreenDraft.title = startScreenEditInputs.title.value;
+    startScreenDraft.subtitle = startScreenEditInputs.subtitle.value;
+    startScreenDraft.storyTitle = startScreenEditInputs.storyTitle.value;
+    startScreenDraft.storyBody = startScreenEditInputs.storyBody.value;
+    startScreenDraft.button = startScreenEditInputs.button.value;
+    startScreenDraft.tip = startScreenEditInputs.tip.value;
+    startScreenEditData = normalizeStartScreenEdits(startScreenDraft);
+    persistStartScreenEdits();
+    applyStartScreenEdits(startScreenEditData);
+    setStartScreenEditor(false);
+    if (adminStatus) adminStatus.textContent = "ADMIN MODE 활성화 · 첫 화면 편집 내용 저장 완료";
+    sound.tone(760, 0.14, "sine", 0.03, 1.3);
+    return true;
+  }
+
+  function resetStartScreenEditor() {
+    if (!adminModeUnlocked || game.mode !== "menu") return false;
+    startScreenEditData = null;
+    persistStartScreenEdits();
+    applyStartScreenEdits(START_SCREEN_DEFAULTS);
+    startButton.textContent = "관리자 작전 시작";
+    setStartScreenEditor(true);
+    if (adminStatus) adminStatus.textContent = "ADMIN MODE 활성화 · 첫 화면 기본값 복원 완료";
+    sound.tone(480, 0.12, "square", 0.025, 1.2);
+    return true;
+  }
+
   function readCampaignSave() {
     try {
       const raw = window.localStorage?.getItem(SAVE_KEY);
@@ -2036,6 +2210,7 @@
   }
 
   function resetGame(resume = false) {
+    setStartScreenEditor(false);
     const saved = resume ? readCampaignSave() : null;
     if (saved?.difficulty && difficultySettings[saved.difficulty]) selectedDifficulty = saved.difficulty;
     if (!resume) {
@@ -8121,13 +8296,10 @@
     sound.wake();
     if (adminSequenceProgress < ADMIN_SEQUENCE.length) {
       if (adminStatus) {
-        adminStatus.hidden = adminSequenceProgress === 0;
-        adminStatus.classList.add("pending");
-        adminStatus.textContent = adminSequenceProgress > 0
-          ? `관리자 인증 ${adminSequenceProgress}/4 · 스테이지 카드를 계속 클릭`
-          : "";
+        adminStatus.hidden = true;
+        adminStatus.classList.remove("pending");
+        adminStatus.textContent = "";
       }
-      if (adminSequenceProgress > 0) sound.tone(320 + adminSequenceProgress * 90, 0.07, "square", 0.018, 1.08);
       return false;
     }
 
@@ -8140,7 +8312,8 @@
       adminStatus.classList.remove("pending");
       adminStatus.textContent = "ADMIN MODE 활성화 · 적 공격/접촉 피해 없음 · 구역 및 스테이지 봉쇄 해제";
     }
-    startButton.textContent = "관리자 작전 시작";
+    if (startScreenEditToggle) startScreenEditToggle.hidden = false;
+    if (!startScreenEditData) startButton.textContent = "관리자 작전 시작";
     sound.tone(740, 0.12, "square", 0.035, 0.82);
     setTimeout(() => sound.tone(1040, 0.18, "sine", 0.035, 1.05), 90);
     return true;
@@ -8431,13 +8604,16 @@
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
-    if (event.target?.matches?.("input")) {
+    if (event.target?.matches?.("input, textarea, select")) {
       if (event.code === "Escape") {
         event.preventDefault();
-        setAdminWorldEditor(false);
+        if (startScreenEditor?.hidden === false) setStartScreenEditor(false);
+        else setAdminWorldEditor(false);
       } else if (event.code === "Enter") {
-        event.preventDefault();
-        saveAdminWorldSelection();
+        if (adminWorldEditor?.hidden === false) {
+          event.preventDefault();
+          saveAdminWorldSelection();
+        }
       }
       return;
     }
@@ -8454,7 +8630,8 @@
       pressed.delete("KeyR");
     }
     if (event.code === "Escape") {
-      if (adminWorldEditor?.hidden === false) setAdminWorldEditor(false);
+      if (startScreenEditor?.hidden === false) setStartScreenEditor(false);
+      else if (adminWorldEditor?.hidden === false) setAdminWorldEditor(false);
       else if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
       else togglePause();
     }
@@ -8507,6 +8684,14 @@
     togglePause();
   });
   restartButton.addEventListener("click", () => resetGame(false));
+  startScreenEditToggle?.addEventListener("click", () => setStartScreenEditor(startScreenEditor?.hidden !== false));
+  startScreenEditorClose?.addEventListener("click", () => setStartScreenEditor(false));
+  startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
+  startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
+  startEditStageSelect?.addEventListener("change", () => {
+    storeCurrentStageEditorDraft();
+    loadStartStageEditor(startEditStageSelect.value);
+  });
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
   for (const button of adminSpawnButtons) {
     button.addEventListener("click", () => spawnAdminSelection(button.dataset.adminSpawn));
@@ -8537,6 +8722,7 @@
     });
   }
 
+  applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
   buildLevel();
   updateContinueButton();
   requestAnimationFrame(frame);

@@ -11,26 +11,26 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=1.6.7" />
+    <link rel="stylesheet" href="styles.css?v=1.6.8" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
       <section id="start-screen" class="overlay visible">
-        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.7</div>
-        <h1>월하잔향</h1>
-        <p class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
+        <div class="eyebrow">TACTICAL EXECUTION CAMPAIGN · v1.6.8</div>
+        <h1 id="start-title">월하잔향</h1>
+        <p id="start-subtitle" class="subtitle">발도로 충전하고, 샷건 반동으로 하늘을 가른다.</p>
         <div class="story-hook">
-          <strong>감찰 기록 04-11 · 5막 35구역 · 첫 플레이 목표 9시간 40분 · 10개 컷신</strong>
-          <span>여섯 해 전에 사망한 노동자들의 구조 요청이 폐기장에서 송신된다. 한서린은 2,418명의 기억 생존자와 열아홉 개의 자신을 추적하고, 끝내 같은 얼굴을 한 원본 대행체와 ‘누가 진짜인가’가 아닌 ‘누가 살아갈 수 있는가’를 두고 맞선다.</span>
+          <strong id="start-story-title">감찰 기록 04-11 · 5막 35구역 · 첫 플레이 목표 9시간 40분 · 10개 컷신</strong>
+          <span id="start-story-body">여섯 해 전에 사망한 노동자들의 구조 요청이 폐기장에서 송신된다. 한서린은 2,418명의 기억 생존자와 열아홉 개의 자신을 추적하고, 끝내 같은 얼굴을 한 원본 대행체와 ‘누가 진짜인가’가 아닌 ‘누가 살아갈 수 있는가’를 두고 맞선다.</span>
         </div>
         <div class="stage-strip" aria-label="전체 스테이지">
-          <button class="stage-card" type="button" data-admin-stage="1"><b>STAGE 01</b>작전 4호 · 백야 폐기장<em>보스 · 철각</em></button>
-          <button class="stage-card" type="button" data-admin-stage="2"><b>STAGE 02</b>검은 공장 · 타오르는 심장<em>보스 · 홍련</em></button>
-          <button class="stage-card" type="button" data-admin-stage="3"><b>STAGE 03</b>기억 성당 · 거짓된 합창<em>보스 · 백면</em></button>
-          <button class="stage-card" type="button" data-admin-stage="4"><b>STAGE 04</b>새벽 송신탑 · 마지막 증언<em>보스 · 무명</em></button>
-          <button class="stage-card" type="button" data-admin-stage="5"><b>STAGE 05</b>원형 보관소 · 거울의 뿌리<em>보스 · 잔영-00</em></button>
+          <button class="stage-card" type="button" data-admin-stage="1"><b>STAGE 01</b><span class="stage-name">작전 4호 · 백야 폐기장</span><em>보스 · <span class="stage-boss">철각</span></em></button>
+          <button class="stage-card" type="button" data-admin-stage="2"><b>STAGE 02</b><span class="stage-name">검은 공장 · 타오르는 심장</span><em>보스 · <span class="stage-boss">홍련</span></em></button>
+          <button class="stage-card" type="button" data-admin-stage="3"><b>STAGE 03</b><span class="stage-name">기억 성당 · 거짓된 합창</span><em>보스 · <span class="stage-boss">백면</span></em></button>
+          <button class="stage-card" type="button" data-admin-stage="4"><b>STAGE 04</b><span class="stage-name">새벽 송신탑 · 마지막 증언</span><em>보스 · <span class="stage-boss">무명</span></em></button>
+          <button class="stage-card" type="button" data-admin-stage="5"><b>STAGE 05</b><span class="stage-name">원형 보관소 · 거울의 뿌리</span><em>보스 · <span class="stage-boss">잔영-00</span></em></button>
         </div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
@@ -40,6 +40,30 @@
           <button type="button" data-difficulty="weapon" aria-pressed="false">인간흉기</button>
         </div>
         <p id="admin-status" class="admin-status" role="status" hidden></p>
+        <button id="start-screen-edit-toggle" class="start-screen-edit-toggle" type="button" hidden>첫 화면 편집</button>
+        <section id="start-screen-editor" class="start-screen-editor" aria-label="관리자 첫 화면 편집기" hidden>
+          <header>
+            <div><small>ADMIN TITLE SCREEN EDITOR</small><strong>첫 화면 문구와 스테이지 카드 수정</strong></div>
+            <button id="start-screen-editor-close" type="button" aria-label="첫 화면 편집기 닫기">×</button>
+          </header>
+          <div class="start-screen-editor-fields">
+            <label>게임 제목<input id="start-edit-title" type="text" maxlength="40"></label>
+            <label>부제<input id="start-edit-subtitle" type="text" maxlength="100"></label>
+            <label>스토리 표제<input id="start-edit-story-title" type="text" maxlength="140"></label>
+            <label class="start-editor-wide">스토리 소개<textarea id="start-edit-story-body" maxlength="500" rows="3"></textarea></label>
+            <label>시작 버튼<input id="start-edit-button" type="text" maxlength="40"></label>
+            <label>하단 안내<input id="start-edit-tip" type="text" maxlength="180"></label>
+          </div>
+          <div class="start-stage-editor">
+            <label>스테이지<select id="start-edit-stage-select"><option value="0">STAGE 01</option><option value="1">STAGE 02</option><option value="2">STAGE 03</option><option value="3">STAGE 04</option><option value="4">STAGE 05</option></select></label>
+            <label>스테이지 이름<input id="start-edit-stage-name" type="text" maxlength="80"></label>
+            <label>보스 이름<input id="start-edit-stage-boss" type="text" maxlength="50"></label>
+          </div>
+          <div class="start-screen-editor-actions">
+            <button id="start-screen-edit-save" type="button">변경 저장</button>
+            <button id="start-screen-edit-reset" type="button">전체 기본값 복원</button>
+          </div>
+        </section>
         <div class="key-grid" aria-label="조작법">
           <div><kbd>A</kbd><kbd>D</kbd><span>이동</span></div>
           <div><kbd>SPACE</kbd><span>점프 / 이중 점프</span></div>
@@ -55,7 +79,7 @@
           <button id="continue-button" type="button" hidden disabled>이어하기</button>
           <button id="fullscreen-button" class="fullscreen-button" type="button" hidden aria-pressed="false">⛶ 전체화면</button>
         </div>
-        <p class="tip">공중 공격으로 처형 게이지를 채우고 Q로 발동하세요. 봉쇄전에서는 적 연계의 핵심 개체를 먼저 찾고, 재배열되는 발판에 대응해야 합니다.</p>
+        <p id="start-tip" class="tip">공중 공격으로 처형 게이지를 채우고 Q로 발동하세요. 봉쇄전에서는 적 연계의 핵심 개체를 먼저 찾고, 재배열되는 발판에 대응해야 합니다.</p>
       </section>
 
       <section id="pause-screen" class="overlay compact" aria-live="polite">
@@ -136,6 +160,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=1.6.7"></script>
+  <script src="game.js?v=1.6.8"></script>
   </body>
 </html>

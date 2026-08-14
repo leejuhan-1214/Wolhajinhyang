@@ -208,6 +208,8 @@ h2 {
   letter-spacing: 0.12em;
 }
 
+.stage-card .stage-name { display: block; }
+
 .stage-card:hover,
 .stage-card:focus-visible {
   color: #fff0b0;
@@ -263,6 +265,127 @@ h2 {
 .admin-status[hidden] {
   display: none;
 }
+
+.start-screen-edit-toggle {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 7;
+  min-width: 118px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-color: rgba(255, 205, 112, 0.62);
+  background: rgba(43, 33, 20, 0.94);
+  color: #fff0bd;
+  box-shadow: 0 0 18px rgba(255, 205, 112, 0.16);
+  clip-path: none;
+  font-size: 10px;
+}
+
+.start-screen-edit-toggle[hidden],
+.start-screen-editor[hidden] { display: none; }
+
+.start-screen-editor {
+  position: absolute;
+  inset: 18px;
+  z-index: 9;
+  padding: 15px 17px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 205, 112, 0.68);
+  background: linear-gradient(180deg, rgba(5, 13, 24, 0.99), rgba(9, 24, 35, 0.98));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.76), 0 0 35px rgba(255, 205, 112, 0.12);
+  text-align: left;
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+.start-screen-editor header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.start-screen-editor header div { display: grid; gap: 4px; }
+.start-screen-editor header small { color: var(--amber); font: 800 9px/1 monospace; letter-spacing: 0.2em; }
+.start-screen-editor header strong { color: #efffff; font-size: 15px; }
+
+#start-screen-editor-close {
+  min-width: 36px;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border-color: rgba(255, 205, 112, 0.52);
+  background: #32261b;
+  color: #ffe6a8;
+  box-shadow: none;
+  clip-path: none;
+  font-size: 20px;
+}
+
+.start-screen-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.start-screen-editor label {
+  display: grid;
+  gap: 5px;
+  color: #91aab4;
+  font: 800 9px/1 monospace;
+  letter-spacing: 0.08em;
+}
+
+.start-screen-editor input,
+.start-screen-editor textarea,
+.start-screen-editor select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(101, 245, 234, 0.28);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(12, 28, 41, 0.98);
+  color: #efffff;
+  font: 700 11px/1.35 "Malgun Gothic", sans-serif;
+}
+
+.start-screen-editor input,
+.start-screen-editor select { height: 34px; }
+.start-screen-editor textarea { min-height: 66px; resize: vertical; }
+.start-screen-editor input:focus,
+.start-screen-editor textarea:focus,
+.start-screen-editor select:focus { border-color: var(--amber); }
+.start-editor-wide { grid-column: 1 / -1; }
+
+.start-stage-editor {
+  display: grid;
+  grid-template-columns: 0.55fr 1.45fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid rgba(101, 245, 234, 0.18);
+  background: rgba(9, 22, 34, 0.72);
+}
+
+.start-screen-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.start-screen-editor-actions button {
+  min-width: 148px;
+  min-height: 34px;
+  padding: 7px 12px;
+  clip-path: none;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+#start-screen-edit-save { border-color: rgba(101, 245, 234, 0.55); background: #15363d; color: #dffffb; }
+#start-screen-edit-reset { border-color: rgba(255, 205, 112, 0.5); background: #3a2e1d; color: #ffe9b0; }
 
 .admin-status.pending {
   color: #d9f7f2;
@@ -867,6 +990,12 @@ button:focus-visible {
 }
 
 @media (max-width: 760px), (max-height: 520px) {
+  .start-screen-editor { inset: 6px; padding: 9px; }
+  .start-screen-editor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .start-stage-editor { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 7px; padding: 7px; }
+  .start-screen-editor-actions { margin-top: 7px; }
+  .start-screen-editor-actions button { min-width: 0; flex: 1; }
+  .start-screen-edit-toggle { top: 6px; right: 6px; min-width: 94px; min-height: 28px; padding: 4px 7px; }
   .admin-spawn-panel { top: 6px; max-height: calc(100% - 12px); padding: 7px 9px 6px; overflow-y: auto; }
   .admin-enemy-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
