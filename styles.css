@@ -439,6 +439,80 @@ h2 {
   color: #eaffff;
 }
 
+#start-screen.visible {
+  place-content: center;
+  gap: 22px;
+  padding: max(24px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+}
+
+#start-screen h1 {
+  margin-bottom: 16px;
+}
+
+#start-screen .difficulty-select {
+  width: min(720px, 92vw);
+  margin: 0 auto;
+}
+
+#start-screen .campaign-actions {
+  width: min(520px, 90vw);
+  margin: 0 auto;
+}
+
+#start-screen .campaign-actions button {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  font-size: 15px;
+}
+
+#continue-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.65);
+  opacity: 0.42;
+}
+
+.admin-code-strip {
+  position: absolute;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 5px;
+  transform: translateX(-50%);
+  opacity: 0.26;
+  transition: opacity 160ms ease;
+}
+
+.admin-code-strip:hover,
+.admin-code-strip:focus-within,
+#start-screen.admin-enabled .admin-code-strip {
+  opacity: 0.82;
+}
+
+.admin-code-key {
+  width: 28px;
+  min-width: 28px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid rgba(101, 245, 234, 0.28);
+  border-radius: 2px;
+  background: rgba(7, 18, 29, 0.72);
+  color: #8aa4ae;
+  box-shadow: none;
+  clip-path: none;
+  font: 800 9px/1 monospace;
+}
+
+.admin-code-key:hover,
+.admin-code-key:focus-visible,
+.admin-code-key.sequence-hit {
+  border-color: var(--amber);
+  background: rgba(78, 55, 19, 0.88);
+  color: #fff0bd;
+  transform: translateY(-1px);
+}
+
 .key-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
@@ -688,8 +762,7 @@ button:focus-visible {
   font-size: clamp(13px, 2.6vmin, 20px);
 }
 
-.touch-actions .touch-burst,
-.touch-actions .touch-execute {
+.touch-actions .touch-burst {
   position: absolute;
   left: 0;
   width: calc(var(--touch-unit) * 0.86);
@@ -702,14 +775,6 @@ button:focus-visible {
   bottom: 0;
   border-color: rgba(101, 245, 234, 0.58);
   background: rgba(10, 48, 62, 0.84);
-}
-
-.touch-actions .touch-execute {
-  top: 0;
-  left: calc(var(--touch-unit) * 0.28);
-  border-color: rgba(255, 205, 112, 0.8);
-  background: rgba(76, 53, 18, 0.84);
-  color: #fff0b2;
 }
 
 .touch-pause {

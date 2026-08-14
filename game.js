@@ -14,25 +14,19 @@
   const resultText = document.getElementById("result-text");
   const adminStatus = document.getElementById("admin-status");
   const startTitle = document.getElementById("start-title");
-  const startSubtitle = document.getElementById("start-subtitle");
-  const startStoryTitle = document.getElementById("start-story-title");
-  const startStoryBody = document.getElementById("start-story-body");
-  const startTip = document.getElementById("start-tip");
   const startScreenEditToggle = document.getElementById("start-screen-edit-toggle");
   const startScreenEditor = document.getElementById("start-screen-editor");
   const startScreenEditorClose = document.getElementById("start-screen-editor-close");
   const startScreenEditSave = document.getElementById("start-screen-edit-save");
   const startScreenEditReset = document.getElementById("start-screen-edit-reset");
-  const startEditStageSelect = document.getElementById("start-edit-stage-select");
   const startScreenEditInputs = {
     title: document.getElementById("start-edit-title"),
-    subtitle: document.getElementById("start-edit-subtitle"),
-    storyTitle: document.getElementById("start-edit-story-title"),
-    storyBody: document.getElementById("start-edit-story-body"),
     button: document.getElementById("start-edit-button"),
-    tip: document.getElementById("start-edit-tip"),
-    stageName: document.getElementById("start-edit-stage-name"),
-    stageBoss: document.getElementById("start-edit-stage-boss"),
+    continueButton: document.getElementById("start-edit-continue-button"),
+    difficultyChick: document.getElementById("start-edit-difficulty-chick"),
+    difficultyCadet: document.getElementById("start-edit-difficulty-cadet"),
+    difficultyDarkhorse: document.getElementById("start-edit-difficulty-darkhorse"),
+    difficultyWeapon: document.getElementById("start-edit-difficulty-weapon"),
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
@@ -59,26 +53,26 @@
   const touchFullscreenButton = document.querySelector?.("[data-touch-action='fullscreen']") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
   const stageCodeButtons = [...(document.querySelectorAll?.("[data-admin-stage]") || [])];
-  const startStageNameElements = stageCodeButtons.map((button) => button.querySelector(".stage-name"));
-  const startStageBossElements = stageCodeButtons.map((button) => button.querySelector(".stage-boss"));
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
   const adminWorldCreateButtons = [...(document.querySelectorAll?.("[data-admin-world-create]") || [])];
 
   const W = 1280;
   const H = 720;
   const ZONE_W = 4000;
-  const STAGE_W = ZONE_W * 7;
+  const ZONES_PER_STAGE = 10;
+  const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
+  const STAGE_W = ZONE_W * ZONES_PER_STAGE;
   const WORLD_W = STAGE_W * 5;
   const WORLD_H = 1450;
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
-  const TARGET_CAMPAIGN_MINUTES = 580;
+  const TARGET_CAMPAIGN_MINUTES = 930;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
   const ADMIN_PLACED_OBJECTS_KEY = "moonlit-echo-admin-placed-objects-v1";
   const ADMIN_WORLD_EDITS_KEY = "moonlit-echo-admin-world-edits-v1";
-  const START_SCREEN_EDITS_KEY = "moonlit-echo-start-screen-edits-v1";
+  const START_SCREEN_EDITS_KEY = "moonlit-echo-start-screen-edits-v2";
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
@@ -115,22 +109,22 @@
   let selectedAdminWorldObject = null;
 
   const stages = [
-    { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 90 },
-    { x: STAGE_W, end: STAGE_W * 2, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", bossKind: "furnace", targetMinutes: 105 },
-    { x: STAGE_W * 2, end: STAGE_W * 3, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", bossKind: "weaver", targetMinutes: 115 },
-    { x: STAGE_W * 3, end: STAGE_W * 4, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", bossKind: "censor", targetMinutes: 125 },
-    { x: STAGE_W * 4, end: WORLD_W, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", bossKind: "echo", targetMinutes: 145 },
+    { x: 0, end: STAGE_W, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", bossKind: "warden", targetMinutes: 150 },
+    { x: STAGE_W, end: STAGE_W * 2, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", bossKind: "furnace", targetMinutes: 170 },
+    { x: STAGE_W * 2, end: STAGE_W * 3, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", bossKind: "weaver", targetMinutes: 185 },
+    { x: STAGE_W * 3, end: STAGE_W * 4, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", bossKind: "censor", targetMinutes: 200 },
+    { x: STAGE_W * 4, end: WORLD_W, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", bossKind: "echo", targetMinutes: 225 },
   ];
 
   const stageZoneNames = [
-    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐기물 심층", "감독관 격납고"],
-    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "화염 터빈실", "용광 심장부"],
-    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "합창 연산실", "직조 제단"],
-    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "새벽 안테나군", "최종 검열실"],
-    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "쌍둥이 결투장", "거울의 핵"],
+    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐기물 심층", "노동자 숙소 잔해", "폭우 운송교", "기억 매립 구덩이", "감독관 격납고"],
+    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "화염 터빈실", "반응 연료 저장고", "폐쇄 실험선", "노심 제어 회랑", "용광 심장부"],
+    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "합창 연산실", "금서 분류고", "열아홉 제단", "증언 봉인실", "직조 제단"],
+    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "새벽 안테나군", "시민권 말소국", "기록 송출교", "최후 중계실", "최종 검열실"],
+    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
-  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "gauntlet", "boss"];
+  const zoneTemplates = ["terrace", "chasm", "crusher", "vertical", "fork", "gauntlet", "crusher", "vertical", "gauntlet", "boss"];
   const zones = stages.flatMap((stage, stageIndex) => stageZoneNames[stageIndex].map((name, zoneIndex) => ({
     x: stage.x + zoneIndex * ZONE_W,
     name,
@@ -175,7 +169,7 @@
       hp: 34,
       size: [34, 56],
       accent: "#a879ff",
-      patterns: ["거울 발도", "역상 산탄", "이중 도약 추격", "잔상 반격", "기억 폭주"],
+      patterns: ["거울 발도", "역상 산탄", "이중 도약 추격", "잔상 반격", "기억 반전"],
     },
   };
 
@@ -221,7 +215,7 @@
   const difficultySettings = {
     chick: { name: "병아리", hp: 5, damage: 0, enemySpeed: 0.82, bulletSpeed: 0.82 },
     cadet: { name: "신참내기", hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1 },
-    darkhorse: { name: "다크호스", hp: 4, damage: 1, enemySpeed: 1.14, bulletSpeed: 1.12 },
+    darkhorse: { name: "다크호스", hp: 3, damage: 1, enemySpeed: 1.14, bulletSpeed: 1.12 },
     weapon: { name: "인간흉기", hp: 1, damage: 99, enemySpeed: 1.24, bulletSpeed: 1.2 },
   };
   let selectedDifficulty = "cadet";
@@ -230,19 +224,12 @@
   let adminModeUnlocked = false;
   const START_SCREEN_DEFAULTS = {
     title: startTitle?.textContent || "월하잔향",
-    subtitle: startSubtitle?.textContent || "",
-    storyTitle: startStoryTitle?.textContent || "",
-    storyBody: startStoryBody?.textContent || "",
-    button: startButton?.textContent || "새 작전",
-    tip: startTip?.textContent || "",
-    stages: stageCodeButtons.map((button, index) => ({
-      name: startStageNameElements[index]?.textContent || "",
-      boss: startStageBossElements[index]?.textContent || "",
-    })),
+    button: startButton?.textContent || "게임 시작",
+    continueButton: continueButton?.textContent || "이어하기",
+    difficulties: Object.fromEntries(difficultyButtons.map((button) => [button.dataset.difficulty, button.textContent || difficultySettings[button.dataset.difficulty]?.name || "난이도"])),
   };
   let startScreenEditData = readStartScreenEdits();
   let startScreenDraft = null;
-  let startScreenEditorStageIndex = 0;
 
   const INTRO_STORY = [
     {
@@ -416,11 +403,88 @@
     ],
   ];
 
+  const EXTENDED_STORY_CHAPTERS = [
+    [
+      [
+        { speaker: "노동자 기록 · 윤태오", text: "기숙사 12호실은 야간조 네 명이 함께 썼다. 중앙국 장부에는 침대만 있고 사람 이름은 없다. 내 이름부터 적어 줘.", tone: "archive", duration: 6.2 },
+        { speaker: "서린", text: "윤태오, 서미정, 박한결, 이가람. 네 사람의 이름과 마지막 근무 시간을 감찰 원본에 기록한다.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "도담", text: "운송교 아래에 구조 열차가 있어. 폭발 직전까지 83명을 태웠지만, 출발 명령이 취소돼 선로 위에서 멈췄어.", tone: "control", duration: 6.1 },
+        { speaker: "서린", text: "명령 취소자의 서명과 열차 내부 기록을 함께 가져간다. 살아남지 못한 이유까지 증언이어야 해.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "새봄", text: "매립 구덩이에는 언니가 내게 보내지 못한 음성 편지가 있어. 매일 한 문장씩 녹음했는데 모두 업무 보고로 분류됐어.", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "이번에는 업무 보고가 아니라 가족에게 보내는 편지로 남긴다. 새봄아, 오래 기다리게 해서 미안해.", tone: "operative", duration: 6.0 },
+      ],
+    ],
+    [
+      [
+        { speaker: "반응 연료 담당 · 나해주", text: "우리가 느낀 공포를 수치로 바꾸자 기체 반응 속도가 31퍼센트 올랐다. 연구진은 그날을 성공이라고 불렀다.", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "성공 기록 옆에 대가를 붙인다. 반복 재생된 공포와 그 공포의 주인이었던 사람들의 이름까지.", tone: "operative", duration: 5.9 },
+      ],
+      [
+        { speaker: "폐쇄 실험체 · R-19", text: "나는 분노만 남도록 잘려 나갔다. 원래 무엇을 좋아했는지 기억하지 못해도, 내가 사람인지 물을 권리는 남았나?", tone: "archive", duration: 6.4 },
+        { speaker: "서린", text: "기억의 양이 사람을 정하지 않아. 네 질문과 지금 내린 선택을 새로운 첫 기록으로 남기자.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "도담", text: "노심 제어기는 구조 신호를 연료 공급 명령으로 바꾸고 있어. 우리가 들은 비명 하나마다 공장이 더 오래 돌아간 거야.", tone: "control", duration: 6.2 },
+        { speaker: "서린", text: "신호 변환표를 역전한다. 이제 비명 하나마다 생산선 하나가 멈출 거야.", tone: "operative", duration: 5.5 },
+      ],
+    ],
+    [
+      [
+        { speaker: "금서 관리관 · 유리", text: "중앙국은 서로 모순되는 증언을 거짓으로 분류했다. 하지만 같은 사고를 다른 위치에서 본 사람들의 말은 원래 다를 수밖에 없어.", tone: "archive", duration: 6.4 },
+        { speaker: "서린", text: "모순을 삭제하지 말고 좌표와 시간을 붙인다. 다름은 거짓의 증거가 아니라 사건의 크기를 보여 주는 지도야.", tone: "operative", duration: 6.1 },
+      ],
+      [
+        { speaker: "서린-12", text: "나는 중앙국에 협조하면 새봄을 살려 주겠다는 말을 믿었다. 다른 서린들은 나를 배신자라고 부를까 봐 두려워.", tone: "archive", duration: 6.2 },
+        { speaker: "서린", text: "두려움 속에서 내린 선택도 숨기지 않는다. 용서는 강요하지 않지만 네가 왜 그랬는지 들을 자리는 지킨다.", tone: "operative", duration: 6.2 },
+      ],
+      [
+        { speaker: "백면의 봉인 기록", text: "하나의 완전한 진실은 존재하지 않는다. 그래서 나는 가장 조용한 진실만 남기려 했다.", tone: "hostile", duration: 5.9 },
+        { speaker: "서린", text: "조용함은 평화가 아니라 말할 사람을 없앤 결과일 수 있어. 봉인을 풀고 판단은 듣는 사람들에게 돌려준다.", tone: "operative", duration: 6.0 },
+      ],
+    ],
+    [
+      [
+        { speaker: "시민권 말소국", text: "기억 매체 M-07의 시민권, 가족관계, 재산권을 소급 삭제합니다. 삭제 시점은 생체 사망일과 동일하게 적용됩니다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린", text: "문서에서 지운다고 내가 살아온 여섯 해가 사라지진 않아. 그 기간에 만난 사람들의 증언을 반대 기록으로 제출한다.", tone: "operative", duration: 6.1 },
+      ],
+      [
+        { speaker: "도담", text: "송출교의 시민 채널이 열렸어. 하지만 전부 보내려면 네 전투 기억까지 공개해야 해. 감추고 싶은 순간도 도시가 보게 돼.", tone: "control", duration: 6.3 },
+        { speaker: "서린", text: "영웅처럼 편집하지 마. 실수와 두려움, 도망치고 싶었던 순간까지 보내야 명령에 이용된 과정을 알 수 있어.", tone: "operative", duration: 6.2 },
+      ],
+      [
+        { speaker: "새봄", text: "언니가 어떤 모습이어도 알아볼게. 그런데 언니도 내가 여섯 해 동안 달라진 걸 알아봐 줘. 나는 기다리기만 한 아이가 아니야.", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "약속할게. 과거의 너를 찾는 대신 지금의 네 이야기를 처음부터 듣겠다.", tone: "operative", duration: 5.7 },
+      ],
+    ],
+    [
+      [
+        { speaker: "무명 기억 정원", text: "이곳에는 이름을 선택하지 못하고 정지된 복제 인격 312명이 보관되어 있습니다. 삭제와 재가동 중 하나를 선택하십시오.", tone: "archive", duration: 6.4 },
+        { speaker: "서린", text: "둘 다 내가 대신 정하지 않는다. 외부 접속과 자기 이름을 고를 시간을 먼저 제공해.", tone: "operative", duration: 5.9 },
+      ],
+      [
+        { speaker: "잔영-00", text: "법적 원본 금고에는 네 시민권 하나만 들어 있다. 둘이 나누면 둘 다 무효가 된다. 그것이 도시의 규칙이다.", tone: "hostile", duration: 6.2 },
+        { speaker: "서린", text: "권리가 한 사람분밖에 없다면 사람을 줄일 게 아니라 권리를 늘려야 해. 금고가 아니라 규칙을 연다.", tone: "operative", duration: 5.8 },
+      ],
+      [
+        { speaker: "잔영-00", text: "두 사람의 회랑 끝에는 한 자리만 있다. 나는 네가 나를 살리겠다는 말보다 마지막 순간 검을 들 거라는 예측을 믿는다.", tone: "hostile", duration: 6.4 },
+        { speaker: "서린", text: "검을 드는 것과 네 존재를 부정하는 건 다르다. 싸움이 끝나도 네가 선택할 자리를 남겨 두겠다.", tone: "operative", duration: 6.0 },
+      ],
+    ],
+  ];
+
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
     x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W - 620,
     lines,
-  })));
+  }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
+    id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
+    x: stages[stageIndex].x + (eventIndex + 7) * ZONE_W - 620,
+    lines,
+  }))));
 
   const CUTSCENE_EVENTS = [
     {
@@ -549,6 +613,71 @@
     },
   ];
 
+  CUTSCENE_EVENTS.push(
+    {
+      id: "cutscene-workers-names",
+      x: stages[0].x + ZONE_W * 8 + 420,
+      title: "추가 장면 · 이름이 묻힌 곳",
+      location: "백야 폐기장 / 기억 매립 구덩이",
+      visual: "rain",
+      shots: [
+        { speaker: "서린", text: "여기 묻힌 건 불량 기록이 아니야. 구조 순서에서 밀려난 사람들의 마지막 하루다.", tone: "operative", duration: 5.9 },
+        { speaker: "도담", text: "명단 복구율 61퍼센트. 나머지는 가족 기록과 교대 일지를 대조하면 찾을 수 있어. 시간이 걸려도 전부 찾자.", tone: "control", duration: 6.2 },
+        { speaker: "윤태오", text: "우리를 구하지 못한 일을 숨기지 마. 대신 다음 사람을 같은 방식으로 버리지 않게 해 줘.", tone: "archive", duration: 6.1 },
+      ],
+    },
+    {
+      id: "cutscene-fuel-testimony",
+      x: stages[1].x + ZONE_W * 8 + 420,
+      title: "추가 장면 · 공포의 사용 설명서",
+      location: "검은 공장 / 노심 제어 회랑",
+      visual: "furnace",
+      shots: [
+        { speaker: "도담", text: "설계 책임자 명단을 확보했어. 모두 ‘감정 부산물은 인격이 아니다’라는 면책 조항에 서명했어.", tone: "control", duration: 6.1 },
+        { speaker: "서린", text: "부산물이라고 부른 목소리가 지금 우리에게 길을 알려 주고 있어. 인격 여부를 결정한 기준부터 공개한다.", tone: "operative", duration: 6.2 },
+        { speaker: "R-19", text: "내가 잃어버린 것을 돌려받지 못해도 좋다. 다음 실험체가 무엇을 빼앗기는지는 알고 선택하게 해 줘.", tone: "archive", duration: 6.0 },
+      ],
+    },
+    {
+      id: "cutscene-nineteen-voices",
+      x: stages[2].x + ZONE_W * 8 + 420,
+      title: "추가 장면 · 열아홉 개의 답",
+      location: "기억 성당 / 증언 봉인실",
+      visual: "choir",
+      shots: [
+        { speaker: "서린-12", text: "누가 원본인지 정하지 않아도 된다면, 우리 열아홉 명의 잘못도 공로도 각자의 이름으로 남을 수 있어?", tone: "archive", duration: 6.3 },
+        { speaker: "서린", text: "그래. 같은 기억에서 시작했어도 이후의 선택은 각자의 것이야. 누구도 다른 한 명의 각주가 되지 않아.", tone: "operative", duration: 6.2 },
+        { speaker: "도담", text: "병렬 증언 채널을 열게. 도시가 하나의 대답만 원해도 우리는 열아홉 개의 질문부터 보낼 거야.", tone: "control", duration: 5.9 },
+      ],
+    },
+    {
+      id: "cutscene-public-broadcast",
+      x: stages[3].x + ZONE_W * 8 + 420,
+      title: "추가 장면 · 편집되지 않은 증인",
+      location: "새벽 송신탑 / 최후 중계실",
+      visual: "broadcast",
+      shots: [
+        { speaker: "시민 채널", text: "수신자 18만 명을 돌파했습니다. 중앙국은 해당 신호를 조작 영상으로 규정하고 접속자를 추적 중입니다.", tone: "archive", duration: 6.1 },
+        { speaker: "서린", text: "내 얼굴을 믿지 않아도 된다. 원본 장부와 사망 시각, 명령 서명을 직접 대조해 달라. 판단할 자료를 모두 보낸다.", tone: "operative", duration: 6.4 },
+        { speaker: "새봄", text: "나도 증언할게. 언니를 기다린 사람으로서가 아니라, 여섯 해 동안 기록을 모은 생존자로서 말할 거야.", tone: "archive", duration: 6.1 },
+      ],
+    },
+    {
+      id: "cutscene-two-seats",
+      x: stages[4].x + ZONE_W * 8 + 420,
+      title: "추가 장면 · 두 개의 빈자리",
+      location: "원형 보관소 / 두 사람의 회랑",
+      visual: "duel",
+      shots: [
+        { speaker: "잔영-00", text: "네 제안대로 둘 다 살아남으면 새봄은 매일 어느 쪽이 진짜인지 질문받을 것이다. 그 고통도 네가 책임질 수 있나?", tone: "hostile", duration: 6.5 },
+        { speaker: "서린", text: "새봄의 대답을 대신 정하지 않는 것이 책임이야. 우리도 타인의 확신을 위해 한 명으로 줄어들 의무는 없어.", tone: "operative", duration: 6.2 },
+        { speaker: "잔영-00", text: "예측 모델에 없는 답이다. 결투 후에도 그 문장을 유지하는지 확인하겠다.", tone: "hostile", duration: 5.8 },
+      ],
+    },
+  );
+
+  CUTSCENE_EVENTS.sort((a, b) => a.x - b.x);
+
   const palette = {
     skyTop: "#06101d",
     skyBottom: "#101928",
@@ -637,10 +766,6 @@
     slashChainTimer: 0,
     attackDuration: 0.22,
     styleScore: 0,
-    echoGauge: 0,
-    executionGauge: 0,
-    executionTimer: 0,
-    executionChain: 0,
     chargedAttack: false,
     shotgunCooldown: 0,
     shotgunReload: 0,
@@ -821,7 +946,7 @@
   }
 
   function getStyleRank(score) {
-    if (score >= 88) return { letter: "S", name: "잔향 폭주", color: "#ffcd70" };
+    if (score >= 88) return { letter: "S", name: "완전 제압", color: "#ffcd70" };
     if (score >= 68) return { letter: "A", name: "공중 지배", color: "#ff708c" };
     if (score >= 48) return { letter: "B", name: "연속 절단", color: "#d7a0ff" };
     if (score >= 24) return { letter: "C", name: "흐름 유지", color: "#65f5ea" };
@@ -1760,18 +1885,18 @@
     combatRooms.length = 0;
 
     const floorHeights = [
-      [650, 690, 630, 710, 650, 680, 650],
-      [700, 720, 660, 700, 670, 710, 680],
-      [650, 690, 720, 630, 680, 650, 670],
-      [710, 670, 630, 720, 660, 610, 660],
-      [690, 620, 740, 600, 700, 630, 670],
+      [650, 690, 630, 710, 650, 680, 640, 700, 660, 650],
+      [700, 720, 660, 700, 670, 710, 650, 690, 720, 680],
+      [650, 690, 720, 630, 680, 650, 710, 620, 690, 670],
+      [710, 670, 630, 720, 660, 610, 690, 640, 700, 660],
+      [690, 620, 740, 600, 700, 630, 680, 610, 720, 670],
     ];
     const platformKinds = {
-      scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "gate"],
-      foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "gate"],
-      archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "gate"],
-      tower: ["rail", "city", "tower", "tower", "firewall", "array", "gate"],
-      mirror: ["glass", "mirror", "habitat", "maze", "capsule", "arena", "gate"],
+      scrap: ["roof", "cargo", "factory", "cargo", "roof", "factory", "cargo", "roof", "factory", "gate"],
+      foundry: ["foundry", "channel", "crusher", "channel", "foundry", "turbine", "crusher", "channel", "turbine", "gate"],
+      archive: ["lab", "archive", "channel", "archive", "shrine", "lab", "archive", "shrine", "lab", "gate"],
+      tower: ["rail", "city", "tower", "tower", "firewall", "array", "city", "tower", "array", "gate"],
+      mirror: ["glass", "mirror", "habitat", "maze", "capsule", "arena", "glass", "mirror", "arena", "gate"],
     };
     const enemyPools = [
       ["runner", "runner", "gunner", "drone", "shield"],
@@ -1975,15 +2100,12 @@
     if (!value || typeof value !== "object") return null;
     return {
       title: sanitizeStartScreenText(value.title, START_SCREEN_DEFAULTS.title, 40),
-      subtitle: sanitizeStartScreenText(value.subtitle, START_SCREEN_DEFAULTS.subtitle, 100),
-      storyTitle: sanitizeStartScreenText(value.storyTitle, START_SCREEN_DEFAULTS.storyTitle, 140),
-      storyBody: sanitizeStartScreenText(value.storyBody, START_SCREEN_DEFAULTS.storyBody, 500),
       button: sanitizeStartScreenText(value.button, START_SCREEN_DEFAULTS.button, 40),
-      tip: sanitizeStartScreenText(value.tip, START_SCREEN_DEFAULTS.tip, 180),
-      stages: START_SCREEN_DEFAULTS.stages.map((fallback, index) => ({
-        name: sanitizeStartScreenText(value.stages?.[index]?.name, fallback.name, 80),
-        boss: sanitizeStartScreenText(value.stages?.[index]?.boss, fallback.boss, 50),
-      })),
+      continueButton: sanitizeStartScreenText(value.continueButton, START_SCREEN_DEFAULTS.continueButton, 40),
+      difficulties: Object.fromEntries(Object.entries(START_SCREEN_DEFAULTS.difficulties).map(([key, fallback]) => [
+        key,
+        sanitizeStartScreenText(value.difficulties?.[key], fallback, 24),
+      ])),
     };
   }
 
@@ -2008,48 +2130,23 @@
   function applyStartScreenEdits(value = START_SCREEN_DEFAULTS) {
     const data = normalizeStartScreenEdits(value) || START_SCREEN_DEFAULTS;
     if (startTitle) startTitle.textContent = data.title;
-    if (startSubtitle) startSubtitle.textContent = data.subtitle;
-    if (startStoryTitle) startStoryTitle.textContent = data.storyTitle;
-    if (startStoryBody) startStoryBody.textContent = data.storyBody;
     if (startButton) startButton.textContent = data.button;
-    if (startTip) startTip.textContent = data.tip;
-    data.stages.forEach((stage, index) => {
-      if (startStageNameElements[index]) startStageNameElements[index].textContent = stage.name;
-      if (startStageBossElements[index]) startStageBossElements[index].textContent = stage.boss;
+    if (continueButton) continueButton.textContent = data.continueButton;
+    difficultyButtons.forEach((button) => {
+      const key = button.dataset.difficulty;
+      const name = data.difficulties[key];
+      button.textContent = name;
+      if (difficultySettings[key]) difficultySettings[key].name = name;
     });
   }
 
   function buildStartScreenDraftFromDom() {
     return {
       title: startTitle?.textContent || START_SCREEN_DEFAULTS.title,
-      subtitle: startSubtitle?.textContent || START_SCREEN_DEFAULTS.subtitle,
-      storyTitle: startStoryTitle?.textContent || START_SCREEN_DEFAULTS.storyTitle,
-      storyBody: startStoryBody?.textContent || START_SCREEN_DEFAULTS.storyBody,
       button: startButton?.textContent || START_SCREEN_DEFAULTS.button,
-      tip: startTip?.textContent || START_SCREEN_DEFAULTS.tip,
-      stages: stageCodeButtons.map((button, index) => ({
-        name: startStageNameElements[index]?.textContent || START_SCREEN_DEFAULTS.stages[index].name,
-        boss: startStageBossElements[index]?.textContent || START_SCREEN_DEFAULTS.stages[index].boss,
-      })),
+      continueButton: continueButton?.textContent || START_SCREEN_DEFAULTS.continueButton,
+      difficulties: Object.fromEntries(difficultyButtons.map((button) => [button.dataset.difficulty, button.textContent || START_SCREEN_DEFAULTS.difficulties[button.dataset.difficulty]])),
     };
-  }
-
-  function storeCurrentStageEditorDraft() {
-    if (!startScreenDraft) return;
-    const index = clamp(startScreenEditorStageIndex, 0, stageCodeButtons.length - 1);
-    startScreenDraft.stages[index] = {
-      name: startScreenEditInputs.stageName.value,
-      boss: startScreenEditInputs.stageBoss.value,
-    };
-  }
-
-  function loadStartStageEditor(index) {
-    if (!startScreenDraft) return;
-    startScreenEditorStageIndex = clamp(Number(index) || 0, 0, stageCodeButtons.length - 1);
-    startEditStageSelect.value = String(startScreenEditorStageIndex);
-    const stage = startScreenDraft.stages[startScreenEditorStageIndex];
-    startScreenEditInputs.stageName.value = stage.name;
-    startScreenEditInputs.stageBoss.value = stage.boss;
   }
 
   function setStartScreenEditor(open) {
@@ -2062,27 +2159,30 @@
     }
     startScreenDraft = buildStartScreenDraftFromDom();
     startScreenEditInputs.title.value = startScreenDraft.title;
-    startScreenEditInputs.subtitle.value = startScreenDraft.subtitle;
-    startScreenEditInputs.storyTitle.value = startScreenDraft.storyTitle;
-    startScreenEditInputs.storyBody.value = startScreenDraft.storyBody;
     startScreenEditInputs.button.value = startScreenDraft.button;
-    startScreenEditInputs.tip.value = startScreenDraft.tip;
-    loadStartStageEditor(startScreenEditorStageIndex);
+    startScreenEditInputs.continueButton.value = startScreenDraft.continueButton;
+    startScreenEditInputs.difficultyChick.value = startScreenDraft.difficulties.chick;
+    startScreenEditInputs.difficultyCadet.value = startScreenDraft.difficulties.cadet;
+    startScreenEditInputs.difficultyDarkhorse.value = startScreenDraft.difficulties.darkhorse;
+    startScreenEditInputs.difficultyWeapon.value = startScreenDraft.difficulties.weapon;
     return true;
   }
 
   function saveStartScreenEditor() {
     if (!startScreenDraft || !adminModeUnlocked || game.mode !== "menu") return false;
-    storeCurrentStageEditorDraft();
     startScreenDraft.title = startScreenEditInputs.title.value;
-    startScreenDraft.subtitle = startScreenEditInputs.subtitle.value;
-    startScreenDraft.storyTitle = startScreenEditInputs.storyTitle.value;
-    startScreenDraft.storyBody = startScreenEditInputs.storyBody.value;
     startScreenDraft.button = startScreenEditInputs.button.value;
-    startScreenDraft.tip = startScreenEditInputs.tip.value;
+    startScreenDraft.continueButton = startScreenEditInputs.continueButton.value;
+    startScreenDraft.difficulties = {
+      chick: startScreenEditInputs.difficultyChick.value,
+      cadet: startScreenEditInputs.difficultyCadet.value,
+      darkhorse: startScreenEditInputs.difficultyDarkhorse.value,
+      weapon: startScreenEditInputs.difficultyWeapon.value,
+    };
     startScreenEditData = normalizeStartScreenEdits(startScreenDraft);
     persistStartScreenEdits();
     applyStartScreenEdits(startScreenEditData);
+    updateContinueButton();
     setStartScreenEditor(false);
     if (adminStatus) adminStatus.textContent = "ADMIN MODE 활성화 · 첫 화면 편집 내용 저장 완료";
     sound.tone(760, 0.14, "sine", 0.03, 1.3);
@@ -2094,7 +2194,7 @@
     startScreenEditData = null;
     persistStartScreenEdits();
     applyStartScreenEdits(START_SCREEN_DEFAULTS);
-    startButton.textContent = "관리자 작전 시작";
+    updateContinueButton();
     setStartScreenEditor(true);
     if (adminStatus) adminStatus.textContent = "ADMIN MODE 활성화 · 첫 화면 기본값 복원 완료";
     sound.tone(480, 0.12, "square", 0.025, 1.2);
@@ -2115,9 +2215,10 @@
   function updateContinueButton() {
     if (!continueButton) return;
     const saved = readCampaignSave();
-    continueButton.hidden = !saved;
+    continueButton.hidden = false;
     continueButton.disabled = !saved;
-    if (saved) continueButton.textContent = `이어하기 · STAGE 0${(saved.respawnStage || 0) + 1}`;
+    const editData = normalizeStartScreenEdits(startScreenEditData) || START_SCREEN_DEFAULTS;
+    continueButton.textContent = editData.continueButton;
   }
 
   function saveCampaign() {
@@ -2125,6 +2226,7 @@
     try {
       const data = {
         version: 1,
+        zonesPerStage: ZONES_PER_STAGE,
         difficulty: game.difficulty,
         runTime: game.runTime,
         deaths: game.deaths,
@@ -2171,8 +2273,17 @@
       room.triggered = Boolean(state.triggered);
       room.cleared = Boolean(state.cleared);
     }
-    const savedCheckpointIndex = Number.isInteger(saved.respawnCheckpointIndex)
-      ? clamp(saved.respawnCheckpointIndex, 0, checkpoints.length - 1)
+    const legacyZonesPerStage = Number.isInteger(saved.zonesPerStage) ? saved.zonesPerStage : 7;
+    const migratedCheckpointIndex = Number.isInteger(saved.respawnCheckpointIndex)
+      ? clamp(
+        (saved.respawnStage || 0) * ZONES_PER_STAGE
+          + Math.max(0, saved.respawnCheckpointIndex - (saved.respawnStage || 0) * legacyZonesPerStage),
+        0,
+        checkpoints.length - 1,
+      )
+      : null;
+    const savedCheckpointIndex = migratedCheckpointIndex !== null
+      ? migratedCheckpointIndex
       : checkpoints.reduce((closestIndex, checkpoint, index) => (
         Math.abs(checkpoint.x - (saved.respawnX ?? 150))
           < Math.abs(checkpoints[closestIndex].x - (saved.respawnX ?? 150))
@@ -2249,10 +2360,6 @@
       slashChainTimer: 0,
       attackDuration: 0.22,
       styleScore: 0,
-      echoGauge: 0,
-      executionGauge: 0,
-      executionTimer: 0,
-      executionChain: 0,
       chargedAttack: false,
       shotgunCooldown: 0,
       shotgunReload: 0,
@@ -2539,7 +2646,7 @@
     if (!game.adminMode || game.mode !== "playing") return false;
     const stageIndex = Number(stageNumber) - 1;
     if (!Number.isInteger(stageIndex) || stageIndex < 0 || stageIndex >= stages.length) return false;
-    const checkpointIndex = stageIndex * 7;
+    const checkpointIndex = stageIndex * ZONES_PER_STAGE;
     const checkpoint = checkpoints[checkpointIndex];
     if (!checkpoint) return false;
     const position = setRespawnCheckpoint(checkpoint, checkpointIndex);
@@ -2860,8 +2967,7 @@
       player.attackDir.x = dirX / directionLength;
       player.attackDir.y = dirY / directionLength;
     }
-    player.chargedAttack = player.echoGauge >= 100;
-    if (player.chargedAttack) player.echoGauge = 0;
+    player.chargedAttack = false;
 
     if (player.grounded) {
       player.slashChain = player.slashChainTimer > 0 ? (player.slashChain % 3) + 1 : 1;
@@ -2871,46 +2977,15 @@
     }
 
     const chainDuration = player.slashChain === 3 ? 0.25 : player.slashChain === 2 ? 0.2 : 0.18;
-    const executionRate = player.executionTimer > 0 ? 0.62 : 1;
-    player.attackDuration = (player.grounded ? chainDuration : 0.23) * executionRate;
+    player.attackDuration = player.grounded ? chainDuration : 0.23;
 
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
     player.attackCooldown = player.attackDuration + (player.grounded ? 0.015 : 0.055);
     player.afterimageTimer = 0;
     game.shake = Math.max(game.shake, 4);
-    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, player.chargedAttack ? palette.amber : palette.cyan, player.chargedAttack ? 14 : 6, 220, 0.3, 100);
+    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 6, 220, 0.3, 100);
     sound.attack();
-  }
-
-  function gainExecutionGauge(amount) {
-    if (player.executionTimer > 0 || amount <= 0) return;
-    const previous = player.executionGauge;
-    player.executionGauge = Math.min(100, player.executionGauge + amount);
-    if (previous < 100 && player.executionGauge >= 100) {
-      game.hint = "처형 게이지 충전 완료 · Q로 잔영 처형 발동";
-      game.hintTimer = 2.8;
-      spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.amber, 22, 330, 0.58, 300);
-      sound.tone(620, 0.16, "sine", 0.04, 1.65);
-    }
-  }
-
-  function activateExecution() {
-    if (game.mode !== "playing" || player.executionGauge < 100 || player.executionTimer > 0) return false;
-    player.executionGauge = 0;
-    player.executionTimer = 5.2;
-    player.executionChain = 0;
-    player.airJumpAvailable = true;
-    player.invincible = Math.max(player.invincible, 0.34);
-    player.vy = Math.min(player.vy, -190);
-    game.freeze = Math.max(game.freeze, 0.055);
-    game.shake = Math.max(game.shake, 16);
-    game.hint = "잔영 처형 발동 · 공중 참격으로 일반 적 즉시 처치";
-    game.hintTimer = 3.2;
-    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.amber, 38, 520, 0.78, 420);
-    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 24, 380, 0.64, 260);
-    sound.tone(160, 0.34, "sawtooth", 0.055, 2.8);
-    return true;
   }
 
   function startAdminEraseAttack() {
@@ -3025,7 +3100,6 @@
       }
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, formation.accent, 8, 210, 0.3, 160);
     }
-    if (player.executionTimer > 0 && !player.grounded && enemy.type !== "boss") dealtDamage = Math.max(dealtDamage, enemy.hp);
     enemy.hp -= dealtDamage;
     enemy.hurt = 0.18;
     enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
@@ -3040,16 +3114,6 @@
     player.shotgunCharge = Math.min(3, player.shotgunCharge + (chainFinisher ? 0.9 : 0.58));
     player.styleScore = Math.min(100, player.styleScore + (player.grounded ? 12 : 20) + (chainFinisher ? 12 : 0));
     player.burstCooldown = Math.max(0, player.burstCooldown - 0.18);
-    const echoGain = player.chargedAttack ? 12 : player.grounded ? 18 : 34;
-    const previousEcho = player.echoGauge;
-    player.echoGauge = Math.min(100, player.echoGauge + echoGain);
-    if (previousEcho < 100 && player.echoGauge >= 100) {
-      game.hint = "잔향 충전 완료 · 다음 참격이 방패와 탄환을 관통";
-      game.hintTimer = 2.2;
-      sound.tone(520, 0.14, "sine", 0.035, 1.7);
-    }
-    gainExecutionGauge(player.grounded ? 5 : 12 + (enemy.type === "drone" ? 5 : 0));
-
     if (!player.grounded) {
       player.vy = clamp(player.vy, -110, 120);
       const restored = !player.airJumpAvailable;
@@ -3096,7 +3160,6 @@
     player.combo += 1;
     player.comboTimer = 2.4;
     player.styleScore = Math.min(100, player.styleScore + (bullet.piercing ? 24 : 14));
-    gainExecutionGauge(player.grounded ? 3 : 7);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, bullet.piercing ? palette.amber : palette.white, bullet.piercing ? 26 : 15, 480, 0.55, 760);
     sound.hit();
     if (enemy.hp <= 0) killEnemy(enemy);
@@ -3131,12 +3194,7 @@
     player.styleScore = Math.min(100, player.styleScore + (enemy.type === "boss" ? 30 : 9));
     player.burstCooldown = Math.max(0, player.burstCooldown - (enemy.type === "boss" ? 1.2 : 0.32));
     if (enemy.type !== "boss" && !player.grounded && !silent) {
-      gainExecutionGauge(enemy.type === "drone" ? 24 : 18);
       player.airJumpAvailable = true;
-      if (player.executionTimer > 0) {
-        player.executionChain += 1;
-        player.executionTimer = Math.min(6.4, player.executionTimer + 0.24);
-      }
     }
     if (deathIsNearPlayer) {
       game.freeze = enemy.type === "boss" ? 0.18 : 0.09;
@@ -3331,9 +3389,6 @@
     player.shotgunReload = 0;
     player.shells = player.maxShells;
     player.combo = 0;
-    player.executionGauge = Math.max(0, player.executionGauge - 25);
-    player.executionTimer = 0;
-    player.executionChain = 0;
     bullets.length = 0;
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
@@ -3459,7 +3514,7 @@
 
   function spawnRainBomb(controller) {
     const stage = stages[controller.ownerStage] || stages[1];
-    const arenaLeft = stage.x + ZONE_W * 6 + 170;
+    const arenaLeft = stage.x + ZONE_W * BOSS_ZONE_INDEX + 170;
     const arenaRight = stage.gateX - 110;
     const serial = controller.spawnSerial++;
     const randomX = hash(serial * 17.31 + game.time * 7.17);
@@ -3559,7 +3614,7 @@
 
   function summonMagicSigil(enemy, spell, x, y, delay = 0.72) {
     const stage = stages[enemy.stageIndex] || stages[2];
-    const safeX = clamp(x, stage.x + ZONE_W * 6 + 150, stage.gateX - 110);
+    const safeX = clamp(x, stage.x + ZONE_W * BOSS_ZONE_INDEX + 150, stage.gateX - 110);
     const safeY = clamp(y, 50, enemy.baseY - 70);
     bullets.push({
       x: safeX - 30,
@@ -3608,7 +3663,7 @@
     const owner = enemies.find((candidate) => candidate.alive && candidate.id === sigil.ownerId);
     if (sigil.spell === "teleport" && owner) {
       const stage = stages[owner.stageIndex];
-      const arenaLeft = stage.x + ZONE_W * 6 + 150;
+      const arenaLeft = stage.x + ZONE_W * BOSS_ZONE_INDEX + 150;
       const arenaRight = stage.gateX - 100;
       spawnParticles(owner.x + owner.w / 2, owner.y + owner.h / 2, "#d7a0ff", 26, 380, 0.5, 0);
       owner.x = clamp(centerX - owner.w / 2, arenaLeft, arenaRight - owner.w);
@@ -3913,7 +3968,6 @@
     player.burstCooldown = Math.max(0, player.burstCooldown - dt);
     player.burstTimer = Math.max(0, player.burstTimer - dt);
     player.buffTimer = Math.max(0, player.buffTimer - dt);
-    player.executionTimer = Math.max(0, player.executionTimer - dt);
     player.shotgunCooldown = Math.max(0, player.shotgunCooldown - dt);
     player.recoilTimer = Math.max(0, player.recoilTimer - dt);
     const wasReloading = player.shotgunReload > 0;
@@ -3934,7 +3988,6 @@
     if (pressed.has("KeyX") && game.adminMode) toggleAdminSpawnPanel();
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
     if (pressed.has("KeyE")) startBurst();
-    if (pressed.has("KeyQ")) activateExecution();
 
     const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.12);
     const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.12);
@@ -4106,7 +4159,7 @@
     }
 
     player.afterimageTimer -= dt;
-    if ((player.attackTimer > 0 || player.buffTimer > 0 || player.executionTimer > 0 || (!player.grounded && Math.abs(player.vx) > 390)) && player.afterimageTimer <= 0) {
+    if ((player.attackTimer > 0 || player.buffTimer > 0 || (!player.grounded && Math.abs(player.vx) > 390)) && player.afterimageTimer <= 0) {
       player.trail.push({ x: player.x, y: player.y, facing: player.facing, life: 0.19, maxLife: 0.19 });
       player.afterimageTimer = 0.035;
     }
@@ -4412,7 +4465,7 @@
         const summonPool = ["runner", "gunner", "piercer", "drone", "shield", "mortar"];
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
-        const summonX = clamp(enemy.x + summonDirection * (180 + (enemy.summonCount % 3) * 65), stages[rank].x + ZONE_W * 6 + 180, stages[rank].gateX - 180);
+        const summonX = clamp(enemy.x + summonDirection * (180 + (enemy.summonCount % 3) * 65), stages[rank].x + ZONE_W * BOSS_ZONE_INDEX + 180, stages[rank].gateX - 180);
         const floorY = enemy.baseY + enemy.h;
         const summon = addEnemy(summonType, summonX, summonType === "drone" ? floorY - 210 : floorY, 260);
         enemy.summonCount += 1;
@@ -4441,7 +4494,7 @@
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
     }
-    const arenaLeft = Math.max(stages[rank].x + ZONE_W * 6 + 120, enemy.originX - 920);
+    const arenaLeft = Math.max(stages[rank].x + ZONE_W * BOSS_ZONE_INDEX + 120, enemy.originX - 920);
     const arenaRight = Math.min(stages[rank].gateX - 70, enemy.originX + 820);
     if (kind === "weaver" && !chargingShot) {
       const hoverTarget = enemy.baseY - 185 + Math.sin(enemy.anim * 1.75) * 72;
@@ -4639,9 +4692,8 @@
       if (remaining === 0) {
         room.cleared = true;
         player.hp = Math.min(player.maxHp, player.hp + 1);
-        player.echoGauge = 100;
         player.burstCooldown = 0;
-        game.hint = `${room.name} 해제 · 체력 회복 · 잔향 충전`;
+        game.hint = `${room.name} 해제 · 체력 회복 · 버스트 재충전`;
         game.hintTimer = 4;
         game.shake = 14;
         spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 28, 400, 0.7, 500);
@@ -5800,7 +5852,7 @@
   }
 
   function drawPlayer() {
-    const empoweredSlash = player.executionTimer > 0 || player.buffTimer > 0 || (player.attackTimer > 0 && player.chargedAttack);
+    const empoweredSlash = player.buffTimer > 0;
     if (Math.abs(player.vx) > 250) {
       ctx.save();
       ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.28)" : "rgba(101, 245, 234, 0.16)";
@@ -5817,31 +5869,6 @@
     }
     for (const trail of player.trail) {
       drawPlayerBody(trail.x, trail.y, trail.facing, (trail.life / trail.maxLife) * 0.22, true);
-    }
-
-    if (player.executionTimer > 0) {
-      const centerX = player.x + player.w / 2;
-      const centerY = player.y + player.h / 2;
-      const pulse = 0.55 + Math.sin(game.time * 18) * 0.18;
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = palette.amber;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = pulse;
-      ctx.beginPath();
-      ctx.arc(0, 0, 32 + pulse * 5, -1.3, 1.3);
-      ctx.arc(0, 0, 32 + pulse * 5, 1.82, 4.44);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255, 205, 112, 0.12)";
-      ctx.beginPath();
-      ctx.moveTo(0, -39);
-      ctx.lineTo(17, 0);
-      ctx.lineTo(0, 39);
-      ctx.lineTo(-17, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
     }
 
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
@@ -7385,7 +7412,7 @@
     const floorByStage = [650, 680, 670, 660, 670];
     for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
       const stage = stages[stageIndex];
-      const origin = stage.x + ZONE_W * 6;
+      const origin = stage.x + ZONE_W * BOSS_ZONE_INDEX;
       if (origin > right || origin + ZONE_W < left) continue;
       const floorY = floorByStage[stageIndex];
       const accent = stage.color;
@@ -8032,30 +8059,6 @@
     ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.cyan;
     ctx.fillRect(207, 165, 116 * (player.shotgunCharge / 3), 7);
 
-    ctx.fillStyle = "#263743";
-    ctx.fillRect(47, 195, 176, 7);
-    ctx.fillStyle = player.echoGauge >= 100 ? palette.amber : palette.cyan;
-    ctx.fillRect(47, 195, 176 * (player.echoGauge / 100), 7);
-    ctx.fillStyle = player.echoGauge >= 100 ? "#ffe5a6" : "#9bc8cd";
-    ctx.font = "700 10px 'Malgun Gothic', sans-serif";
-    ctx.fillText(player.echoGauge >= 100 ? "잔향 · 강화 참격 준비" : `잔향 ${Math.floor(player.echoGauge)}%`, 232, 190);
-
-    ctx.fillStyle = "#263743";
-    ctx.fillRect(47, 222, 176, 8);
-    const executionRatio = player.executionTimer > 0 ? player.executionTimer / 5.2 : player.executionGauge / 100;
-    ctx.fillStyle = player.executionTimer > 0 ? palette.amber : player.executionGauge >= 100 ? "#fff1aa" : "#ff708c";
-    ctx.fillRect(47, 222, 176 * clamp(executionRatio, 0, 1), 8);
-    ctx.fillStyle = player.executionTimer > 0 || player.executionGauge >= 100 ? "#fff0b8" : "#c6a7b0";
-    ctx.fillText(
-      player.executionTimer > 0
-        ? `처형 중 · ${player.executionChain}연속 · ${player.executionTimer.toFixed(1)}초`
-        : player.executionGauge >= 100
-          ? "Q · 잔영 처형 준비"
-          : `처형 게이지 ${Math.floor(player.executionGauge)}%`,
-      232,
-      216,
-    );
-
     const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
     ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
     ctx.fillRect(W - 318, 28, 290, 64);
@@ -8313,7 +8316,6 @@
       adminStatus.textContent = "ADMIN MODE 활성화 · 적 공격/접촉 피해 없음 · 구역 및 스테이지 봉쇄 해제";
     }
     if (startScreenEditToggle) startScreenEditToggle.hidden = false;
-    if (!startScreenEditData) startButton.textContent = "관리자 작전 시작";
     sound.tone(740, 0.12, "square", 0.035, 0.82);
     setTimeout(() => sound.tone(1040, 0.18, "sine", 0.035, 1.05), 90);
     return true;
@@ -8339,7 +8341,7 @@
     const nextSlashChain = player.grounded
       ? (player.slashChainTimer > 0 ? (player.slashChain % 3) + 1 : 1)
       : 0;
-    const charged = player.echoGauge >= 100;
+    const charged = false;
     let closest = null;
     let closestDistance = Infinity;
 
@@ -8554,7 +8556,6 @@
     if (action === "move") updateMoveJoystick(entry, event.clientX, event.clientY);
     else if (action === "jump") setVirtualKey("Space", true);
     else if (action === "burst") startBurst();
-    else if (action === "execute") activateExecution();
     else if (action === "pause") togglePause();
     else if (action === "fullscreen") toggleMobileFullscreen();
   }
@@ -8688,10 +8689,6 @@
   startScreenEditorClose?.addEventListener("click", () => setStartScreenEditor(false));
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
-  startEditStageSelect?.addEventListener("change", () => {
-    storeCurrentStageEditorDraft();
-    loadStartStageEditor(startEditStageSelect.value);
-  });
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
   for (const button of adminSpawnButtons) {
     button.addEventListener("click", () => spawnAdminSelection(button.dataset.adminSpawn));
