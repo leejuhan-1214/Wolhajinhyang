@@ -87,6 +87,10 @@
     coyoteTime: 0.14,
     joystickDeadzone: 0.08,
   });
+  const EMPOWERED_SLASH_BONUS = 0.5;
+  const CHARGED_SLASH_BONUS = 0.5;
+  const OVERCHARGED_SHOTGUN_DAMAGE = 2;
+  const OVERCHARGED_SHOTGUN_PELLETS = 7;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -3433,8 +3437,8 @@
     if (game.mode !== "playing" || player.shotgunCooldown > 0 || player.shells <= 0) return;
     const aim = aimOverride || getPointerAim();
     const overcharged = player.shotgunCharge >= 3;
-    const pelletCount = overcharged ? 9 : 6;
-    const spread = overcharged ? 0.21 : 0.16;
+    const pelletCount = overcharged ? OVERCHARGED_SHOTGUN_PELLETS : 6;
+    const spread = overcharged ? 0.18 : 0.16;
     const centerX = player.x + player.w / 2 + aim.x * 24;
     const centerY = player.y + player.h * 0.45 + aim.y * 12;
 
@@ -3479,7 +3483,7 @@
         kind: "shotgun",
         gravity: 0,
         color: overcharged ? palette.amber : palette.cyan,
-        damage: overcharged ? 3 : 1,
+        damage: overcharged ? OVERCHARGED_SHOTGUN_DAMAGE : 1,
         shotId: player.shotId,
         piercing: overcharged,
       });
@@ -3674,7 +3678,11 @@
     }
 
     const chainFinisher = player.grounded && player.slashChain === 3 ? 1 : 0;
-    let dealtDamage = (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher + (player.rewardPower || 0) * 0.2;
+    let dealtDamage = 1
+      + (player.buffTimer > 0 ? EMPOWERED_SLASH_BONUS : 0)
+      + (player.chargedAttack ? CHARGED_SLASH_BONUS : 0)
+      + chainFinisher
+      + (player.rewardPower || 0) * 0.2;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") {
       dealtDamage *= 0.75;
@@ -4363,6 +4371,7 @@
   }
 
   function launchBossFunnels(enemy, count = 6) {
+    const formationSide = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? -1 : 1;
     for (let index = 0; index < count; index += 1) {
       bullets.push({
         x: enemy.x + enemy.w / 2 - 10,
@@ -4379,8 +4388,9 @@
         ownerId: enemy.id,
         orbitIndex: index,
         orbitCount: count,
-        shotTimer: 0.5 + index * 0.12,
-        shotsLeft: 3,
+        formationSide,
+        shotTimer: 0.72 + index * 0.1,
+        shotsLeft: 2,
         color: "#ff496c",
       });
     }
@@ -4439,6 +4449,10 @@
       color: "#ff6b9c",
       damage: 1,
     });
+    enemy.swordSwingDuration = 0.26;
+    enemy.swordSwingTimer = enemy.swordSwingDuration;
+    enemy.swordMotionKind = enemy.bossAction === "rapidThrust" ? "thrust" : "swing";
+    enemy.swordSwingSerial = (enemy.swordSwingSerial || 0) + 1;
   }
 
   function throwPotion(enemy, targetX, variant = 0, offset = 0) {
@@ -4513,7 +4527,7 @@
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
       case "warden-funnels":
-        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 8 : 6);
+        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 6 : 5);
         break;
       case "warden-volley":
         [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
@@ -5310,6 +5324,7 @@
     const echoSpeedFactor = kind === "echo" ? 0.82 : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 138, echo: 142 };
     const desiredSpeed = (mobility[kind] + rank * 10) * speedScale * enrage * echoSpeedFactor;
+    enemy.swordSwingTimer = Math.max(0, (enemy.swordSwingTimer || 0) - dt);
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
       if (bossKind === "warden") {
@@ -5746,9 +5761,12 @@
           bullets.splice(i, 1);
           continue;
         }
-        const angle = game.time * 1.75 + bullet.orbitIndex * TAU / bullet.orbitCount;
-        const targetX = player.x + player.w / 2 + Math.cos(angle) * 205;
-        const targetY = player.y + player.h / 2 - 72 + Math.sin(angle) * 125;
+        const column = Math.floor(bullet.orbitIndex / 3);
+        const row = bullet.orbitIndex % 3;
+        const side = bullet.formationSide || -1;
+        const formationBob = Math.sin(game.time * 2.1 + bullet.orbitIndex * 0.7) * 18;
+        const targetX = player.x + player.w / 2 + side * (480 + column * 82);
+        const targetY = player.y + player.h / 2 - 150 + row * 118 + formationBob;
         const follow = 1 - Math.pow(0.006, dt);
         bullet.x = lerp(bullet.x, targetX - bullet.w / 2, follow);
         bullet.y = lerp(bullet.y, targetY - bullet.h / 2, follow);
@@ -5758,13 +5776,13 @@
             bullet.x + bullet.w / 2,
             bullet.y + bullet.h / 2,
             { x: player.x + player.w / 2, y: player.y + player.h / 2 },
-            470,
+            415,
             0,
             "funnel-shot",
             "#ff496c",
           );
           bullet.shotsLeft -= 1;
-          bullet.shotTimer = 0.62 + bullet.orbitIndex * 0.025;
+          bullet.shotTimer = 0.82 + bullet.orbitIndex * 0.035;
         }
         continue;
       }
@@ -7324,10 +7342,37 @@
       for (let seal = 0; seal < 8; seal += 1) { const a = seal * TAU / 8; ctx.fillStyle = "#ff8bad"; ctx.beginPath(); ctx.arc(Math.cos(a) * 22, Math.sin(a) * 22, 2.5, 0, TAU); ctx.fill(); }
       ctx.restore();
       // 오른팔의 장창형 집행검은 휘두를 때 검기를 방출한다.
-      ctx.save(); ctx.translate(21, 39); ctx.rotate(-0.48 + motion * 0.04);
+      const preparingSwordWave = enemy.bossAction === "chargeShot"
+        && String(enemy.bossShotPattern || "").startsWith("revenant-");
+      const swordSwingDuration = Math.max(0.01, enemy.swordSwingDuration || 0.26);
+      const swordSwingProgress = enemy.swordSwingTimer > 0
+        ? clamp(1 - enemy.swordSwingTimer / swordSwingDuration, 0, 1)
+        : 0;
+      const swordEase = 1 - Math.pow(1 - swordSwingProgress, 3);
+      const thrusting = enemy.swordMotionKind === "thrust" && enemy.swordSwingTimer > 0;
+      let swordAngle = -0.48 + motion * 0.04;
+      if (preparingSwordWave) swordAngle = -1.48 + chargeProgress * 0.36;
+      if (enemy.bossAction === "rapidThrust") swordAngle = -0.08 + Math.sin(enemy.anim * 28) * 0.08;
+      if (enemy.swordSwingTimer > 0 && !thrusting) swordAngle = -1.14 + swordEase * 1.82;
+      const thrustOffset = thrusting ? Math.sin(swordSwingProgress * Math.PI) * 22 : 0;
+      const swordHandX = 18 + Math.cos(swordAngle) * (11 + thrustOffset);
+      const swordHandY = 36 + Math.sin(swordAngle) * (11 + thrustOffset);
+      limb(15, 28, swordHandX, swordHandY, 8, flash ? "#fff" : "#3a2b56");
+      ctx.save(); ctx.translate(swordHandX, swordHandY); ctx.rotate(swordAngle);
       ctx.fillStyle = "#21192d"; ctx.fillRect(-7, -5, 18, 10);
       ctx.fillStyle = "#e7e4ef"; ctx.beginPath(); ctx.moveTo(8, -4); ctx.lineTo(95, -2); ctx.lineTo(107, 0); ctx.lineTo(95, 3); ctx.lineTo(8, 5); ctx.closePath(); ctx.fill();
       ctx.fillStyle = accent; ctx.fillRect(18, -1.5, 80, 3); ctx.restore();
+      if (enemy.swordSwingTimer > 0 && !thrusting) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.7 * (1 - swordSwingProgress);
+        ctx.strokeStyle = "#ffd4df";
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.arc(14, 34, 82, -1.18, -1.18 + swordEase * 1.9);
+        ctx.stroke();
+        ctx.restore();
+      }
     } else if (rawBossKind === "proxy") {
       limb(-12, 56, -18 - motion * 4, 80, 9, flash ? "#fff" : "#263b35");
       limb(12, 56, 18 + motion * 4, 80, 9, flash ? "#fff" : "#263b35");
@@ -10055,7 +10100,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.0",
+    version: "2.1.1",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10069,10 +10114,16 @@
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
     bossRewardLevel: player.rewardPower,
+    gongmunSwordMotion: true,
+    cheolgakFunnelFormation: "single-side",
+    cheolgakFunnelShots: 2,
+    empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
+    overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
+    overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.0",
+    gameVersion: "2.1.1",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10093,6 +10144,13 @@
     jeokrinPermanentReflect: "true",
     yukhwaShotgunSwap: "true",
     bossRewardDamagePerLevel: "0.2",
+    gongmunSwordMotion: "true",
+    cheolgakFunnelFormation: "single-side",
+    cheolgakFunnelShots: "2",
+    empoweredSlashBonus: String(EMPOWERED_SLASH_BONUS),
+    chargedSlashBonus: String(CHARGED_SLASH_BONUS),
+    overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
+    overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
   });
   updateContinueButton();
   requestAnimationFrame(frame);
