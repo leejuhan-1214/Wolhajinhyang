@@ -11,7 +11,7 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=2.0.1" />
+    <link rel="stylesheet" href="styles.css?v=2.1.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -19,7 +19,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 2.0.1</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 2.1.0</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">병아리</button>
@@ -67,6 +67,31 @@
         <p id="result-text">임무 기록을 정리하는 중…</p>
         <button id="restart-button" type="button">처음부터 다시</button>
         <p class="tip">2,418명의 이름과 서로 다른 한서린들의 선택이 도시 전체에 도착했다. 이제 원본은 한 사람이 아니라 함께 보존된 증언이다.</p>
+      </section>
+
+      <section id="tutorial-panel" class="tutorial-panel" aria-label="조작 튜토리얼" hidden>
+        <header>
+          <div><small>OPERATIVE FIELD MANUAL</small><strong>첫 작전 조작 튜토리얼</strong></div>
+        </header>
+        <div class="tutorial-grid">
+          <article><kbd>A</kbd><kbd>D</kbd><b>이동</b><span>좌우 이동 · 벽을 향해 이동하면 벽 타기</span></article>
+          <article><kbd>SPACE</kbd><b>점프</b><span>공중에서 한 번 더 눌러 이중 점프</span></article>
+          <article><kbd>좌클릭</kbd><b>발도</b><span>공중 적중 시 이중 점프와 샷건 게이지 회복</span></article>
+          <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향 발사 · 아래로 쏘면 반동 상승</span></article>
+          <article><kbd>E</kbd><b>정밀 버스트</b><span>가까운 적탄을 지우고 일본도를 잠시 강화</span></article>
+          <article><kbd>R</kbd><b>재기동</b><span>일반 모드에서 최근 체크포인트로 복귀</span></article>
+        </div>
+        <p>구역의 모든 적을 쓰러뜨려야 다음 봉쇄문이 열립니다. 중간보스와 진 보스를 격파하면 영구 보상을 얻습니다.</p>
+        <button id="tutorial-close" type="button">작전 시작</button>
+      </section>
+
+      <section id="admin-zone-panel" class="admin-zone-panel" aria-label="관리자 전체 구역 이동" hidden>
+        <header>
+          <div><small>ADMIN WORLD NAVIGATOR</small><strong>이동할 구역을 선택하세요</strong></div>
+          <button id="admin-zone-close" type="button" aria-label="전체 구역 이동 닫기">×</button>
+        </header>
+        <div id="admin-zone-grid" class="admin-zone-grid"></div>
+        <p><kbd>L</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 선택한 구역의 체크포인트로 즉시 이동합니다.</p>
       </section>
 
       <section id="admin-spawn-panel" class="admin-spawn-panel" aria-label="관리자 적 생성 패널" hidden>
@@ -131,6 +156,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=2.0.1"></script>
+  <script src="game.js?v=2.1.0"></script>
   </body>
 </html>

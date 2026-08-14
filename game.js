@@ -33,6 +33,11 @@
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
+  const adminZonePanel = document.getElementById("admin-zone-panel");
+  const adminZoneClose = document.getElementById("admin-zone-close");
+  const adminZoneGrid = document.getElementById("admin-zone-grid");
+  const tutorialPanel = document.getElementById("tutorial-panel");
+  const tutorialClose = document.getElementById("tutorial-close");
   const adminWorldEditor = document.getElementById("admin-world-editor");
   const adminWorldEditNearest = document.getElementById("admin-world-edit-nearest");
   const adminWorldEditorClose = document.getElementById("admin-world-editor-close");
@@ -86,6 +91,7 @@
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
   const ADMIN_PLACED_OBJECTS_KEY = "moonlit-echo-admin-placed-objects-v1";
+  const ADMIN_REMOVED_OBJECTS_KEY = "moonlit-echo-admin-removed-objects-v1";
   const ADMIN_WORLD_EDITS_KEY = "moonlit-echo-admin-world-edits-v1";
   const START_SCREEN_EDITS_KEY = "moonlit-echo-start-screen-edits-v2";
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
@@ -114,6 +120,7 @@
   let adminRemovedEnemyIds = readAdminRemovedEnemies();
   let adminSpawnedEnemyData = readAdminSpawnedEnemies();
   let adminPlacedObjectData = readAdminPlacedObjects();
+  let adminRemovedObjectIds = readAdminRemovedObjects();
   let adminWorldEditData = readAdminWorldEdits();
   let adminSpawnSerial = 0;
   let adminPlacedSerial = 0;
@@ -121,6 +128,8 @@
   let platformSerial = 0;
   let hazardSerial = 0;
   let signSerial = 0;
+  let pickupSerial = 0;
+  let boostSerial = 0;
   let selectedAdminWorldObject = null;
   let levelReady = false;
   let lastResetAt = -Infinity;
@@ -141,11 +150,12 @@
     ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "명명되지 않은 문", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
-  const zoneTemplates = [
-    "terrace", "chasm", "crusher", "vertical", "fork", "gauntlet",
-    "terrace", "crusher", "vertical", "gauntlet", "fork", "midboss",
-    "terrace", "chasm", "gauntlet", "vertical", "crusher", "fork",
-    "gauntlet", "chasm", "crusher", "vertical", "fork", "boss",
+  const zoneTemplateRows = [
+    ["terrace", "wreckfield", "chasm", "crusher", "bridge", "vertical", "fork", "gauntlet", "zigzag", "crusher", "cavern", "midboss", "spiral", "chasm", "gauntlet", "wreckfield", "crusher", "fork", "bridge", "cavern", "zigzag", "vertical", "spiral", "boss"],
+    ["conveyor", "chasm", "zigzag", "crusher", "cavern", "gauntlet", "bridge", "conveyor", "vertical", "spiral", "fork", "midboss", "crusher", "bridge", "cavern", "zigzag", "conveyor", "fork", "gauntlet", "chasm", "spiral", "vertical", "crusher", "boss"],
+    ["spiral", "cavern", "vertical", "bridge", "zigzag", "fork", "archiveMaze", "chasm", "spiral", "gauntlet", "terrace", "midboss", "archiveMaze", "vertical", "cavern", "bridge", "fork", "zigzag", "spiral", "chasm", "gauntlet", "archiveMaze", "vertical", "boss"],
+    ["bridge", "vertical", "towerClimb", "gauntlet", "zigzag", "cavern", "towerClimb", "fork", "bridge", "spiral", "crusher", "midboss", "vertical", "towerClimb", "chasm", "zigzag", "gauntlet", "bridge", "cavern", "fork", "spiral", "towerClimb", "crusher", "boss"],
+    ["mirrorMaze", "spiral", "bridge", "cavern", "vertical", "mirrorMaze", "zigzag", "fork", "chasm", "spiral", "gauntlet", "midboss", "mirrorMaze", "bridge", "cavern", "vertical", "zigzag", "spiral", "fork", "chasm", "mirrorMaze", "gauntlet", "bridge", "boss"],
   ];
   const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => ({
     x: stage.x + zoneIndex * ZONE_W,
@@ -155,7 +165,7 @@
     code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
     color: stage.color,
     kind: stage.kind,
-    template: zoneTemplates[zoneIndex],
+    template: zoneTemplateRows[stageIndex][zoneIndex],
     stageIndex,
   })));
 
@@ -197,7 +207,7 @@
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
-      hp: 10,
+      hp: 16,
       size: [64, 74],
       accent: "#ffcd70",
       archetype: "warden",
@@ -205,31 +215,31 @@
     },
     hunter: {
       name: "반사 사냥꾼 · 적린",
-      hp: 13,
+      hp: 20,
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
-      patterns: ["산탄 반사막", "추적 박격", "적탄 속사", "노심 분출", "십자 연사"],
+      patterns: ["전면 산탄 반사", "반사 돌진", "거울 측보", "반사 돌진", "완전 반사"],
     },
     oracle: {
       name: "전위 심문관 · 육화",
-      hp: 16,
+      hp: 24,
       size: [56, 78],
       accent: "#bfa4ff",
       archetype: "weaver",
-      patterns: ["강제 위치 교환", "육화 탄막", "공중 화염문", "기억 역질문"],
+      patterns: ["산탄 반응 전이", "육화 속사", "교차 탄막", "심문 관통탄"],
     },
     revenant: {
       name: "검기 집행관 · 공문",
-      hp: 20,
+      hp: 30,
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
-      patterns: ["삼연 검기", "집행 돌진", "교차 검기", "월식 검무", "추적 참파"],
+      patterns: ["삼연 검기", "집행 돌진", "교차 검기", "마구찌르기", "추적 참파"],
     },
     proxy: {
       name: "광기 연구체 · 대역-13",
-      hp: 24,
+      hp: 36,
       size: [58, 78],
       accent: "#78ff8b",
       archetype: "echo",
@@ -301,34 +311,34 @@
 
   const INTRO_STORY = [
     {
-      speaker: "감찰 기록 04-11",
-      text: "백야 폐기장에서 구조 요청이 반복되고 있다. 문제는 발신자 전원이 여섯 해 전에 사망 처리됐다는 것이다.",
+      speaker: "월식 예보 · D-07",
+      text: "칠 일 뒤 도시의 모든 시민 기록이 한 번에 덮어써진다. 중앙국은 이를 재난이 아닌 '월하진향 정상화'라고 명명했다.",
       tone: "archive",
-      duration: 5.4,
+      duration: 5.8,
     },
     {
       speaker: "감찰관 · 도담",
-      text: "M-07, 불법 인공지능 생산 증거를 확보하고 노동자들을 구조해. 중앙국은 흔적까지 소각하라고 했지만 아직 사람이 있어.",
+      text: "정상화를 멈출 열쇠는 다섯 개의 야간 기록이야. 중앙국이 폐기장, 공장, 성당, 송신탑, 원형 보관소에 하나씩 봉인했어.",
       tone: "control",
-      duration: 5.8,
+      duration: 6.0,
     },
     {
       speaker: "M-07",
-      text: "작전 4호로 전환한다. 구조 신호가 하나라도 남아 있다면 소각 명령은 보류한다.",
+      text: "다섯 기록을 회수해 도시 전체에 동시에 송신한다. 그 안의 증언이 서로 모순되더라도 하나도 지우지 않는다.",
       tone: "operative",
-      duration: 4.7,
+      duration: 5.2,
     },
     {
       speaker: "개인 기록 · 서린",
-      text: "내 이름은 한서린. 중앙국 감찰관이 되기 전의 여섯 해가 통째로 비어 있다. 이상하게도 저 폐기장의 비 냄새만은 기억난다.",
+      text: "내 이름은 한서린. 여섯 해 전 사고에서 죽었다고 기록됐고, 지금의 몸은 그날 구조 통로가 보존한 기억으로 깨어났다.",
       tone: "archive",
-      duration: 5.8,
+      duration: 5.7,
     },
     {
       speaker: "감찰관 · 도담",
-      text: "서린아, 안에서 네 과거를 보더라도 혼자 결론 내리지 마. 이번 작전에는 내가 아직 말하지 못한 일이 있어.",
+      text: "나는 당시 소각 명령에 서명했고 동시에 구조 통로를 몰래 열었어. 이번 임무는 중앙국뿐 아니라 내 선택까지 심판하게 될 거야.",
       tone: "control",
-      duration: 5.5,
+      duration: 6.1,
     },
   ];
 
@@ -609,24 +619,24 @@
 
   const MIDBOSS_VICTORY_STORIES = [
     [
-      { speaker: "폐철 집행기 · 쇄우", text: "윤태오 조종 기록 분리 완료. 구조문 폐쇄 승인자 12명의 서명을 외부 단말로 전송한다.", tone: "archive", duration: 5.8 },
-      { speaker: "서린", text: "기체는 멈춰도 기록은 동료들과 함께 간다. 쇄우, 네 마지막 명령은 폐기가 아니라 증언이다.", tone: "operative", duration: 5.8 },
+      { speaker: "폐철 집행기 · 쇄우", text: "제1 야간 기록 복구. 구조문을 연 노동자 317명과 폐쇄 승인자 12명의 실명이 함께 보존된다.", tone: "archive", duration: 6.0 },
+      { speaker: "서린", text: "영웅 한 명의 이야기가 아니라 문을 열었던 사람과 닫았던 사람을 모두 기록한다. 첫 번째 증언을 확보했다.", tone: "operative", duration: 5.9 },
     ],
     [
-      { speaker: "노심 추격자 · 적린", text: "R-19 감정 소유권 복구. 표적 예측률 급락. 미분류 반응: 안도.", tone: "archive", duration: 5.7 },
-      { speaker: "R-19", text: "분노만으로 만들어졌어도 지금 느끼는 안도는 내 것이야. 다음 선택도 내가 하겠다.", tone: "archive", duration: 5.8 },
+      { speaker: "반사 사냥꾼 · 적린", text: "제2 야간 기록 복구. 전투 연료로 분리된 공포와 분노의 소유권을 원래 시민 684명에게 반환한다.", tone: "archive", duration: 6.1 },
+      { speaker: "R-19", text: "내 분노는 무기가 아니라 나에게 일어난 일을 잊지 않았다는 증거야. 두 번째 기록은 내가 직접 운반하겠다.", tone: "archive", duration: 6.0 },
     ],
     [
-      { speaker: "가면 심문관 · 육화", text: "단일 진실 선별 실패. 모순된 증언 여섯 건을 삭제하지 않고 병렬 보존한다.", tone: "archive", duration: 5.8 },
-      { speaker: "서린-12", text: "처음으로 내 대답이 다른 서린의 대답을 지우지 않았어. 이 실패 기록을 반드시 가져가 줘.", tone: "archive", duration: 6.0 },
+      { speaker: "전위 심문관 · 육화", text: "제3 야간 기록 복구. 서로 다른 방에서 만들어진 열아홉 개의 서린 기억을 우열 없이 병렬 보존한다.", tone: "archive", duration: 6.1 },
+      { speaker: "서린-12", text: "우리가 서로 모순되는 건 가짜라서가 아니야. 중앙국이 각자에게 다른 장면만 보여 줬다는 증거야.", tone: "archive", duration: 6.1 },
     ],
     [
-      { speaker: "삭제 집행관 · 공문", text: "사후 수배 효력 정지. 삭제 명령 원본은 증거 보전을 위해 유지한다.", tone: "archive", duration: 5.8 },
-      { speaker: "도담", text: "내 감찰 번호까지 공개 채널에 올렸어. 이제 나도 기록 뒤에 숨을 수 없어.", tone: "control", duration: 5.8 },
+      { speaker: "검기 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
+      { speaker: "도담", text: "내 소각 서명도 숨기지 않고 함께 올렸어. 잘못을 고백하는 것만으로 끝내지 않고 송신탑을 끝까지 열겠다.", tone: "control", duration: 6.1 },
     ],
     [
-      { speaker: "원본 판정체 · 대역-13", text: "원본 점수표 폐기. 후보자 상호 인정이라는 미등록 기준을 임시 채택한다.", tone: "archive", duration: 6.0 },
-      { speaker: "잔영-00", text: "임시 기준은 법이 아니다. 하지만 네가 만든 빈틈이 우리 둘에게 결투 이후를 남겼다.", tone: "hostile", duration: 6.1 },
+      { speaker: "광기 연구체 · 대역-13", text: "제5 야간 기록 복구. 표본 배합 전 원자료와 원본 판정 실험의 실패 보고서를 분리한다.", tone: "archive", duration: 6.2 },
+      { speaker: "서린", text: "다섯 기록이 모였다. 이제 원형 보관소의 잔영과 함께 누가 원본인지가 아니라 누가 삭제 규칙을 끝낼지 결정한다.", tone: "operative", duration: 6.2 },
     ],
   ];
 
@@ -810,11 +820,11 @@
     },
     {
       title: "중간 장면 · 원본 점수표",
-      visual: "duel",
+      visual: "capsule",
       shots: [
-        { speaker: "원본 판정체 · 대역-13", text: "가족의 선호, 기억 완전성, 법 집행 순응도를 비교한다. 낮은 점수의 한서린은 증거물로 환원한다.", tone: "hostile", duration: 6.3 },
-        { speaker: "잔영-00", text: "그 기준대로라면 내가 원본이다. 나는 네가 저지른 불복종과 실패를 보존했지만 직접 선택하지 않았다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린", text: "복종을 진짜의 조건으로 삼는 순간 판정은 이미 중앙국의 명령이야. 대역-13부터 그 계산에서 해방한다.", tone: "operative", duration: 6.3 },
+        { speaker: "광기 연구체 · 대역-13", text: "표본 2,401명의 감정 배합 완료. 다섯 야간 기록을 독성 기억으로 변환하면 원본 판정 장치가 깨어난다.", tone: "hostile", duration: 6.3 },
+        { speaker: "연구원 · 이재우", text: "저건 잔영이 아니야. 원본을 만들겠다며 수천 명의 기억을 섞어 놓은 실험실의 관리체야. 이름조차 실험 번호뿐이었어.", tone: "archive", duration: 6.4 },
+        { speaker: "서린", text: "대역-13을 멈추고 배합 전 원자료를 복구한다. 누구의 얼굴도 나오지 않는 실험 보고서가 마지막 증언이 되게 두지 않겠다.", tone: "operative", duration: 6.4 },
       ],
     },
   ];
@@ -943,6 +953,7 @@
     cutsceneShotElapsed: 0,
     cutsceneSeen: new Set(),
     arenaTitle: 0,
+    tutorialOpen: false,
   };
 
   const camera = { x: 0, y: 0, lookX: 0 };
@@ -994,10 +1005,31 @@
     burstCooldown: 0,
     burstTimer: 0,
     buffTimer: 0,
+    rewardPower: 0,
     squash: 0,
     stepTimer: 0,
     runCycle: 0,
   };
+
+  function getBossRewardLevel() {
+    return stages.reduce((count, stage) => count + (game.defeatedBosses.has(stage.bossKind) ? 1 : 0), 0);
+  }
+
+  function applyBossRewards({ refill = false } = {}) {
+    const rewardLevel = getBossRewardLevel();
+    const baseHp = difficultySettings[game.difficulty]?.hp || 5;
+    player.rewardPower = rewardLevel;
+    player.maxHp = baseHp + Math.ceil(rewardLevel / 2);
+    player.maxShells = 2 + Math.floor(rewardLevel / 2);
+    if (refill) {
+      player.hp = player.maxHp;
+      player.shells = player.maxShells;
+      player.airJumpAvailable = true;
+    } else {
+      player.hp = Math.min(player.hp, player.maxHp);
+      player.shells = Math.min(player.shells, player.maxShells);
+    }
+  }
 
   class Sound {
     constructor() {
@@ -1135,6 +1167,24 @@
     constrainEnemyToLockdown(enemy);
   }
 
+  function ejectEnemyFromPlatforms(enemy) {
+    let ejected = false;
+    for (let pass = 0; pass < 4; pass += 1) {
+      const embedded = platforms.filter((platform) => !platform.hidden && overlaps(enemy, platform));
+      if (embedded.length === 0) break;
+      const nearestSurface = Math.min(...embedded.map((platform) => platform.y));
+      enemy.y = nearestSurface - enemy.h - 1;
+      enemy.vy = Math.min(0, enemy.vy || 0);
+      enemy.grounded = true;
+      ejected = true;
+    }
+    if (ejected) {
+      enemy.stuckTimer = 0;
+      constrainEnemyToLockdown(enemy);
+    }
+    return ejected;
+  }
+
   function getActiveEnemies() {
     const minZone = Math.max(0, game.zone - 1);
     const maxZone = Math.min(zones.length - 1, game.zone + 1);
@@ -1151,6 +1201,7 @@
     for (const enemy of collection) {
       if (!enemy.alive) continue;
       constrainEnemyToLockdown(enemy);
+      ejectEnemyFromPlatforms(enemy);
       if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
         recoverEnemyToHome(enemy);
       } else if (enemy.y > WORLD_H + 100) {
@@ -1281,11 +1332,11 @@
   }
 
   function addPickup(x, y, kind = "repair") {
-    pickups.push({ x, y, w: 24, h: 24, kind, active: true, bob: hash(x) * TAU });
+    pickups.push({ id: `pickup:${pickupSerial++}`, x, y, w: 24, h: 24, kind, active: true, bob: hash(x) * TAU });
   }
 
   function addBoostNode(x, y, launchX = 0, launchY = -430) {
-    boostNodes.push({ x, y, w: 38, h: 38, launchX, launchY, hitAttackId: -1, pulse: hash(x + y) * TAU });
+    boostNodes.push({ id: `boost:${boostSerial++}`, x, y, w: 38, h: 38, launchX, launchY, hitAttackId: -1, pulse: hash(x + y) * TAU });
   }
 
   function addSign(x, y, text, sub = "") {
@@ -1483,6 +1534,24 @@
       window.localStorage?.setItem(ADMIN_REMOVED_ENEMIES_KEY, JSON.stringify([...adminRemovedEnemyIds]));
     } catch {
       // Permanent administrator removal remains active for this session if storage is blocked.
+    }
+  }
+
+  function readAdminRemovedObjects() {
+    try {
+      const raw = window.localStorage?.getItem(ADMIN_REMOVED_OBJECTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function persistAdminRemovedObjects() {
+    try {
+      window.localStorage?.setItem(ADMIN_REMOVED_OBJECTS_KEY, JSON.stringify([...adminRemovedObjectIds]));
+    } catch {
+      // Base pickups and jump pads stay removed for this session if storage is unavailable.
     }
   }
 
@@ -2120,6 +2189,8 @@
     platformSerial = 0;
     hazardSerial = 0;
     signSerial = 0;
+    pickupSerial = 0;
+    boostSerial = 0;
     platforms.length = 0;
     hazards.length = 0;
     checkpoints.length = 0;
@@ -2233,9 +2304,9 @@
         addBoostNode(origin + 1880, floorY - 76, 0, -700);
         addBoostNode(origin + 3240, floorY - 76, -180, -620);
       } else if (stageIndex === 3) {
+        // 공문: 피해 발판 없이 높낮이만으로 검기와 마구찌르기를 피하는 결투장.
         [[280, -190, 320], [880, -360, 300], [1510, -220, 330], [2180, -430, 320], [2860, -240, 350], [3440, -380, 290]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "firewall"));
-        [1210, 1980, 3160].forEach((x, index) => addHazard(origin + x, floorY - 24, 180, 24, "laser", 0.35 + index * 0.55));
       } else {
         [[330, -160, 340], [900, -310, 300], [1490, -450, 300], [2210, -450, 300], [2800, -310, 300], [3380, -160, 340]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, x < 2000 ? "glass" : "mirror"));
@@ -2320,6 +2391,70 @@
         [720, 1260, 1840, 2420, 3000].forEach((x, index) => addHazard(origin + x, floorY - (index % 2 ? 330 : 430), 26, index % 2 ? 330 : 430, zone.stageIndex === 1 ? "steam" : "laser", index * 0.47));
         spawns.push([470, floorY - 130], [970, floorY - 250], [1510, floorY - 360], [2080, floorY - 230], [2660, floorY - 390], [3280, floorY - 210], [3700, floorY]);
         combatRooms.push({ left: origin + 180, right: origin + 3780, name: `${zone.name} 봉쇄전`, stageIndex: zone.stageIndex, triggered: false, cleared: false });
+      } else if (zone.template === "wreckfield") {
+        // 기울어진 잔해를 타고 내려갔다가 크레인 잔해 위로 되돌아오는 폐기장 전용 동선.
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[240, -105, 560], [920, -205, 420], [1470, -315, 330], [2020, -190, 620], [2800, -365, 360], [3310, -225, 470]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, index % 2 ? 34 : 24, index % 2 ? "cargo" : kind));
+        [[1330, 150], [2640, 165], [3180, 120]].forEach(([x, w]) => addHazard(origin + x, floorY - 22, w, 22, "spike"));
+        spawns.push([390, floorY - 105], [1030, floorY - 205], [1550, floorY - 315], [2200, floorY - 190], [2890, floorY - 365, "drone"], [3450, floorY - 225]);
+      } else if (zone.template === "bridge") {
+        // 아래가 트인 장거리 교량. 상·하단 두 경로가 중간에서 교차한다.
+        addPlatform(origin, floorY, 610, WORLD_H - floorY, kind);
+        addPlatform(origin + 3440, floorY, 560, WORLD_H - floorY, kind);
+        [[520, -95, 500], [1060, -205, 420], [1520, -315, 430], [1990, -205, 420], [2450, -95, 470], [2940, -235, 520]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, kind));
+        addBoostNode(origin + 560, floorY - 150, 210, -520);
+        addBoostNode(origin + 3180, floorY - 285, 230, -470);
+        spawns.push([340, floorY], [690, floorY - 95], [1180, floorY - 205], [1640, floorY - 315, "drone"], [2100, floorY - 205], [2590, floorY - 95], [3530, floorY]);
+      } else if (zone.template === "zigzag") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[280, -120, 430], [790, -300, 380], [1240, -165, 430], [1740, -430, 410], [2240, -220, 430], [2740, -390, 390], [3240, -145, 470]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, kind));
+        [730, 1690, 2690].forEach((x, index) => addHazard(origin + x, floorY - 22, 90 + index * 30, 22, "spike"));
+        spawns.push([390, floorY - 120], [900, floorY - 300], [1360, floorY - 165], [1870, floorY - 430, "drone"], [2370, floorY - 220], [2860, floorY - 390], [3400, floorY - 145]);
+      } else if (zone.template === "cavern") {
+        // 천장 기둥과 움푹 팬 바닥이 교차하는 압축 동굴형 구역.
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[540, 140, 190, 360], [1320, 190, 220, 310], [2250, 115, 210, 385], [3140, 170, 230, 330]]
+          .forEach(([x, y, w, h]) => addPlatform(origin + x, y, w, h, kind));
+        [[250, -150, 360], [820, -260, 360], [1580, -390, 430], [2110, -250, 370], [2670, -410, 390], [3370, -220, 360]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, kind));
+        addBoostNode(origin + 1490, floorY - 90, 90, -610);
+        spawns.push([360, floorY - 150], [930, floorY - 260], [1700, floorY - 390], [2220, floorY - 250], [2780, floorY - 410, "drone"], [3480, floorY - 220]);
+      } else if (zone.template === "conveyor") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "foundry");
+        [[260, -80, 620], [1040, -180, 520], [1700, -80, 620], [2490, -260, 520], [3200, -120, 520]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, index % 2 ? "turbine" : "channel"));
+        [910, 1600, 2370, 3060].forEach((x, index) => addHazard(origin + x, floorY - 260, 30, 260, "steam", index * 0.73));
+        spawns.push([390, floorY - 80], [1170, floorY - 180], [1860, floorY - 80], [2610, floorY - 260], [3330, floorY - 120], [3700, floorY]);
+      } else if (zone.template === "spiral") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, kind);
+        [[260, -90, 340], [670, -190, 330], [1070, -300, 330], [1470, -420, 350], [1950, -520, 430], [2450, -410, 350], [2860, -290, 340], [3260, -170, 390]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, kind));
+        addBoostNode(origin + 1820, floorY - 80, 0, -700);
+        spawns.push([360, floorY - 90], [770, floorY - 190], [1170, floorY - 300], [1570, floorY - 420], [2080, floorY - 520, "drone"], [2580, floorY - 410], [3000, floorY - 290], [3400, floorY - 170]);
+      } else if (zone.template === "archiveMaze") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "archive");
+        [[460, 210, 55, 360], [1020, 90, 55, 430], [1580, 260, 55, 310], [2170, 120, 55, 420], [2810, 240, 55, 330], [3410, 100, 55, 430]]
+          .forEach(([x, y, w, h]) => addPlatform(origin + x, y, w, h, "shrine"));
+        [[240, -160, 300], [650, -330, 300], [1190, -210, 310], [1740, -410, 330], [2350, -260, 320], [2970, -430, 320], [3460, -230, 320]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "archive"));
+        spawns.push([330, floorY - 160], [760, floorY - 330], [1290, floorY - 210], [1850, floorY - 410, "drone"], [2460, floorY - 260], [3080, floorY - 430], [3560, floorY - 230]);
+      } else if (zone.template === "towerClimb") {
+        addPlatform(origin, floorY, 520, WORLD_H - floorY, kind);
+        addPlatform(origin + 3500, floorY, 500, WORLD_H - floorY, kind);
+        [[470, -100, 360], [810, -235, 350], [1160, -390, 360], [1540, -540, 420], [2060, -400, 380], [2470, -250, 370], [2860, -410, 350], [3220, -210, 390]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "tower"));
+        addBoostNode(origin + 430, floorY - 110, 180, -640);
+        spawns.push([300, floorY], [570, floorY - 100], [920, floorY - 235], [1270, floorY - 390], [1680, floorY - 540, "drone"], [2200, floorY - 400], [2600, floorY - 250], [3330, floorY - 210]);
+      } else if (zone.template === "mirrorMaze") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "mirror");
+        [[270, -120, 420], [770, -300, 360], [1220, -470, 390], [1710, -250, 430], [2240, -470, 390], [2730, -300, 360], [3190, -120, 450]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, index < 4 ? "glass" : "mirror"));
+        addBoostNode(origin + 1870, floorY - 75, 150, -680);
+        [1150, 2800].forEach((x, index) => addHazard(origin + x, floorY - 340, 24, 340, "laser", 0.45 + index * 1.1));
+        spawns.push([380, floorY - 120], [880, floorY - 300], [1340, floorY - 470, "drone"], [1850, floorY - 250], [2360, floorY - 470], [2850, floorY - 300], [3320, floorY - 120]);
       } else if (zone.template === "midboss") {
         addMidBossArena(zone.stageIndex, origin, floorY, kind);
         const stage = stages[zone.stageIndex];
@@ -2372,16 +2507,23 @@
 
       if (zone.template !== "boss" && zone.template !== "midboss") addZoneEnemies(zone, floorY, spawns);
       if (zone.template !== "fork" && zone.template !== "boss" && zone.template !== "midboss") addPickup(origin + 2200, floorY - 310);
-      addSign(origin + 110, floorY - 66, zone.name, zone.code);
+      // 구역 진입 시 화면을 가리던 자동 맵 설명 표지판은 생성하지 않는다.
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
     applyAdminWorldEdits();
     restoreAdminPlacedObjects();
     restoreAdminSpawnedEnemies();
+    for (let index = pickups.length - 1; index >= 0; index -= 1) {
+      if (adminRemovedObjectIds.has(pickups[index].id)) pickups.splice(index, 1);
+    }
+    for (let index = boostNodes.length - 1; index >= 0; index -= 1) {
+      if (adminRemovedObjectIds.has(boostNodes[index].id)) boostNodes.splice(index, 1);
+    }
     configureCombatRooms();
     applyAdminRemovedEnemyData();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
+    rebuildAdminZoneGrid();
     initRain();
   }
 
@@ -2614,6 +2756,7 @@
     game.kills = enemies.reduce((count, enemy) => count + (enemy.countedKill ? 1 : 0), 0);
     game.defeatedBosses = new Set(saved.defeatedBosses || []);
     if (legacySave) game.defeatedBosses.delete("echo");
+    applyBossRewards({ refill: true });
     game.stageClearTimes = Array.isArray(saved.stageClearTimes) ? saved.stageClearTimes.slice(0, stages.length) : Array(stages.length).fill(0);
     while (game.stageClearTimes.length < stages.length) game.stageClearTimes.push(0);
     game.storySeen = new Set(saved.storySeen || []);
@@ -2694,6 +2837,7 @@
       burstCooldown: 0,
       burstTimer: 0,
       buffTimer: 0,
+      rewardPower: 0,
       squash: 0,
       stepTimer: 0,
       runCycle: 0,
@@ -2734,6 +2878,7 @@
       cutsceneShotElapsed: 0,
       cutsceneSeen: new Set(),
       arenaTitle: 0,
+      tutorialOpen: false,
     });
     if (saved) restoreCampaign(saved);
     if (!saved) {
@@ -2743,11 +2888,13 @@
     }
     syncAdminRemovedBossState();
     setAdminSpawnPanel(false);
+    setAdminZonePanel(false);
     keys.clear();
     pressed.clear();
     startScreen.classList.remove("visible");
     pauseScreen.classList.remove("visible");
     endScreen.classList.remove("visible");
+    setTutorialPanel(!saved);
     updateContinueButton();
     sound.wake();
   }
@@ -2755,6 +2902,7 @@
   function setAdminSpawnPanel(open) {
     if (!adminSpawnPanel) return false;
     const shouldOpen = Boolean(open && game.adminMode && game.mode === "playing");
+    if (shouldOpen && adminZonePanel) adminZonePanel.hidden = true;
     adminSpawnPanel.hidden = !shouldOpen;
     adminSpawnPanel.classList.toggle?.("visible", shouldOpen);
     if (!shouldOpen) setAdminWorldEditor(false);
@@ -2763,6 +2911,61 @@
 
   function toggleAdminSpawnPanel() {
     return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
+  }
+
+  function setTutorialPanel(open) {
+    const shouldOpen = Boolean(open && game.mode === "playing");
+    game.tutorialOpen = shouldOpen;
+    if (tutorialPanel) tutorialPanel.hidden = !shouldOpen;
+    if (shouldOpen) {
+      keys.clear();
+      pressed.clear();
+      player.vx = 0;
+      player.vy = 0;
+    }
+    return shouldOpen;
+  }
+
+  function closeTutorialPanel() {
+    if (!game.tutorialOpen) return false;
+    setTutorialPanel(false);
+    previousTime = performance.now();
+    sound.tone(520, 0.12, "sine", 0.028, 1.25);
+    return true;
+  }
+
+  function rebuildAdminZoneGrid() {
+    if (!adminZoneGrid) return;
+    adminZoneGrid.replaceChildren();
+    const fragment = document.createDocumentFragment();
+    zones.forEach((zone, zoneIndex) => {
+      const button = document.createElement("button");
+      const localZone = zoneIndex % ZONES_PER_STAGE;
+      button.type = "button";
+      button.dataset.adminZone = String(zoneIndex);
+      button.classList.toggle("stage-start", localZone === 0);
+      button.innerHTML = `<b>${zone.stageIndex + 1}-${String(localZone + 1).padStart(2, "0")}</b><span>${zone.name}</span>`;
+      button.addEventListener("click", () => teleportAdminToZone(zoneIndex));
+      fragment.appendChild(button);
+    });
+    adminZoneGrid.appendChild(fragment);
+  }
+
+  function setAdminZonePanel(open) {
+    if (!adminZonePanel) return false;
+    const shouldOpen = Boolean(open && game.adminMode && game.mode === "playing" && !game.tutorialOpen);
+    adminZonePanel.hidden = !shouldOpen;
+    if (shouldOpen) {
+      setAdminSpawnPanel(false);
+      for (const button of adminZoneGrid?.querySelectorAll?.("[data-admin-zone]") || []) {
+        button.classList.toggle("current", Number(button.dataset.adminZone) === game.zone);
+      }
+    }
+    return shouldOpen;
+  }
+
+  function toggleAdminZonePanel() {
+    return setAdminZonePanel(adminZonePanel?.hidden !== false);
   }
 
   function setAdminWorldEditor(open, object = selectedAdminWorldObject) {
@@ -2944,6 +3147,7 @@
       bullets.length = 0;
       game.hint = "관리자 권한 복구 · 적 수동화 · 모든 봉쇄 해제";
     }
+    applyBossRewards({ refill: true });
     player.attackTimer = 0;
     player.attackCooldown = 0;
     player.adminEraseAttackId = -1;
@@ -2967,9 +3171,16 @@
     if (!game.adminMode || game.mode !== "playing") return false;
     const stageIndex = Number(stageNumber) - 1;
     if (!Number.isInteger(stageIndex) || stageIndex < 0 || stageIndex >= stages.length) return false;
-    const checkpointIndex = stageIndex * ZONES_PER_STAGE;
+    return teleportAdminToZone(stageIndex * ZONES_PER_STAGE);
+  }
+
+  function teleportAdminToZone(zoneIndex) {
+    if (!game.adminMode || game.mode !== "playing") return false;
+    const checkpointIndex = Number(zoneIndex);
+    if (!Number.isInteger(checkpointIndex) || checkpointIndex < 0 || checkpointIndex >= zones.length) return false;
     const checkpoint = checkpoints[checkpointIndex];
     if (!checkpoint) return false;
+    const stageIndex = zones[checkpointIndex].stageIndex;
     const position = setRespawnCheckpoint(checkpoint, checkpointIndex);
     player.x = position.x;
     player.y = position.y;
@@ -2992,14 +3203,15 @@
     }
     game.stage = stageIndex;
     game.zone = checkpointIndex;
-    game.stageTitle = 3.8;
-    game.zoneTitle = 2.6;
-    game.hint = `관리자 이동 · STAGE 0${stageIndex + 1} · ${stages[stageIndex].name}`;
+    game.stageTitle = 0;
+    game.zoneTitle = 0;
+    game.hint = `관리자 이동 · ${stageIndex + 1}-${String((checkpointIndex % ZONES_PER_STAGE) + 1).padStart(2, "0")} · ${zones[checkpointIndex].name}`;
     game.hintTimer = 3.4;
     camera.lookX = 0;
     camera.x = clamp(player.x - W * 0.36, 0, WORLD_W - W);
     camera.y = clamp(player.y - H * 0.56, 0, WORLD_H - H);
     setAdminSpawnPanel(false);
+    setAdminZonePanel(false);
     sound.tone(470 + stageIndex * 70, 0.12, "square", 0.028, 1.25);
     return true;
   }
@@ -3233,6 +3445,24 @@
     player.recoilTimer = 0.18;
     if (overcharged) player.shotgunCharge = 0;
 
+    const reactiveOracle = enemies.find((enemy) => (
+      enemy.alive
+      && enemy.type === "boss"
+      && enemy.bossKind === "oracle"
+      && (enemy.shotgunSwapCooldown || 0) <= 0
+      && Math.hypot(
+        enemy.x + enemy.w / 2 - (player.x + player.w / 2),
+        enemy.y + enemy.h / 2 - (player.y + player.h / 2),
+      ) < 1180
+    ));
+    if (reactiveOracle) {
+      swapBossWithPlayer(reactiveOracle);
+      reactiveOracle.shotgunSwapCooldown = 0.82;
+      reactiveOracle.cooldown = Math.max(reactiveOracle.cooldown, 0.55);
+      game.hint = "육화 · 탄도 치환 · 발사 위치로 교환되어 산탄에 피격";
+      game.hintTimer = 1.55;
+    }
+
     for (let pellet = 0; pellet < pelletCount; pellet += 1) {
       const ratio = pelletCount === 1 ? 0 : pellet / (pelletCount - 1) - 0.5;
       const angle = Math.atan2(aim.y, aim.x) + ratio * spread + (hash(player.shotId * 17 + pellet) - 0.5) * 0.035;
@@ -3253,6 +3483,11 @@
         shotId: player.shotId,
         piercing: overcharged,
       });
+    }
+
+    if (reactiveOracle?.alive) {
+      const firstPellet = bullets[bullets.length - pelletCount];
+      if (firstPellet) damageEnemyWithShotgun(reactiveOracle, firstPellet);
     }
 
     const horizontalRecoil = player.grounded ? 190 : 330;
@@ -3340,11 +3575,16 @@
   }
 
   function eraseAdminPlacedObject(object, collection) {
-    if (!object?.adminPlaced || !game.adminMode) return false;
-    removeAdminPlacedObjectData(object.id);
+    if (!object?.id || !game.adminMode) return false;
+    if (object.adminPlaced) removeAdminPlacedObjectData(object.id);
+    else {
+      adminRemovedObjectIds.add(object.id);
+      persistAdminRemovedObjects();
+    }
     const index = collection.indexOf(object);
     if (index >= 0) collection.splice(index, 1);
-    game.hint = `관리자 설치물 영구 삭제 · ${object.adminType === "repair" ? "회복 수복편" : "도약 발판"}`;
+    const objectType = object.adminType || (collection === pickups ? "repair" : "boost");
+    game.hint = `관리자 오브젝트 영구 삭제 · ${objectType === "repair" ? "회복 수복편" : "도약 발판"}`;
     game.hintTimer = 2.8;
     spawnParticles(object.x + object.w / 2, object.y + object.h / 2, palette.amber, 14, 240, 0.42, 180);
     return true;
@@ -3379,6 +3619,13 @@
 
     if (game.adminMode && player.adminEraseAttackId === player.attackId) {
       eraseEnemyData(enemy);
+      return;
+    }
+
+    if (enemy.type === "boss" && enemy.bossKind === "hunter" && player.burstTimer > 0) {
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 12, 250, 0.34, 0);
+      game.hint = "적린 · 산탄과 버스트 반사 · 일본도만 유효";
+      game.hintTimer = 1.35;
       return;
     }
 
@@ -3427,7 +3674,7 @@
     }
 
     const chainFinisher = player.grounded && player.slashChain === 3 ? 1 : 0;
-    let dealtDamage = (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher;
+    let dealtDamage = (player.buffTimer > 0 ? 2 : 1) + (player.chargedAttack ? 1 : 0) + chainFinisher + (player.rewardPower || 0) * 0.2;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") {
       dealtDamage *= 0.75;
@@ -3491,7 +3738,7 @@
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + 26, palette.red, 18, 360, 0.5, 440);
     }
     enemy.hitShotId = bullet.shotId;
-    if (enemy.type === "boss" && enemy.bossKind === "hunter" && enemy.reflectTimer > 0) {
+    if (enemy.type === "boss" && enemy.bossKind === "hunter") {
       reflectShotgun(enemy);
       return true;
     }
@@ -3503,7 +3750,7 @@
       sound.tone(220, 0.1, "sine", 0.03, 1.6);
       return true;
     }
-    let shotgunDamage = bullet.damage;
+    let shotgunDamage = bullet.damage + (player.rewardPower || 0) * 0.18;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.75;
     enemy.hp -= shotgunDamage;
@@ -3585,11 +3832,14 @@
         return;
       }
       game.defeatedBosses.add(kind);
+      applyBossRewards({ refill: true });
       game.stageClearTimes[rank] = game.runTime;
       game.stageBossDefeated = game.defeatedBosses.has("warden");
       game.bossDefeated = game.defeatedBosses.has("echo");
       const nextStage = stages[rank + 1];
-      game.hint = nextStage ? `${BOSS_DEFINITIONS[kind].name} 격파 — ${nextStage.name} 진입` : "거울 규약 해제 — 모든 증언을 도시로 송신";
+      game.hint = nextStage
+        ? `${BOSS_DEFINITIONS[kind].name} 격파 · 보상 LV.${player.rewardPower} · 체력·탄창·공격력 강화 — ${nextStage.name} 진입`
+        : "거울 규약 해제 · 최종 보상 완성 — 모든 증언을 도시로 송신";
       game.hintTimer = 8;
       const victoryStories = [
         [
@@ -4142,7 +4392,7 @@
     const originY = enemy.y + enemy.h * 0.42;
     const target = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
     [-0.12, 0, 0.12].forEach((spread) => firePointBullet(originX, originY, target, 520, spread, "reflected-shotgun", "#a6f7ff"));
-    enemy.reflectTimer = Math.max(0, enemy.reflectTimer - 0.28);
+    enemy.reflectTimer = 1;
     spawnParticles(originX, originY, "#a6f7ff", 22, 390, 0.48, 0);
     game.shake = Math.max(game.shake, 12);
     sound.tone(560, 0.13, "square", 0.04, 0.55);
@@ -4329,6 +4579,22 @@
             enemy.targetY + Math.sin(angle) * 190,
             0.46 + index * 0.11,
           );
+        }
+        break;
+      case "oracle-burst":
+        [-0.2, -0.1, 0, 0.1, 0.2].forEach((spread) => fireBullet(enemy, 455, spread, "standard", target));
+        break;
+      case "oracle-cross":
+        [-0.34, -0.17, 0, 0.17, 0.34].forEach((spread, index) => (
+          fireBullet(enemy, 430 + (index % 2) * 75, spread, "standard", target)
+        ));
+        break;
+      case "oracle-needle":
+        [-0.055, 0, 0.055].forEach((spread) => fireBullet(enemy, 630, spread, "phase", target));
+        break;
+      case "oracle-ring":
+        for (let index = 0; index < 12; index += 1) {
+          fireBullet(enemy, 350 + (index % 2) * 55, index * TAU / 12, "standard", target);
         }
         break;
       case "censor-volley":
@@ -4553,6 +4819,28 @@
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
     if (pressed.has("KeyE")) startBurst();
 
+    if (game.adminMode) {
+      const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.06);
+      const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.06);
+      const up = keys.has("Space") || keys.has("KeyK");
+      const down = keys.has("ShiftLeft") || keys.has("ShiftRight");
+      const horizontal = Number(right) - Number(left);
+      const vertical = Number(down) - Number(up);
+      const flightSpeed = INPUT_TUNING.moveSpeed * 2;
+      player.vx = horizontal * flightSpeed;
+      player.vy = vertical * flightSpeed;
+      player.x = clamp(player.x + player.vx * dt, 0, WORLD_W - player.w);
+      player.y = clamp(player.y + player.vy * dt, -240, WORLD_H - player.h);
+      player.grounded = false;
+      player.wallLeft = false;
+      player.wallRight = false;
+      player.coyote = 0;
+      player.jumpBuffer = 0;
+      player.airJumpAvailable = true;
+      player.landingImpactArmed = false;
+      if (horizontal !== 0) player.facing = horizontal > 0 ? 1 : -1;
+      player.runCycle += Math.hypot(player.vx, player.vy) * dt * 0.052;
+    } else {
     const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.06);
     const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.06);
     const keyboardDirection = Number(right) - Number(left);
@@ -4638,6 +4926,7 @@
       const heelX = player.x + player.w / 2 - player.facing * 10;
       spawnParticles(heelX, player.y + player.h - 2, "#5f7b82", 3, 72, 0.22, 170);
     }
+    }
 
     if (isAttackActive()) {
       const hitbox = attackBox();
@@ -4646,7 +4935,7 @@
       }
       for (const node of boostNodes) {
         if (node.hitAttackId === player.attackId || !overlaps(hitbox, node)) continue;
-        if (game.adminMode && player.adminEraseAttackId === player.attackId && node.adminPlaced) {
+        if (game.adminMode && player.adminEraseAttackId === player.attackId) {
           eraseAdminPlacedObject(node, boostNodes);
           continue;
         }
@@ -4661,7 +4950,7 @@
       if (game.adminMode && player.adminEraseAttackId === player.attackId) {
         for (let pickupIndex = pickups.length - 1; pickupIndex >= 0; pickupIndex -= 1) {
           const pickup = pickups[pickupIndex];
-          if (pickup.adminPlaced && overlaps(hitbox, pickup)) eraseAdminPlacedObject(pickup, pickups);
+          if (overlaps(hitbox, pickup)) eraseAdminPlacedObject(pickup, pickups);
         }
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
@@ -4740,6 +5029,7 @@
   }
 
   function moveEnemyPhysics(enemy, dt) {
+    ejectEnemyFromPlatforms(enemy);
     enemy.grounded = false;
     enemy.vy = Math.min((enemy.vy || 0) + GRAVITY * 0.78 * dt, 980);
     const lockdownBounds = getEnemyLockdownBounds(enemy);
@@ -4795,6 +5085,7 @@
 
     enemy.x = clamp(enemy.x, 0, WORLD_W - enemy.w);
     constrainEnemyToLockdown(enemy, lockdownBounds);
+    ejectEnemyFromPlatforms(enemy);
     if (blocked) {
       enemy.stuckTimer = (enemy.stuckTimer || 0) + dt;
       if (enemy.stuckTimer > 0.16 && enemy.grounded) {
@@ -5037,14 +5328,11 @@
     }
 
     if (bossKind === "hunter") {
-      enemy.reflectTimer = Math.max(0, (enemy.reflectTimer || 0) - dt);
-      enemy.reflectCooldown = Math.max(0, (enemy.reflectCooldown || 0) - dt);
-      if (enemy.reflectCooldown <= 0 && enemy.reflectTimer <= 0 && distance < 820) {
-        enemy.reflectTimer = hpRatio < 0.5 ? 1.7 : 1.35;
-        enemy.reflectCooldown = hpRatio < 0.5 ? 3.5 : 4.3;
-        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 24, 340, 0.55, 0);
-        sound.tone(480, 0.22, "sine", 0.035, 1.6);
-      }
+      enemy.reflectTimer = 1;
+    }
+
+    if (bossKind === "oracle") {
+      enemy.shotgunSwapCooldown = Math.max(0, (enemy.shotgunSwapCooldown || 0) - dt);
     }
 
     if (bossKind === "censor") {
@@ -5136,38 +5424,39 @@
 
       if (bossKind === "hunter") {
         if (enemy.bossPhase === 0) {
-          enemy.reflectTimer = Math.max(enemy.reflectTimer, 1.65);
-          enemy.reflectCooldown = 4.2;
-          startBossChargedShot(enemy, "furnace-rifle", dx, 0.58);
-          enemy.cooldown = 2.05 * recovery;
+          enemy.windup = 0.44;
+          enemy.bossAction = "reflectRush";
+          enemy.cooldown = 1.55 * recovery;
         } else if (enemy.bossPhase === 1) {
-          startBossChargedShot(enemy, "furnace-mortar", dx, 0.86);
-          enemy.cooldown = 2.2 * recovery;
+          enemy.windup = 0.34;
+          enemy.bossAction = "mirrorStep";
+          enemy.cooldown = 1.45 * recovery;
         } else if (enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "furnace-rifle", dx, 0.42);
+          enemy.windup = 0.38;
+          enemy.bossAction = "reflectRush";
           enemy.cooldown = 1.35 * recovery;
         } else if (enemy.bossPhase === 3) {
-          startBossChargedShot(enemy, "furnace-volley", dx, 0.9);
-          enemy.cooldown = 2.35 * recovery;
+          enemy.windup = 0.3;
+          enemy.bossAction = "mirrorStep";
+          enemy.cooldown = 1.25 * recovery;
         } else {
-          startBossChargedShot(enemy, "furnace-eruption", dx, 1.04);
-          enemy.cooldown = 2.65 * recovery;
+          enemy.windup = 0.52;
+          enemy.bossAction = "reflectRush";
+          enemy.cooldown = 1.7 * recovery;
         }
       } else if (bossKind === "oracle") {
         if (enemy.bossPhase === 0) {
-          enemy.windup = 0.72;
-          enemy.bossAction = "positionSwap";
-          enemy.cooldown = 2.35 * recovery;
+          startBossChargedShot(enemy, "oracle-burst", dx, 0.54);
+          enemy.cooldown = 1.55 * recovery;
         } else if (enemy.bossPhase === 1) {
-          startBossChargedShot(enemy, "weaver-fan", dx, 0.84);
-          enemy.cooldown = 2.05 * recovery;
-        } else if (enemy.bossPhase === 2) {
-          const teleportX = clamp(player.x - Math.sign(dx || 1) * 330, arenaLeft + 80, arenaRight - 80);
-          summonMagicSigil(enemy, "teleport", teleportX, enemy.baseY - 245, 0.58);
+          startBossChargedShot(enemy, "oracle-cross", dx, 0.7);
           enemy.cooldown = 1.85 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "oracle-needle", dx, 0.62);
+          enemy.cooldown = 1.7 * recovery;
         } else {
-          startBossChargedShot(enemy, "weaver-lance", dx, 0.92);
-          enemy.cooldown = 2.4 * recovery;
+          startBossChargedShot(enemy, "oracle-ring", dx, 0.82);
+          enemy.cooldown = 2.15 * recovery;
         }
       } else if (bossKind === "revenant") {
         if (enemy.bossPhase === 0) {
@@ -5181,8 +5470,11 @@
           startBossChargedShot(enemy, "revenant-cross", dx, 0.76);
           enemy.cooldown = 1.9 * recovery;
         } else if (enemy.bossPhase === 3) {
-          startBossChargedShot(enemy, "revenant-rain", dx, 0.92);
-          enemy.cooldown = 2.2 * recovery;
+          enemy.windup = 1.05;
+          enemy.bossAction = "rapidThrust";
+          enemy.thrustTimer = 0.02;
+          enemy.thrustsRemaining = hpRatio < 0.5 ? 9 : 7;
+          enemy.cooldown = 2.35 * recovery;
         } else {
           startBossChargedShot(enemy, "revenant-cross", dx, 0.64);
           enemy.cooldown = 1.65 * recovery;
@@ -5304,6 +5596,25 @@
       }
     }
 
+    if (enemy.bossAction === "rapidThrust" && enemy.windup > 0 && enemy.thrustsRemaining > 0) {
+      enemy.thrustTimer -= dt;
+      if (enemy.thrustTimer <= 0) {
+        const thrustIndex = enemy.thrustsRemaining;
+        enemy.vx = Math.sign(dx || 1) * (520 + rank * 32);
+        fireSwordWave(
+          enemy,
+          { x: player.x + player.w / 2, y: player.y + player.h / 2 },
+          (thrustIndex % 3 - 1) * 0.045,
+          650,
+        );
+        if (Math.abs(dx) < 155 && Math.abs(player.y - enemy.y) < 96) damagePlayer(1, enemy.x);
+        enemy.thrustsRemaining -= 1;
+        enemy.thrustTimer = 0.105;
+        spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 42, enemy.y + enemy.h * 0.42, "#ffd0dd", 8, 260, 0.25, 0);
+        if (enemy.thrustsRemaining <= 0) enemy.bossAction = null;
+      }
+    }
+
     if (enemy.windup > 0) {
       const previous = enemy.windup;
       enemy.windup -= dt;
@@ -5334,6 +5645,14 @@
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 20, 480, 0.4, 0);
         } else if (enemy.bossAction === "positionSwap") {
           swapBossWithPlayer(enemy);
+        } else if (enemy.bossAction === "reflectRush") {
+          enemy.vx = Math.sign(dx || 1) * 690;
+          if (Math.abs(dx) < 150 && Math.abs(player.y - enemy.y) < 92) damagePlayer(1, enemy.x);
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.46, "#a6f7ff", 18, 420, 0.4, 0);
+        } else if (enemy.bossAction === "mirrorStep") {
+          enemy.vx = -Math.sign(dx || 1) * 560;
+          enemy.vy = enemy.grounded ? -420 : enemy.vy;
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#6fddeb", 16, 330, 0.38, 0);
         } else if (enemy.bossAction === "swordDash") {
           enemy.vx = Math.sign(dx || 1) * 720;
           fireSwordWave(enemy, { x: player.x + player.w / 2, y: player.y + player.h / 2 }, 0, 620);
@@ -5654,6 +5973,12 @@
     }
 
     if (game.mode !== "playing") return;
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false) {
+      game.shake = 0;
+      game.flash = Math.max(0, game.flash - dt);
+      pressed.clear();
+      return;
+    }
     game.shake = Math.max(0, game.shake - (game.cutscene || game.story ? 140 : 46) * dt);
     game.flash = Math.max(0, game.flash - dt);
     if (game.cutscene) {
@@ -5723,7 +6048,7 @@
     const zoneIndex = getZoneIndexAt(player.x);
     if (zoneIndex !== game.zone) {
       game.zone = zoneIndex;
-      game.zoneTitle = 3.2;
+      game.zoneTitle = 0;
     }
 
     const stageIndex = getStageIndexAt(player.x);
@@ -6888,8 +7213,19 @@
 
     if (rawBossKind === "warden") {
       // 붉은 중장갑 지휘기. 특정 기체 복제가 아닌 초승달 장갑과 육익 판넬의 오리지널 실루엣이다.
-      limb(-17, 69, -23 - motion * 3, 98, 15, flash ? "#fff" : "#4a101d");
-      limb(17, 69, 23 + motion * 3, 98, 15, flash ? "#fff" : "#4a101d");
+      // 다리는 3중 관절, 노출 피스톤, 갈고리형 발을 가진 고기동 중장 구조다.
+      for (const side of [-1, 1]) {
+        const stride = side * motion * 4;
+        ctx.fillStyle = flash ? "#fff" : "#71162c";
+        ctx.beginPath(); ctx.moveTo(side * 9, 61); ctx.lineTo(side * 28, 65 + stride); ctx.lineTo(side * 25, 79 + stride); ctx.lineTo(side * 11, 77); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#28111a"; ctx.beginPath(); ctx.arc(side * 27, 79 + stride, 9, 0, TAU); ctx.fill();
+        ctx.strokeStyle = "#ff8ca2"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(side * 27, 79 + stride, 6, 0, TAU); ctx.stroke();
+        limb(side * 27, 84 + stride, side * 35, 102 + stride, 11, flash ? "#fff" : "#4a101d");
+        ctx.strokeStyle = "#c55369"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(side * 19, 69); ctx.lineTo(side * 35, 98 + stride); ctx.stroke();
+        ctx.fillStyle = flash ? "#fff" : "#7b1730";
+        ctx.beginPath(); ctx.moveTo(side * 27, 96 + stride); ctx.lineTo(side * 51, 99 + stride); ctx.lineTo(side * 58, 108 + stride); ctx.lineTo(side * 22, 109 + stride); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#160b10"; ctx.fillRect(side < 0 ? -57 : 25, 106 + stride, 32, 5);
+      }
       ctx.fillStyle = flash ? "#fff" : "#7b1730";
       ctx.beginPath();
       ctx.moveTo(-42, 47); ctx.lineTo(-30, 24); ctx.lineTo(-15, 31); ctx.lineTo(-22, 69); ctx.lineTo(-48, 77); ctx.closePath(); ctx.fill();
@@ -6915,15 +7251,27 @@
       ctx.fillStyle = "#35121a"; ctx.fillRect(24, 42, 56, 11);
       ctx.fillStyle = "#d05061"; ctx.fillRect(65, 44, 28, 6);
     } else if (rawBossKind === "breaker") {
-      limb(-19, 57, -27 - motion * 3, 77, 16, flash ? "#fff" : "#55421e");
-      limb(19, 57, 27 + motion * 3, 77, 16, flash ? "#fff" : "#55421e");
-      ctx.fillStyle = flash ? "#fff" : "#4c3d22"; ctx.fillRect(-32, 20, 64, 43);
-      ctx.fillStyle = "#17150f"; ctx.fillRect(-19, 28, 38, 23);
-      ctx.fillStyle = accent; ctx.fillRect(-15, 33, 30, 5);
-      ctx.strokeStyle = accent; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(-30, 28); ctx.lineTo(-56, 10); ctx.lineTo(-67, 34); ctx.lineTo(-44, 53); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(30, 28); ctx.lineTo(56, 10); ctx.lineTo(67, 34); ctx.lineTo(44, 53); ctx.stroke();
-      ctx.fillStyle = "#837345"; ctx.beginPath(); ctx.moveTo(-18, 18); ctx.lineTo(0, 2); ctx.lineTo(18, 18); ctx.closePath(); ctx.fill();
+      // 구형 철각 계열의 무한궤도 포격 차체를 폐철 부품으로 재조립한 집행기.
+      ctx.fillStyle = flash ? "#fff" : "#43371f"; ctx.fillRect(-48, 57, 96, 24);
+      ctx.fillStyle = "#100f0a"; ctx.fillRect(-44, 62, 88, 18);
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(-49, 56, 98, 26);
+      for (let wheel = -36; wheel <= 36; wheel += 12) {
+        ctx.fillStyle = "#837345"; ctx.beginPath(); ctx.arc(wheel, 71 + Math.sin(enemy.anim * 9 + wheel) * 1.2, 6, 0, TAU); ctx.fill();
+        ctx.fillStyle = "#272116"; ctx.beginPath(); ctx.arc(wheel, 71, 2.5, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = flash ? "#fff" : "#564525";
+      ctx.beginPath(); ctx.moveTo(-34, 58); ctx.lineTo(-27, 31); ctx.lineTo(-12, 18); ctx.lineTo(20, 20); ctx.lineTo(33, 39); ctx.lineTo(37, 59); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#17150f"; ctx.fillRect(-16, 27, 33, 18);
+      ctx.fillStyle = accent; ctx.fillRect(-11, 32, 24, 5);
+      for (const side of [-1, 1]) {
+        ctx.save(); ctx.translate(side * 24, 30); ctx.rotate(side * 0.1 - 0.16);
+        ctx.fillStyle = "#76633a"; ctx.fillRect(-5, -29, 10, 39); ctx.fillStyle = accent; ctx.fillRect(-3, -34, 6, 8); ctx.restore();
+      }
+      ctx.fillStyle = "#76633a"; ctx.fillRect(20, 41, 50, 10);
+      for (let muzzle = 0; muzzle < 5; muzzle += 1) {
+        ctx.fillStyle = muzzle % 2 ? "#ad985d" : "#5c4c2d";
+        ctx.fillRect(62, 40 + muzzle * 4, 18, 3);
+      }
     } else if (rawBossKind === "hunter") {
       limb(-12, 56, -18 - motion * 4, 81, 10, flash ? "#fff" : "#553129");
       limb(12, 56, 18 + motion * 4, 81, 10, flash ? "#fff" : "#553129");
@@ -6952,17 +7300,34 @@
         ctx.strokeStyle = side < 0 ? "#ff6b9c" : "#bfa4ff"; ctx.stroke();
       }
     } else if (rawBossKind === "revenant") {
-      limb(-11, 57, -18 - motion * 4, 84, 9, flash ? "#fff" : "#29121e");
-      limb(11, 57, 18 + motion * 4, 84, 9, flash ? "#fff" : "#29121e");
-      ctx.fillStyle = flash ? "#fff" : "#1b101b"; ctx.beginPath(); ctx.moveTo(-18, 18); ctx.lineTo(13, 11); ctx.lineTo(25, 57); ctx.lineTo(0, 68); ctx.lineTo(-24, 54); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = "#eadce5"; ctx.beginPath(); ctx.moveTo(-11, 3); ctx.lineTo(11, 3); ctx.lineTo(15, 20); ctx.lineTo(-13, 21); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = accent; ctx.fillRect(1, 10, 11, 3);
-      // 몸보다 긴 월식도.
-      ctx.save(); ctx.translate(20, 38); ctx.rotate(-0.6 + motion * 0.03);
-      ctx.fillStyle = "#12121a"; ctx.fillRect(-4, -4, 14, 8);
-      ctx.fillStyle = "#d8e5e8"; ctx.beginPath(); ctx.moveTo(8, -5); ctx.lineTo(87, -2); ctx.lineTo(96, 2); ctx.lineTo(8, 5); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = accent; ctx.fillRect(16, -2, 72, 2); ctx.restore();
+      // 원형 방패와 장창형 검을 쓰는 동양식 중갑 결투기. 보랏빛 부채 투구가 실루엣을 구분한다.
+      limb(-13, 59, -20 - motion * 4, 86, 11, flash ? "#fff" : "#2e2445");
+      limb(13, 59, 20 + motion * 4, 86, 11, flash ? "#fff" : "#2e2445");
+      ctx.fillStyle = flash ? "#fff" : "#443363";
+      ctx.beginPath(); ctx.moveTo(-24, 20); ctx.lineTo(-10, 11); ctx.lineTo(16, 15); ctx.lineTo(27, 57); ctx.lineTo(0, 72); ctx.lineTo(-28, 55); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#bda7e8"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#191426"; ctx.fillRect(-14, 30, 30, 22);
+      ctx.fillStyle = accent; ctx.fillRect(-7, 35, 20, 4);
+      ctx.fillStyle = flash ? "#fff" : "#ddd5ee";
+      ctx.beginPath(); ctx.moveTo(-14, 4); ctx.lineTo(0, -5); ctx.lineTo(16, 5); ctx.lineTo(13, 22); ctx.lineTo(-12, 22); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#251b39"; ctx.fillRect(-10, 10, 20, 6);
+      ctx.fillStyle = "#ff537d"; ctx.fillRect(1, 11, 9, 3);
+      for (let fin = -2; fin <= 2; fin += 1) {
+        ctx.save(); ctx.rotate(fin * 0.2); ctx.fillStyle = fin === 0 ? "#ff6b9c" : "#6f55a0";
+        ctx.beginPath(); ctx.moveTo(-3, 1); ctx.lineTo(0, -25 - Math.abs(fin) * 3); ctx.lineTo(4, 1); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      // 왼팔 원형 방패: 회전하는 8개의 발광 봉인이 공격 예고를 보여 준다.
+      ctx.save(); ctx.translate(-35, 40); ctx.rotate(motion * 0.035);
+      ctx.fillStyle = flash ? "#fff" : "#2d2543"; ctx.beginPath(); ctx.arc(0, 0, 29, 0, TAU); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = "#15111f"; ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.fill();
+      for (let seal = 0; seal < 8; seal += 1) { const a = seal * TAU / 8; ctx.fillStyle = "#ff8bad"; ctx.beginPath(); ctx.arc(Math.cos(a) * 22, Math.sin(a) * 22, 2.5, 0, TAU); ctx.fill(); }
+      ctx.restore();
+      // 오른팔의 장창형 집행검은 휘두를 때 검기를 방출한다.
+      ctx.save(); ctx.translate(21, 39); ctx.rotate(-0.48 + motion * 0.04);
+      ctx.fillStyle = "#21192d"; ctx.fillRect(-7, -5, 18, 10);
+      ctx.fillStyle = "#e7e4ef"; ctx.beginPath(); ctx.moveTo(8, -4); ctx.lineTo(95, -2); ctx.lineTo(107, 0); ctx.lineTo(95, 3); ctx.lineTo(8, 5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = accent; ctx.fillRect(18, -1.5, 80, 3); ctx.restore();
     } else if (rawBossKind === "proxy") {
       limb(-12, 56, -18 - motion * 4, 80, 9, flash ? "#fff" : "#263b35");
       limb(12, 56, 18 + motion * 4, 80, 9, flash ? "#fff" : "#263b35");
@@ -8923,15 +9288,16 @@
 
     if (game.adminMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.9)";
-      ctx.fillRect(W / 2 - 250, 98, 500, 46);
+      ctx.fillRect(W / 2 - 310, 98, 620, 68);
       ctx.fillStyle = palette.amber;
-      ctx.fillRect(W / 2 - 250, 98, 4, 46);
+      ctx.fillRect(W / 2 - 310, 98, 4, 68);
       ctx.font = "900 11px monospace";
       ctx.textAlign = "center";
       ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 106);
       ctx.fillStyle = "#ffe4a0";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-      ctx.fillText("1~5 스테이지 이동 · Z 영구 삭제 · X 적 생성 · R 신참내기 전환", W / 2, 125);
+      ctx.fillText("A/D 좌우 · SPACE 상승 · SHIFT 하강 · 공중 정지 · 벽 통과 · 이동속도 2배", W / 2, 126);
+      ctx.fillText("L 전체 120구역 · 1~5 스테이지 · X 생성 · Z 적/회복템/도약판 영구 삭제 · R 신참", W / 2, 145);
       ctx.textAlign = "left";
     } else if (game.adminCadetMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.92)";
@@ -9046,7 +9412,7 @@
     ctx.fillStyle = zones[game.zone].color;
     ctx.font = "900 14px 'Malgun Gothic', sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(`STAGE 0${game.stage + 1} · ${zones[game.zone].name}`, W - 45, 41);
+    ctx.fillText(`STAGE 0${game.stage + 1}`, W - 45, 41);
     ctx.fillStyle = "#738b98";
     ctx.font = "10px monospace";
     ctx.fillText(`${Math.floor(progress * 100)}% · ${formatTime(game.runTime)}`, W - 45, 62);
@@ -9059,6 +9425,12 @@
     ctx.font = "800 9px 'Malgun Gothic', sans-serif";
     ctx.fillText(game.adminMode ? "관리자 권한 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
     ctx.textAlign = "left";
+
+    if (player.rewardPower > 0) {
+      ctx.fillStyle = palette.amber;
+      ctx.font = "800 9px monospace";
+      ctx.fillText(`BOSS REWARD LV.${player.rewardPower}  ATK +${(player.rewardPower * 0.2).toFixed(1)}`, W - 312, 99);
+    }
 
     const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
     if (boss) {
@@ -9151,22 +9523,6 @@
       ctx.fillStyle = palette.white;
       ctx.font = "900 27px 'Malgun Gothic', sans-serif";
       ctx.fillText(stage.name, W / 2, 306);
-      ctx.textAlign = "left";
-      ctx.globalAlpha = 1;
-    }
-
-    if (game.zoneTitle > 0) {
-      const alpha = Math.min(1, game.zoneTitle * 1.5, (3.4 - game.zoneTitle) * 1.7);
-      ctx.globalAlpha = clamp(alpha, 0, 1);
-      ctx.fillStyle = zones[game.zone].color;
-      ctx.fillRect(W / 2 - 2, 155, 4, 20);
-      ctx.fillStyle = "#f2ffff";
-      ctx.font = "900 31px 'Malgun Gothic', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(zones[game.zone].name, W / 2, 186);
-      ctx.fillStyle = zones[game.zone].color;
-      ctx.font = "700 11px monospace";
-      ctx.fillText(zones[game.zone].code, W / 2, 226);
       ctx.textAlign = "left";
       ctx.globalAlpha = 1;
     }
@@ -9326,7 +9682,13 @@
   }
 
   function startTouchContextAttack() {
-    if (game.mode !== "playing" || game.cutscene || adminSpawnPanel?.hidden === false) return;
+    if (
+      game.mode !== "playing"
+      || game.cutscene
+      || game.tutorialOpen
+      || adminSpawnPanel?.hidden === false
+      || adminZonePanel?.hidden === false
+    ) return;
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
     const slashTarget = findTouchSlashTarget(worldX, worldY);
@@ -9556,7 +9918,7 @@
       requestCutsceneAdvance();
       return;
     }
-    if (adminSpawnPanel?.hidden === false) return;
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false) return;
     if (event.button === 0) startAttack();
     if (event.button === 2) startShotgun();
   });
@@ -9576,11 +9938,26 @@
       }
       return;
     }
-    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
+    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "Escape", "ShiftLeft", "ShiftRight", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "KeyL", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
     if (handled.includes(event.code)) event.preventDefault();
     const firstPress = !keys.has(event.code);
     if (firstPress) pressed.add(event.code);
     keys.add(event.code);
+
+    if (game.tutorialOpen) {
+      if (firstPress && ["Space", "Enter", "Escape"].includes(event.code)) closeTutorialPanel();
+      return;
+    }
+
+    if (firstPress && event.code === "KeyL" && game.adminMode && game.mode === "playing") {
+      toggleAdminZonePanel();
+      pressed.delete("KeyL");
+      return;
+    }
+    if (adminZonePanel?.hidden === false) {
+      if (event.code === "Escape") setAdminZonePanel(false);
+      return;
+    }
 
     const stageKey = /^(?:Digit|Numpad)([1-5])$/.exec(event.code) || /^([1-5])$/.exec(event.key || "");
     if (firstPress && stageKey && game.adminMode && game.mode === "playing") teleportAdminToStage(Number(stageKey[1]));
@@ -9607,6 +9984,7 @@
     keys.clear();
     pressed.clear();
     setAdminSpawnPanel(false);
+    setAdminZonePanel(false);
     if (game.mode === "playing") togglePause();
   });
 
@@ -9648,6 +10026,8 @@
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
+  adminZoneClose?.addEventListener("click", () => setAdminZonePanel(false));
+  tutorialClose?.addEventListener("click", closeTutorialPanel);
   for (const button of adminSpawnButtons) {
     button.addEventListener("click", () => spawnAdminSelection(button.dataset.adminSpawn));
   }
@@ -9675,7 +10055,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.0.1",
+    version: "2.1.0",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -9685,10 +10065,14 @@
     enemies: enemies.length,
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
+    zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
+    midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
+    adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
+    bossRewardLevel: player.rewardPower,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.0.1",
+    gameVersion: "2.1.0",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -9703,6 +10087,12 @@
     shieldBreakSeconds: "3.2",
     shieldAttackCooldown: "2.15",
     bulwarkDamageMultiplier: "0.75",
+    adminZoneTeleport: "120",
+    adminNoclip: "true",
+    adminFlightSpeed: String(INPUT_TUNING.moveSpeed * 2),
+    jeokrinPermanentReflect: "true",
+    yukhwaShotgunSwap: "true",
+    bossRewardDamagePerLevel: "0.2",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
