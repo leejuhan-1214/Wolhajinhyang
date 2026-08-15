@@ -182,42 +182,42 @@
   const BOSS_DEFINITIONS = {
     warden: {
       name: "붉은 중장 지휘기 · 철각",
-      hp: 12,
+      hp: 24,
       size: [82, 102],
       accent: "#ff496c",
       patterns: ["육익 판넬", "유도 포화", "중장 돌진", "대공 미사일", "제압 탄막"],
     },
     furnace: {
       name: "용광 심장 · 홍련",
-      hp: 18,
+      hp: 36,
       size: [72, 98],
       accent: "#ff7b62",
       patterns: ["공중 사련 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
     },
     weaver: {
       name: "기억 직조기 · 백면",
-      hp: 24,
+      hp: 48,
       size: [66, 88],
       accent: "#d7a0ff",
       patterns: ["공간 전이", "칠성 마법진", "비전 돌진", "기억성 운행"],
     },
     censor: {
       name: "중앙국 검열기 · 무명",
-      hp: 32,
+      hp: 64,
       size: [68, 94],
       accent: "#ff496c",
       patterns: ["금서 탄막", "그림자 이동", "사역마 소환", "월식 도약", "검은 격자"],
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 34,
+      hp: 68,
       size: [34, 56],
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "이중 도약 추격", "잔상 반격", "기억 반전"],
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
-      hp: 16,
+      hp: 32,
       size: [64, 74],
       accent: "#ffcd70",
       archetype: "warden",
@@ -225,7 +225,7 @@
     },
     hunter: {
       name: "반사 사냥꾼 · 적린",
-      hp: 20,
+      hp: 40,
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
@@ -233,7 +233,7 @@
     },
     oracle: {
       name: "전위 심문관 · 육화",
-      hp: 24,
+      hp: 48,
       size: [56, 78],
       accent: "#bfa4ff",
       archetype: "weaver",
@@ -241,7 +241,7 @@
     },
     revenant: {
       name: "검기 집행관 · 공문",
-      hp: 30,
+      hp: 60,
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
@@ -249,7 +249,7 @@
     },
     proxy: {
       name: "광기 연구체 · 대역-13",
-      hp: 36,
+      hp: 72,
       size: [58, 78],
       accent: "#78ff8b",
       archetype: "echo",
@@ -2175,8 +2175,8 @@
     addEnemy("drone", 34760, 270, 190);
     addEnemy("mortar", 35060, 405, 90);
     const originBoss = addEnemy("boss", 35120, 640, 620);
-    originBoss.hp = 24;
-    originBoss.maxHp = 24;
+    originBoss.hp = 48;
+    originBoss.maxHp = 48;
     addSign(34820, 565, "원본 관측소", "잔향 병합 절차 진행 중");
     addPickup(34680, 450);
 
@@ -3916,7 +3916,7 @@
       queueStory(victoryStories[rank]);
       saveCampaign();
       if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
-    } else if (game.kills % 7 === 0 && player.hp < player.maxHp) {
+    } else if (countKill && !silent && game.kills % 7 === 0 && player.hp < player.maxHp) {
       addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
     }
   }
@@ -10230,7 +10230,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.5",
+    version: "2.1.6",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10242,6 +10242,8 @@
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
+    bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
+    bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
     bossRewardLevel: player.rewardPower,
     gongmunSwordMotion: true,
@@ -10265,7 +10267,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.5",
+    gameVersion: "2.1.6",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10275,6 +10277,9 @@
     enemyCount: String(enemies.length),
     activeEnemyCount: String(getActiveEnemies().length),
     platformCount: String(platforms.length),
+    midBossHp: stages.map((stage) => `${stage.midBossKind}:${BOSS_DEFINITIONS[stage.midBossKind].hp}`).join(","),
+    bossHp: stages.map((stage) => `${stage.bossKind}:${BOSS_DEFINITIONS[stage.bossKind].hp}`).join(","),
+    bossDeathPickupSuppressed: "true",
     shieldBaseHp: "3",
     shieldGuardMax: "2",
     shieldBreakSeconds: "3.2",
