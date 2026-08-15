@@ -229,7 +229,7 @@
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
-      patterns: ["전면 산탄 반사", "반사 돌진", "거울 측보", "반사 돌진", "완전 반사"],
+      patterns: ["반사 산탄 사격", "반사 돌진", "거울 측보", "정밀 연사", "완전 반사"],
     },
     oracle: {
       name: "전위 심문관 · 육화",
@@ -1363,6 +1363,29 @@
     sign.adminWorldBase = { x, y, w: 174, h: 60, text, sub, hidden: false };
     signs.push(sign);
     return sign;
+  }
+
+  function getZoneSignSub(zone, localZoneIndex) {
+    const routeLabels = {
+      terrace: "층계 전투 / 상단 우회",
+      chasm: "낙하 주의 / 도약 지점",
+      crusher: "압축 설비 / 봉쇄 전투",
+      vertical: "수직 통로 / 고저차 교전",
+      fork: "분기 통로 / 보급품 탐색",
+      gauntlet: "집중 봉쇄 / 전원 격파",
+      wreckfield: "잔해 지대 / 불안정 발판",
+      bridge: "장거리 교량 / 교차 동선",
+      zigzag: "굴절 회랑 / 시야 주의",
+      cavern: "매몰층 / 천장 구조물",
+      conveyor: "운반선 / 증기 분출",
+      spiral: "나선 승강로 / 상승 동선",
+      archiveMaze: "기록 미로 / 벽면 통로",
+      towerClimb: "송신탑 / 수직 상승",
+      mirrorMaze: "거울 회랑 / 반사 장치",
+      midboss: "중간 관문 / 강적 신호",
+      boss: "최종 관문 / 주 기록 수호자",
+    };
+    return `${zone.code} · 구역 ${localZoneIndex + 1}/${ZONES_PER_STAGE} · ${routeLabels[zone.template] || "작전 진행"}`;
   }
 
   function addEnemy(type, x, surfaceY, range = 150) {
@@ -2527,7 +2550,9 @@
 
       if (zone.template !== "boss" && zone.template !== "midboss") addZoneEnemies(zone, floorY, spawns);
       if (zone.template !== "fork" && zone.template !== "boss" && zone.template !== "midboss") addPickup(origin + 2200, floorY - 310);
-      // 구역 진입 시 화면을 가리던 자동 맵 설명 표지판은 생성하지 않는다.
+      // 화면 상단 안내 대신 월드 안에 직접 배치된 표지판으로 구역 구조를 안내한다.
+      // addSign으로 만든 표지판은 관리자 월드 편집에서도 문구·위치·크기 수정이 가능하다.
+      addSign(origin + 310, floorY - 112, zone.name, getZoneSignSub(zone, localZoneIndex));
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
@@ -3465,22 +3490,21 @@
     player.recoilTimer = 0.18;
     if (overcharged) player.shotgunCharge = 0;
 
-    const reactiveOracle = enemies.find((enemy) => (
-      enemy.alive
-      && enemy.type === "boss"
-      && enemy.bossKind === "oracle"
-      && (enemy.shotgunSwapCooldown || 0) <= 0
-      && Math.hypot(
-        enemy.x + enemy.w / 2 - (player.x + player.w / 2),
-        enemy.y + enemy.h / 2 - (player.y + player.h / 2),
-      ) < 1180
-    ));
+    const reactiveOracle = enemies.find((enemy) => {
+      if (!enemy.alive || enemy.type !== "boss" || enemy.bossKind !== "oracle" || (enemy.shotgunSwapCooldown || 0) > 0) return false;
+      const oracleDX = enemy.x + enemy.w / 2 - (player.x + player.w / 2);
+      const oracleDY = enemy.y + enemy.h / 2 - (player.y + player.h / 2);
+      const oracleDistance = Math.max(1, Math.hypot(oracleDX, oracleDY));
+      const aimDot = aim.x * oracleDX / oracleDistance + aim.y * oracleDY / oracleDistance;
+      return oracleDistance < 1180 && aimDot > 0.84;
+    });
     if (reactiveOracle) {
-      swapBossWithPlayer(reactiveOracle);
-      reactiveOracle.shotgunSwapCooldown = 0.82;
-      reactiveOracle.cooldown = Math.max(reactiveOracle.cooldown, 0.55);
-      game.hint = "육화 · 탄도 치환 · 발사 위치로 교환되어 산탄에 피격";
-      game.hintTimer = 1.55;
+      reactiveOracle.pendingShotgunSwapTimer = 0.12;
+      reactiveOracle.pendingShotId = player.shotId;
+      reactiveOracle.shotgunSwapCooldown = 1.15;
+      reactiveOracle.cooldown = Math.max(reactiveOracle.cooldown, 0.9);
+      game.hint = "육화 · 역상 치환 예고 · 발사한 산탄이 되돌아옵니다";
+      game.hintTimer = 1.7;
     }
 
     for (let pellet = 0; pellet < pelletCount; pellet += 1) {
@@ -3503,11 +3527,6 @@
         shotId: player.shotId,
         piercing: overcharged,
       });
-    }
-
-    if (reactiveOracle?.alive) {
-      const firstPellet = bullets[bullets.length - pelletCount];
-      if (firstPellet) damageEnemyWithShotgun(reactiveOracle, firstPellet);
     }
 
     const horizontalRecoil = player.grounded ? 190 : 330;
@@ -3739,6 +3758,11 @@
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
     if (enemy.hitShotId === bullet.shotId) return true;
+    if (enemy.type === "boss" && enemy.bossKind === "oracle" && enemy.pendingShotId === bullet.shotId) {
+      // 치환 예고 중인 산탄은 육화에게 피해를 주지 않고 잠시 후 플레이어에게 역류한다.
+      enemy.hitShotId = bullet.shotId;
+      return true;
+    }
     const shielded = ensureShieldState(enemy)
       && Math.sign(bullet.vx || 1) === -enemy.facing
       && !bullet.piercing
@@ -4422,7 +4446,7 @@
     sound.tone(560, 0.13, "square", 0.04, 0.55);
   }
 
-  function swapBossWithPlayer(enemy) {
+  function swapBossWithPlayer(enemy, { grantInvincibility = true, shake = 16 } = {}) {
     const arena = getBossArenaBounds(enemy, 90);
     const playerX = player.x;
     const playerY = player.y;
@@ -4438,9 +4462,47 @@
     player.vy = 0;
     enemy.vx = 0;
     enemy.vy = 0;
-    player.invincible = Math.max(player.invincible, 0.62);
-    game.shake = Math.max(game.shake, 16);
+    if (grantInvincibility) player.invincible = Math.max(player.invincible, 0.62);
+    game.shake = Math.max(game.shake, shake);
     sound.tone(210, 0.25, "sine", 0.045, 2.1);
+  }
+
+  function launchOracleShotgunReturn(enemy, shotId) {
+    const originX = enemy.x + enemy.w / 2;
+    const originY = enemy.y + enemy.h * 0.42;
+    const targetX = player.x + player.w / 2;
+    const targetY = player.y + player.h / 2;
+    const baseAngle = Math.atan2(targetY - originY, targetX - originX);
+    const travelTime = 0.24;
+    const distance = Math.max(180, Math.hypot(targetX - originX, targetY - originY));
+    const speed = distance / travelTime;
+    const returnPellets = 6;
+
+    for (let pellet = 0; pellet < returnPellets; pellet += 1) {
+      const ratio = pellet / (returnPellets - 1) - 0.5;
+      const angle = baseAngle + ratio * 0.12;
+      bullets.push({
+        x: originX - 5,
+        y: originY - 3,
+        w: 10,
+        h: 6,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: travelTime,
+        maxLife: travelTime,
+        enemy: true,
+        harmless: true,
+        piercePlatforms: true,
+        kind: "oracle-return",
+        gravity: 0,
+        color: "#ff8cd8",
+        shotId,
+      });
+    }
+    enemy.oracleReturnImpactTimer = travelTime;
+    enemy.oracleReturnSourceX = originX;
+    spawnParticles(originX, originY, "#ff8cd8", 24, 420, 0.48, 0);
+    sound.tone(480, 0.2, "square", 0.04, 0.48);
   }
 
   function fireSwordWave(enemy, target, spread = 0, speed = 520) {
@@ -4578,6 +4640,19 @@
       case "furnace-rifle":
         fireFurnaceRedBurst(enemy, target, 8, 0.018, 400);
         spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#ffb064", 16, 310, 0.36, 80);
+        break;
+      case "hunter-shotgun":
+        [-0.19, -0.095, 0, 0.095, 0.19].forEach((spread, index) => (
+          fireBullet(enemy, 470 + index * 16, spread, "standard", target)
+        ));
+        spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 34, enemy.y + enemy.h * 0.4, "#ff9b54", 18, 360, 0.38, 80);
+        sound.tone(112, 0.14, "square", 0.05, 0.42);
+        break;
+      case "hunter-rifle":
+        [-0.045, 0, 0.045].forEach((spread, index) => (
+          fireBullet(enemy, 610 + index * 35, spread, "phase", target)
+        ));
+        spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#a6f7ff", 14, 310, 0.32, 50);
         break;
       case "weaver-lance":
         [-220, 0, 220].forEach((offset, index) => summonMagicSigil(
@@ -5363,6 +5438,33 @@
 
     if (bossKind === "oracle") {
       enemy.shotgunSwapCooldown = Math.max(0, (enemy.shotgunSwapCooldown || 0) - dt);
+      if ((enemy.pendingShotgunSwapTimer || 0) > 0) {
+        const previousSwapTimer = enemy.pendingShotgunSwapTimer;
+        enemy.pendingShotgunSwapTimer = Math.max(0, enemy.pendingShotgunSwapTimer - dt);
+        if (previousSwapTimer > 0 && enemy.pendingShotgunSwapTimer <= 0) {
+          const returnedShotId = enemy.pendingShotId;
+          for (let index = bullets.length - 1; index >= 0; index -= 1) {
+            const bullet = bullets[index];
+            if (!bullet.enemy && bullet.kind === "shotgun" && bullet.shotId === returnedShotId) bullets.splice(index, 1);
+          }
+          swapBossWithPlayer(enemy, { grantInvincibility: false, shake: 9 });
+          player.invincible = 0;
+          launchOracleShotgunReturn(enemy, returnedShotId);
+          enemy.pendingShotId = null;
+          game.hint = "육화 · 위치 교환 완료 · 역상 산탄이 주인공에게 귀환";
+          game.hintTimer = 1.5;
+        }
+      }
+      if ((enemy.oracleReturnImpactTimer || 0) > 0) {
+        const previousImpactTimer = enemy.oracleReturnImpactTimer;
+        enemy.oracleReturnImpactTimer = Math.max(0, enemy.oracleReturnImpactTimer - dt);
+        if (previousImpactTimer > 0 && enemy.oracleReturnImpactTimer <= 0) {
+          damagePlayer(1, enemy.oracleReturnSourceX || enemy.x + enemy.w / 2);
+          spawnParticles(player.x + player.w / 2, player.y + player.h / 2, "#ff8cd8", 20, 380, 0.46, 620);
+          game.hint = "육화 · 역상 산탄 적중";
+          game.hintTimer = 1.25;
+        }
+      }
     }
 
     if (bossKind === "censor") {
@@ -5469,25 +5571,23 @@
         }
       } else if (bossKind === "hunter") {
         if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "hunter-shotgun", dx, 0.52);
+          enemy.cooldown = 1.7 * recovery;
+        } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.44;
           enemy.bossAction = "reflectRush";
           enemy.cooldown = 1.55 * recovery;
-        } else if (enemy.bossPhase === 1) {
+        } else if (enemy.bossPhase === 2) {
           enemy.windup = 0.34;
           enemy.bossAction = "mirrorStep";
           enemy.cooldown = 1.45 * recovery;
-        } else if (enemy.bossPhase === 2) {
-          enemy.windup = 0.38;
-          enemy.bossAction = "reflectRush";
-          enemy.cooldown = 1.35 * recovery;
         } else if (enemy.bossPhase === 3) {
-          enemy.windup = 0.3;
-          enemy.bossAction = "mirrorStep";
-          enemy.cooldown = 1.25 * recovery;
+          startBossChargedShot(enemy, "hunter-rifle", dx, 0.46);
+          enemy.cooldown = 1.55 * recovery;
         } else {
-          enemy.windup = 0.52;
+          enemy.windup = 0.48;
           enemy.bossAction = "reflectRush";
-          enemy.cooldown = 1.7 * recovery;
+          enemy.cooldown = 1.6 * recovery;
         }
       } else if (bossKind === "oracle") {
         if (enemy.bossPhase === 0) {
@@ -10130,7 +10230,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.4",
+    version: "2.1.5",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10157,10 +10257,15 @@
     breakerFunnels: false,
     shieldGuardHits: SHIELD_GUARD_HITS,
     shieldAirGuard: true,
+    zoneSigns: zones.length,
+    hunterRangedAttacks: true,
+    oracleShotgunSwapDelay: 0.12,
+    oracleReturnImpactDelay: 0.24,
+    oracleReturnDamagesPlayer: true,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.4",
+    gameVersion: "2.1.5",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10195,6 +10300,11 @@
     breakerFunnels: "false",
     shieldGuardHits: String(SHIELD_GUARD_HITS),
     shieldAirGuard: "true",
+    zoneSignCount: String(zones.length),
+    hunterRangedAttacks: "true",
+    oracleShotgunSwapDelay: "0.12",
+    oracleReturnImpactDelay: "0.24",
+    oracleReturnDamagesPlayer: "true",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
