@@ -113,12 +113,12 @@
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const TUTORIAL_STEPS = Object.freeze([
-    { id: "move", title: "이동과 기본 점프", instruction: "A/D 또는 왼쪽 스틱으로 이동하고 SPACE/점프로 장애물을 넘으세요.", gateX: 720 },
-    { id: "doubleJump", title: "이중 점프", instruction: "공중에서 SPACE/점프를 한 번 더 눌러 높은 발판에 오르세요.", gateX: 1380 },
-    { id: "wallJump", title: "벽타기와 벽점프", instruction: "벽 쪽으로 이동하며 W/스틱 위로 타고, SPACE/점프로 벽을 차세요.", gateX: 2200 },
-    { id: "burst", title: "버스트", instruction: "E 또는 버스트 버튼으로 충격파를 사용해 훈련문을 해제하세요.", gateX: 2880 },
-    { id: "combat", title: "발도와 샷건", instruction: "좌클릭/발도와 우클릭/샷건을 각각 한 번 사용하세요.", gateX: 3560 },
-    { id: "exit", title: "훈련장 통과", instruction: "오른쪽 출구까지 이동해 첫 작전을 시작하세요.", gateX: 3820 },
+    { id: "move", title: "이동과 기본 점프", instruction: "표시된 구역 안에서 이동하고 SPACE/점프로 장애물을 넘으세요.", minX: 120, maxX: 690, gateX: 720 },
+    { id: "doubleJump", title: "이중 점프", instruction: "표시된 구역 안에서 공중 점프를 한 번 더 사용해 높은 발판에 오르세요.", minX: 760, maxX: 1360, gateX: 1380 },
+    { id: "wallJump", title: "벽타기와 벽점프", instruction: "표시된 수직 훈련 구역에서 벽을 타고 점프로 벽을 차세요.", minX: 1460, maxX: 2170, gateX: 2200 },
+    { id: "burst", title: "버스트", instruction: "표시된 구역 안에서 E 또는 버스트 버튼으로 충격파를 사용하세요.", minX: 2280, maxX: 2860, gateX: 2880 },
+    { id: "combat", title: "발도와 샷건", instruction: "표시된 무장 구역 안에서 좌클릭 발도와 우클릭 샷건을 각각 사용하세요.", minX: 3000, maxX: 3520, gateX: 3560 },
+    { id: "exit", title: "훈련장 통과", instruction: "표시된 마지막 구역을 지나 오른쪽 출구까지 이동하세요.", minX: 3600, maxX: 3900, gateX: 3820 },
   ]);
   const TUTORIAL_END_X = ZONE_W - 180;
 
@@ -3043,11 +3043,18 @@
     return TUTORIAL_STEPS[clamp(game.tutorialStep, 0, TUTORIAL_STEPS.length - 1)];
   }
 
+  function isPlayerInTutorialStepZone(step = getTutorialStep()) {
+    if (!step) return false;
+    const playerCenterX = player.x + player.w / 2;
+    return playerCenterX >= step.minX && playerCenterX <= step.maxX;
+  }
+
   function syncTutorialDataset() {
     document.documentElement.dataset.tutorialActive = String(game.tutorialActive);
     document.documentElement.dataset.tutorialCompleted = String(game.tutorialCompleted);
     document.documentElement.dataset.tutorialStep = String(game.tutorialStep);
     document.documentElement.dataset.tutorialCurrentSkill = game.tutorialActive ? getTutorialStep()?.id || "" : "";
+    document.documentElement.dataset.tutorialInRequiredZone = String(game.tutorialActive && isPlayerInTutorialStepZone());
     document.documentElement.dataset.tutorialPlayerX = String(Math.round(player.x));
     document.documentElement.dataset.tutorialPlayerY = String(Math.round(player.y));
   }
@@ -3065,6 +3072,11 @@
       shotgun: "combat",
     }[signal];
     if (expected && step.id !== expected) return false;
+    if (!isPlayerInTutorialStepZone(step)) {
+      game.hint = `${step.title} 훈련 구역 안에서 사용해야 인정됩니다.`;
+      game.hintTimer = Math.max(game.hintTimer, 1.35);
+      return false;
+    }
     game.tutorialSignals[signal] = true;
     return true;
   }
@@ -3110,12 +3122,13 @@
     if (!step) return;
 
     let completed = false;
-    if (step.id === "move") completed = game.tutorialSignals.groundJump && player.x > 500;
-    else if (step.id === "doubleJump") completed = game.tutorialSignals.doubleJump;
-    else if (step.id === "wallJump") completed = game.tutorialSignals.wallJump;
-    else if (step.id === "burst") completed = game.tutorialSignals.burst;
-    else if (step.id === "combat") completed = game.tutorialSignals.slash && game.tutorialSignals.shotgun;
-    else if (step.id === "exit") completed = player.x > TUTORIAL_END_X - 120;
+    const inRequiredZone = isPlayerInTutorialStepZone(step);
+    if (step.id === "move") completed = inRequiredZone && game.tutorialSignals.groundJump && player.x > 500;
+    else if (step.id === "doubleJump") completed = inRequiredZone && game.tutorialSignals.doubleJump;
+    else if (step.id === "wallJump") completed = inRequiredZone && game.tutorialSignals.wallJump;
+    else if (step.id === "burst") completed = inRequiredZone && game.tutorialSignals.burst;
+    else if (step.id === "combat") completed = inRequiredZone && game.tutorialSignals.slash && game.tutorialSignals.shotgun;
+    else if (step.id === "exit") completed = inRequiredZone && player.x > TUTORIAL_END_X - 120;
     if (completed) {
       advanceTutorialStep();
       return;
@@ -3145,7 +3158,7 @@
         <article><kbd>좌클릭</kbd><b>발도</b><span>근접 공격과 총알 쳐내기를 사용합니다.</span></article>
         <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>`;
     }
-    if (description) description.textContent = "훈련장 안의 여섯 과제를 순서대로 완료하면 첫 작전 구역이 열립니다. 모바일에서는 왼쪽 스틱과 오른쪽 조작 버튼을 사용하세요.";
+    if (description) description.textContent = "여섯 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
     if (tutorialClose) tutorialClose.textContent = "훈련 시작";
   }
 
@@ -9338,6 +9351,11 @@
       const cleared = game.tutorialCompleted || game.tutorialStep > index;
       const current = game.tutorialActive && game.tutorialStep === index;
       const alpha = cleared ? 0.18 : current ? 0.82 : 0.38;
+      ctx.fillStyle = current ? "rgba(255,218,134,0.13)" : cleared ? "rgba(101,245,234,0.045)" : "rgba(129,146,154,0.025)";
+      ctx.fillRect(step.minX, floorY - 12, step.maxX - step.minX, 12);
+      ctx.strokeStyle = current ? "rgba(255,218,134,0.68)" : cleared ? "rgba(101,245,234,0.24)" : "rgba(129,146,154,0.16)";
+      ctx.lineWidth = current ? 2 : 1;
+      ctx.strokeRect(step.minX, floorY - 12, step.maxX - step.minX, 12);
       ctx.fillStyle = cleared ? `rgba(101,245,234,${alpha})` : `rgba(255,205,112,${alpha})`;
       ctx.fillRect(step.gateX - (current ? 6 : 3), 165, current ? 12 : 6, floorY - 165);
       ctx.strokeStyle = cleared ? "rgba(101,245,234,0.34)" : "rgba(255,205,112,0.5)";
@@ -9348,6 +9366,11 @@
       ctx.font = "900 11px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`${String(index + 1).padStart(2, "0")} // ${step.title}`, step.gateX - 5, 142);
+      if (current) {
+        ctx.font = "900 10px 'Malgun Gothic', sans-serif";
+        ctx.fillStyle = "#ffda86";
+        ctx.fillText("이 표시 구역 안에서 수행", (step.minX + step.maxX) / 2, floorY - 22);
+      }
     });
 
     // Holographic silhouettes for the final weapon check.
@@ -10623,7 +10646,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.0",
+    version: "2.2.1",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10653,10 +10676,14 @@
     tutorialStage: true,
     tutorialSteps: TUTORIAL_STEPS.length,
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
+    tutorialStrictZones: true,
+    tutorialRanges: TUTORIAL_STEPS.map(({ id, minX, maxX }) => ({ id, minX, maxX })),
     tutorialActive: game.tutorialActive,
     tutorialCompleted: game.tutorialCompleted,
     tutorialStep: game.tutorialStep,
     tutorialCurrentSkill: game.tutorialActive ? getTutorialStep()?.id || null : null,
+    tutorialInRequiredZone: game.tutorialActive && isPlayerInTutorialStepZone(),
+    tutorialSignals: { ...game.tutorialSignals },
     shieldBaseHp: SHIELD_BASE_HP,
     shotgunDamage: SHOTGUN_DAMAGE,
     shotgunPelletLife: SHOTGUN_PELLET_LIFE,
@@ -10672,7 +10699,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.0",
+    gameVersion: "2.2.1",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10711,6 +10738,8 @@
     tutorialStage: "true",
     tutorialSteps: String(TUTORIAL_STEPS.length),
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id).join(","),
+    tutorialStrictZones: "true",
+    tutorialRanges: TUTORIAL_STEPS.map((step) => `${step.id}:${step.minX}-${step.maxX}`).join(","),
     shotgunDamage: String(SHOTGUN_DAMAGE),
     shotgunPelletLife: String(SHOTGUN_PELLET_LIFE),
     overchargedShotgunPelletLife: String(OVERCHARGED_SHOTGUN_PELLET_LIFE),
