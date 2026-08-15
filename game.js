@@ -97,6 +97,10 @@
   const SHIELD_GUARD_HITS = 2;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
+  const PERFECT_PARRY_WINDOW = 0.055;
+  const PARRY_REFLECT_SPEED_MULTIPLIER = 1.25;
+  const PARRY_REFLECT_MIN_SPEED = 560;
+  const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -985,6 +989,9 @@
     attackCooldown: 0,
     attackId: 0,
     adminEraseAttackId: -1,
+    perfectParryAttackId: -1,
+    perfectParryFlash: 0,
+    perfectParryCount: 0,
     attackDir: { x: 1, y: -0.2 },
     invincible: 0,
     hp: 5,
@@ -2853,6 +2860,9 @@
       attackCooldown: 0,
       attackId: 0,
       adminEraseAttackId: -1,
+      perfectParryAttackId: -1,
+      perfectParryFlash: 0,
+      perfectParryCount: 0,
       invincible: 0,
       hp: difficulty.hp,
       maxHp: difficulty.hp,
@@ -3652,6 +3662,61 @@
     return elapsed > player.attackDuration * 0.14 && elapsed < player.attackDuration * 0.8;
   }
 
+  function isPerfectParryWindow() {
+    if (!isAttackActive()) return false;
+    const elapsed = player.attackDuration - player.attackTimer;
+    const activeStart = player.attackDuration * 0.14;
+    return elapsed <= activeStart + PERFECT_PARRY_WINDOW;
+  }
+
+  function canPerfectParryBullet(bullet) {
+    return Boolean(
+      bullet?.enemy
+      && !bullet.harmless
+      && Number.isFinite(bullet.vx)
+      && Number.isFinite(bullet.vy)
+      && Math.hypot(bullet.vx, bullet.vy) > 1,
+    );
+  }
+
+  function reflectPerfectParryBullet(bullet) {
+    const centerX = bullet.x + bullet.w / 2;
+    const centerY = bullet.y + bullet.h / 2;
+    const incomingSpeed = Math.max(1, Math.hypot(bullet.vx, bullet.vy));
+    const reflectedSpeed = Math.max(PARRY_REFLECT_MIN_SPEED, incomingSpeed * PARRY_REFLECT_SPEED_MULTIPLIER);
+    const reverseX = -bullet.vx / incomingSpeed;
+    const reverseY = -bullet.vy / incomingSpeed;
+
+    bullet.enemy = false;
+    bullet.harmless = false;
+    bullet.kind = "parried-bullet";
+    bullet.vx = reverseX * reflectedSpeed;
+    bullet.vy = reverseY * reflectedSpeed;
+    bullet.gravity = 0;
+    bullet.life = Math.max(1.4, Math.min(3.4, Number(bullet.life) || 2.2));
+    bullet.maxLife = bullet.life;
+    bullet.damage = Math.max(1, Number(bullet.damage) || 1);
+    bullet.piercing = false;
+    bullet.shotId = ++player.shotId;
+    bullet.color = "#9ffcff";
+    bullet.perfectParry = true;
+
+    spawnParticles(centerX, centerY, "#9ffcff", 18, 520, 0.48, 0);
+    spawnParticles(centerX, centerY, palette.white, 10, 350, 0.32, 0);
+    if (player.perfectParryAttackId !== player.attackId) {
+      player.perfectParryAttackId = player.attackId;
+      player.perfectParryCount += 1;
+      player.perfectParryFlash = 0.18;
+      game.freeze = Math.max(game.freeze, 0.09);
+      game.shake = Math.max(game.shake, 8);
+      game.flash = Math.max(game.flash, 0.12);
+      game.hint = "정확 패링 · 탄환 반사";
+      game.hintTimer = 1.25;
+      sound.tone(760, 0.12, "sine", 0.045, 1.75);
+      sound.tone(380, 0.08, "square", 0.022, 1.4);
+    }
+  }
+
   function damageEnemy(enemy) {
     if (!enemy.alive || enemy.hitAttackId === player.attackId) return;
     enemy.hitAttackId = player.attackId;
@@ -3916,8 +3981,11 @@
       queueStory(victoryStories[rank]);
       saveCampaign();
       if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
-    } else if (countKill && !silent && game.kills % 7 === 0 && player.hp < player.maxHp) {
-      addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
+    } else if (countKill && !silent && player.hp < player.maxHp) {
+      const repairDropRoll = hash(enemy.originX * 0.017 + enemy.spawnY * 0.031 + game.kills * 9.73);
+      if (repairDropRoll < NORMAL_ENEMY_REPAIR_DROP_CHANCE) {
+        addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
+      }
     }
   }
 
@@ -4893,6 +4961,7 @@
     const impactVelocity = player.vy;
     player.attackTimer = Math.max(0, player.attackTimer - dt);
     player.attackCooldown = Math.max(0, player.attackCooldown - dt);
+    player.perfectParryFlash = Math.max(0, player.perfectParryFlash - dt);
     player.invincible = Math.max(0, player.invincible - dt);
     player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
     player.comboTimer = Math.max(0, player.comboTimer - dt);
@@ -5058,8 +5127,13 @@
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
         if (bullets[i].enemy && overlaps(hitbox, bullets[i])) {
-          spawnParticles(bullets[i].x, bullets[i].y, palette.cyan, 5, 180, 0.25, 0);
-          bullets.splice(i, 1);
+          const perfectParry = isPerfectParryWindow() && canPerfectParryBullet(bullets[i]);
+          if (perfectParry) {
+            reflectPerfectParryBullet(bullets[i]);
+          } else {
+            spawnParticles(bullets[i].x, bullets[i].y, palette.cyan, 5, 180, 0.25, 0);
+            bullets.splice(i, 1);
+          }
           player.shotgunCharge = Math.min(3, player.shotgunCharge + 0.42);
           if (!player.grounded) player.airJumpAvailable = true;
         }
@@ -7157,6 +7231,26 @@
       ctx.restore();
     }
 
+    if (player.perfectParryFlash > 0) {
+      const flashProgress = 1 - player.perfectParryFlash / 0.18;
+      const centerX = player.x + player.w / 2;
+      const centerY = player.y + player.h / 2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 1 - flashProgress;
+      ctx.strokeStyle = "#9ffcff";
+      ctx.lineWidth = 7 - flashProgress * 4;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 42 + flashProgress * 58, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = palette.white;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 31 + flashProgress * 74, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     if (player.burstTimer > 0) {
       const progress = 1 - player.burstTimer / 0.38;
       const radius = 48 + progress * 115;
@@ -8655,6 +8749,27 @@
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(-7, 0, 31, -0.72, 0.72);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "parried-bullet") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(159, 252, 255, 0.24)";
+      ctx.fillRect(-34, -7, 48, 14);
+      ctx.fillStyle = "#9ffcff";
+      ctx.beginPath();
+      ctx.moveTo(17, 0);
+      ctx.lineTo(-3, -7);
+      ctx.lineTo(-13, 0);
+      ctx.lineTo(-3, 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
       return;
@@ -10230,7 +10345,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.6",
+    version: "2.1.7",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10253,6 +10368,10 @@
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
     slashBulletDeflect: true,
+    perfectParryReflect: true,
+    perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
+    perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
+    normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     shotgunDamage: SHOTGUN_DAMAGE,
     shotgunPelletLife: SHOTGUN_PELLET_LIFE,
     overchargedShotgunPelletLife: OVERCHARGED_SHOTGUN_PELLET_LIFE,
@@ -10267,7 +10386,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.6",
+    gameVersion: "2.1.7",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10299,6 +10418,10 @@
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
     slashBulletDeflect: "true",
+    perfectParryReflect: "true",
+    perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
+    perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
+    normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     shotgunDamage: String(SHOTGUN_DAMAGE),
     shotgunPelletLife: String(SHOTGUN_PELLET_LIFE),
     overchargedShotgunPelletLife: String(OVERCHARGED_SHOTGUN_PELLET_LIFE),
