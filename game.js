@@ -97,7 +97,7 @@
   const SHIELD_GUARD_HITS = 2;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
-  const PERFECT_PARRY_WINDOW = 0.025;
+  const PERFECT_PARRY_WINDOW = 0.005;
   const PARRY_REFLECT_SPEED_MULTIPLIER = 1.25;
   const PARRY_REFLECT_MIN_SPEED = 560;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
@@ -10345,7 +10345,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.8",
+    version: "2.1.9",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10386,7 +10386,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.8",
+    gameVersion: "2.1.9",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
