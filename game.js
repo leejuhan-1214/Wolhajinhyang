@@ -95,6 +95,7 @@
   const OVERCHARGED_SHOTGUN_PELLET_LIFE = 0.4;
   const OVERCHARGED_SHOTGUN_PELLETS = 7;
   const SHIELD_GUARD_HITS = 2;
+  const SHIELD_BASE_HP = 6;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const PERFECT_PARRY_WINDOW = 0.005;
@@ -111,6 +112,15 @@
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
+  const TUTORIAL_STEPS = Object.freeze([
+    { id: "move", title: "이동과 기본 점프", instruction: "A/D 또는 왼쪽 스틱으로 이동하고 SPACE/점프로 장애물을 넘으세요.", gateX: 720 },
+    { id: "doubleJump", title: "이중 점프", instruction: "공중에서 SPACE/점프를 한 번 더 눌러 높은 발판에 오르세요.", gateX: 1380 },
+    { id: "wallJump", title: "벽타기와 벽점프", instruction: "벽 쪽으로 이동하며 W/스틱 위로 타고, SPACE/점프로 벽을 차세요.", gateX: 2200 },
+    { id: "burst", title: "버스트", instruction: "E 또는 버스트 버튼으로 충격파를 사용해 훈련문을 해제하세요.", gateX: 2880 },
+    { id: "combat", title: "발도와 샷건", instruction: "좌클릭/발도와 우클릭/샷건을 각각 한 번 사용하세요.", gateX: 3560 },
+    { id: "exit", title: "훈련장 통과", instruction: "오른쪽 출구까지 이동해 첫 작전을 시작하세요.", gateX: 3820 },
+  ]);
+  const TUTORIAL_END_X = ZONE_W - 180;
 
   const keys = new Set();
   const pressed = new Set();
@@ -182,6 +192,9 @@
     template: zoneTemplateRows[stageIndex][zoneIndex],
     stageIndex,
   })));
+  zones[0].template = "tutorial";
+  zones[0].name = "초승 훈련장";
+  zones[0].code = "TRAINING-00 · MOONLIT";
 
   const BOSS_DEFINITIONS = {
     warden: {
@@ -968,6 +981,11 @@
     cutsceneSeen: new Set(),
     arenaTitle: 0,
     tutorialOpen: false,
+    tutorialActive: false,
+    tutorialCompleted: false,
+    tutorialStep: 0,
+    tutorialPulse: 0,
+    tutorialSignals: {},
   };
 
   const camera = { x: 0, y: 0, lookX: 0 };
@@ -1403,7 +1421,7 @@
       piercer: [46, 58, 3],
       mortar: [54, 64, 4],
       drone: [50, 34, 1],
-      shield: [50, 66, 3],
+      shield: [50, 66, SHIELD_BASE_HP],
       boss: [...(BOSS_DEFINITIONS[stages[stageIndex].bossKind]?.size || [78, 92]), 16],
     };
     const [w, h, baseHp] = sizes[type];
@@ -2392,7 +2410,25 @@
       const origin = zone.x;
       const spawns = [];
 
-      if (zone.template === "terrace") {
+      if (zone.template === "tutorial") {
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "training");
+        // Basic jump and double-jump range.
+        [[360, -105, 250], [820, -205, 250], [1120, -365, 220]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, "training"));
+        // A narrow climbing shaft makes wall contact and wall jumping unambiguous.
+        addPlatform(origin + 1530, floorY - 405, 52, 405, "wall");
+        addPlatform(origin + 1970, floorY - 520, 52, 520, "wall");
+        [[1582, -130, 180], [1790, -265, 180], [1582, -410, 180], [2022, -520, 170]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "training"));
+        // Burst and combat practice lanes stay clear so the inputs are easy to read.
+        [[2320, -110, 300], [2700, -190, 260], [3050, -120, 260], [3380, -220, 260]]
+          .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "training"));
+        addSign(origin + 360, floorY - 185, "기초 기동", "이동 · 점프");
+        addSign(origin + 900, floorY - 285, "공중 기동", "이중 점프");
+        addSign(origin + 1650, floorY - 485, "수직 기동", "벽타기 · 벽점프");
+        addSign(origin + 2450, floorY - 190, "긴급 회피", "버스트");
+        addSign(origin + 3160, floorY - 205, "무장 점검", "발도 · 샷건");
+      } else if (zone.template === "terrace") {
         addPlatform(origin, floorY, 1550, WORLD_H - floorY, kind);
         addPlatform(origin + 1780, floorY - 40, 2220, WORLD_H - floorY + 40, kind);
         [[360, -120, 280], [810, -245, 250], [1260, -355, 250], [1880, -210, 310], [2420, -330, 280], [3040, -160, 340]].forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 28, kind));
@@ -2555,8 +2591,8 @@
         if (recoveryOffset !== undefined) addPickup(origin + recoveryOffset, floorY - 62, "repair");
       }
 
-      if (zone.template !== "boss" && zone.template !== "midboss") addZoneEnemies(zone, floorY, spawns);
-      if (zone.template !== "fork" && zone.template !== "boss" && zone.template !== "midboss") addPickup(origin + 2200, floorY - 310);
+      if (zone.template !== "tutorial" && zone.template !== "boss" && zone.template !== "midboss") addZoneEnemies(zone, floorY, spawns);
+      if (zone.template !== "tutorial" && zone.template !== "fork" && zone.template !== "boss" && zone.template !== "midboss") addPickup(origin + 2200, floorY - 310);
       // 화면 상단 안내 대신 월드 안에 직접 배치된 표지판으로 구역 구조를 안내한다.
       // addSign으로 만든 표지판은 관리자 월드 편집에서도 문구·위치·크기 수정이 가능하다.
       addSign(origin + 310, floorY - 112, zone.name, getZoneSignSub(zone, localZoneIndex));
@@ -2734,6 +2770,8 @@
         runTime: game.runTime,
         deaths: game.deaths,
         kills: game.kills,
+        tutorialCompleted: game.tutorialCompleted,
+        tutorialStep: game.tutorialStep,
         respawnX: player.respawnX,
         respawnY: player.respawnY,
         respawnStage: player.respawnStage,
@@ -2756,6 +2794,17 @@
 
   function restoreCampaign(saved) {
     const deadIds = new Set(saved.defeatedEnemyIds || []);
+    const legacyTutorialCompleted = (saved.respawnZone || 0) > 0
+      || (saved.respawnX || 0) >= ZONE_W
+      || deadIds.size > 0;
+    game.tutorialCompleted = saved.tutorialCompleted === undefined
+      ? legacyTutorialCompleted
+      : Boolean(saved.tutorialCompleted);
+    game.tutorialStep = game.tutorialCompleted
+      ? TUTORIAL_STEPS.length
+      : clamp(Number(saved.tutorialStep) || 0, 0, TUTORIAL_STEPS.length - 1);
+    game.tutorialActive = !game.tutorialCompleted && !game.adminMode && (saved.respawnStage || 0) === 0;
+    game.tutorialSignals = createTutorialSignals();
     const savedCountedIds = Array.isArray(saved.countedKillEnemyIds)
       ? new Set(saved.countedKillEnemyIds)
       : null;
@@ -2824,6 +2873,7 @@
     game.zone = clamp(zones.findLastIndex((zone) => player.x >= zone.x), 0, zones.length - 1);
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
+    game.burstUnlocked = game.tutorialCompleted || game.tutorialActive || player.x > 5200;
     camera.x = clamp(player.x - 300, 0, WORLD_W - W);
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.hint = `자동 저장 불러오기 · STAGE 0${game.stage + 1}`;
@@ -2934,9 +2984,18 @@
       cutsceneSeen: new Set(),
       arenaTitle: 0,
       tutorialOpen: false,
+      tutorialActive: false,
+      tutorialCompleted: false,
+      tutorialStep: 0,
+      tutorialPulse: 0,
+      tutorialSignals: createTutorialSignals(),
     });
     if (saved) restoreCampaign(saved);
     if (!saved) {
+      game.tutorialActive = !game.adminMode;
+      game.tutorialCompleted = game.adminMode;
+      game.burstUnlocked = true;
+      game.storyQueue = game.tutorialActive ? [] : INTRO_STORY.map((line) => ({ ...line }));
       if (checkpoints[0]) setRespawnCheckpoint(checkpoints[0], 0);
       camera.x = 0;
       camera.y = 0;
@@ -2949,7 +3008,8 @@
     startScreen.classList.remove("visible");
     pauseScreen.classList.remove("visible");
     endScreen.classList.remove("visible");
-    setTutorialPanel(!saved);
+    syncTutorialDataset();
+    setTutorialPanel(!saved && !game.adminMode);
     updateContinueButton();
     sound.wake();
   }
@@ -2966,6 +3026,127 @@
 
   function toggleAdminSpawnPanel() {
     return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
+  }
+
+  function createTutorialSignals() {
+    return {
+      groundJump: false,
+      doubleJump: false,
+      wallJump: false,
+      burst: false,
+      slash: false,
+      shotgun: false,
+    };
+  }
+
+  function getTutorialStep() {
+    return TUTORIAL_STEPS[clamp(game.tutorialStep, 0, TUTORIAL_STEPS.length - 1)];
+  }
+
+  function syncTutorialDataset() {
+    document.documentElement.dataset.tutorialActive = String(game.tutorialActive);
+    document.documentElement.dataset.tutorialCompleted = String(game.tutorialCompleted);
+    document.documentElement.dataset.tutorialStep = String(game.tutorialStep);
+    document.documentElement.dataset.tutorialCurrentSkill = game.tutorialActive ? getTutorialStep()?.id || "" : "";
+    document.documentElement.dataset.tutorialPlayerX = String(Math.round(player.x));
+    document.documentElement.dataset.tutorialPlayerY = String(Math.round(player.y));
+  }
+
+  function markTutorialSignal(signal) {
+    if (!game.tutorialActive || game.adminMode) return false;
+    const step = getTutorialStep();
+    if (!step) return false;
+    const expected = {
+      groundJump: "move",
+      doubleJump: "doubleJump",
+      wallJump: "wallJump",
+      burst: "burst",
+      slash: "combat",
+      shotgun: "combat",
+    }[signal];
+    if (expected && step.id !== expected) return false;
+    game.tutorialSignals[signal] = true;
+    return true;
+  }
+
+  function finishTutorialStage() {
+    if (!game.tutorialActive) return false;
+    game.tutorialActive = false;
+    game.tutorialCompleted = true;
+    game.tutorialStep = TUTORIAL_STEPS.length;
+    game.burstUnlocked = true;
+    game.stageTitle = 4.4;
+    game.zoneTitle = 0;
+    game.hint = "기동 훈련 완료 · 초승 훈련장을 나가 첫 작전을 시작하세요";
+    game.hintTimer = 5;
+    game.storyQueue.push(...INTRO_STORY.map((line) => ({ ...line })));
+    syncTutorialDataset();
+    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 32, 440, 0.75, 260);
+    sound.checkpoint();
+    saveCampaign();
+    return true;
+  }
+
+  function advanceTutorialStep() {
+    const completedStep = getTutorialStep();
+    game.tutorialStep += 1;
+    game.tutorialSignals = createTutorialSignals();
+    game.tutorialPulse = 1;
+    syncTutorialDataset();
+    if (game.tutorialStep >= TUTORIAL_STEPS.length) return finishTutorialStage();
+    const nextStep = getTutorialStep();
+    game.hint = `${completedStep.title} 완료 · 다음 훈련: ${nextStep.title}`;
+    game.hintTimer = 3.4;
+    spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 18, 300, 0.48, 180);
+    sound.tone(440 + game.tutorialStep * 45, 0.14, "sine", 0.032, 1.28);
+    return true;
+  }
+
+  function updateTutorialStage(dt) {
+    if (!game.tutorialActive || game.adminMode) return;
+    syncTutorialDataset();
+    game.tutorialPulse = Math.max(0, game.tutorialPulse - dt * 2.6);
+    const step = getTutorialStep();
+    if (!step) return;
+
+    let completed = false;
+    if (step.id === "move") completed = game.tutorialSignals.groundJump && player.x > 500;
+    else if (step.id === "doubleJump") completed = game.tutorialSignals.doubleJump;
+    else if (step.id === "wallJump") completed = game.tutorialSignals.wallJump;
+    else if (step.id === "burst") completed = game.tutorialSignals.burst;
+    else if (step.id === "combat") completed = game.tutorialSignals.slash && game.tutorialSignals.shotgun;
+    else if (step.id === "exit") completed = player.x > TUTORIAL_END_X - 120;
+    if (completed) {
+      advanceTutorialStep();
+      return;
+    }
+
+    const gateX = step.gateX;
+    if (player.x + player.w > gateX) {
+      player.x = gateX - player.w;
+      player.vx = Math.min(0, player.vx);
+      game.hint = `${step.title} 훈련을 먼저 완료하세요`;
+      game.hintTimer = Math.max(game.hintTimer, 1.1);
+    }
+  }
+
+  function prepareTutorialBriefing() {
+    if (!tutorialPanel) return;
+    const title = tutorialPanel.querySelector("header strong");
+    const grid = tutorialPanel.querySelector(".tutorial-grid");
+    const description = tutorialPanel.querySelector(":scope > p");
+    if (title) title.textContent = "초승 훈련장 · 실전 조작 훈련";
+    if (grid) {
+      grid.innerHTML = `
+        <article><kbd>A</kbd><kbd>D</kbd><b>이동</b><span>좌우 이동과 기본 점프를 연습합니다.</span></article>
+        <article><kbd>SPACE</kbd><b>이중 점프</b><span>공중에서 한 번 더 눌러 높이 오릅니다.</span></article>
+        <article><kbd>W</kbd><kbd>SPACE</kbd><b>벽타기</b><span>벽을 밀며 오르고 점프로 벽을 찹니다.</span></article>
+        <article><kbd>E</kbd><b>버스트</b><span>주변 탄환을 지우고 적을 밀어냅니다.</span></article>
+        <article><kbd>좌클릭</kbd><b>발도</b><span>근접 공격과 총알 쳐내기를 사용합니다.</span></article>
+        <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>`;
+    }
+    if (description) description.textContent = "훈련장 안의 여섯 과제를 순서대로 완료하면 첫 작전 구역이 열립니다. 모바일에서는 왼쪽 스틱과 오른쪽 조작 버튼을 사용하세요.";
+    if (tutorialClose) tutorialClose.textContent = "훈련 시작";
   }
 
   function setTutorialPanel(open) {
@@ -3486,6 +3667,7 @@
 
   function startShotgun(aimOverride = null) {
     if (game.mode !== "playing" || player.shotgunCooldown > 0 || player.shells <= 0) return;
+    markTutorialSignal("shotgun");
     const aim = aimOverride || getPointerAim();
     const overcharged = player.shotgunCharge >= 3;
     const pelletCount = overcharged ? OVERCHARGED_SHOTGUN_PELLETS : 6;
@@ -3555,6 +3737,7 @@
 
   function startAttack(aimOverride = null) {
     if (game.mode !== "playing" || player.attackCooldown > 0 || player.attackTimer > 0) return;
+    markTutorialSignal("slash");
 
     if (aimOverride) {
       const directionLength = Math.max(0.001, Math.hypot(aimOverride.x, aimOverride.y));
@@ -4848,6 +5031,7 @@
 
   function startBurst() {
     if (game.mode !== "playing" || !game.burstUnlocked || player.burstCooldown > 0) return;
+    markTutorialSignal("burst");
     player.burstCooldown = 2.6;
     player.burstTimer = 0.38;
     player.invincible = Math.max(player.invincible, 0.34);
@@ -5042,6 +5226,7 @@
     }
 
     if (player.jumpBuffer > 0 && !player.grounded && (player.wallLeft || player.wallRight)) {
+      markTutorialSignal("wallJump");
       const wallDirection = player.wallLeft ? 1 : -1;
       player.vx = wallDirection * 520;
       player.vy = -690;
@@ -5053,6 +5238,7 @@
       spawnParticles(player.x + (player.wallLeft ? 0 : player.w), player.y + player.h / 2, palette.cyan, 10, 220, 0.35, 360);
       sound.tone(230, 0.1, "square", 0.025, 1.45);
     } else if (player.jumpBuffer > 0 && player.coyote > 0) {
+      markTutorialSignal("groundJump");
       player.vy = -715;
       player.grounded = false;
       player.coyote = 0;
@@ -5062,6 +5248,7 @@
       spawnParticles(player.x + player.w / 2, player.y + player.h, "#a8d8df", 7, 130, 0.28, 300);
       sound.tone(190, 0.1, "square", 0.025, 1.7);
     } else if (player.jumpBuffer > 0 && !player.grounded && player.airJumpAvailable) {
+      markTutorialSignal("doubleJump");
       player.vy = -675;
       player.airJumpAvailable = false;
       player.landingImpactArmed = true;
@@ -6242,6 +6429,7 @@
     const activeEnemies = getActiveEnemies();
     enforceEnemyLockdowns(activeEnemies);
     updatePlayer(dt);
+    updateTutorialStage(dt);
     for (const enemy of activeEnemies) updateEnemy(enemy, dt);
     resolveEnemySeparation(activeEnemies);
     resolvePlayerEnemyOverlap(activeEnemies);
@@ -9131,6 +9319,55 @@
     }
   }
 
+  function drawTutorialStageScenery(left, right) {
+    if (left > ZONE_W + 200 || right < -200) return;
+    const floorY = 640;
+    ctx.save();
+    ctx.fillStyle = "rgba(101, 245, 234, 0.045)";
+    ctx.fillRect(0, 120, ZONE_W, floorY - 120);
+    ctx.strokeStyle = "rgba(101, 245, 234, 0.12)";
+    ctx.lineWidth = 1;
+    for (let x = 80; x < ZONE_W; x += 160) {
+      ctx.beginPath();
+      ctx.moveTo(x, 160);
+      ctx.lineTo(x, floorY);
+      ctx.stroke();
+    }
+
+    TUTORIAL_STEPS.forEach((step, index) => {
+      const cleared = game.tutorialCompleted || game.tutorialStep > index;
+      const current = game.tutorialActive && game.tutorialStep === index;
+      const alpha = cleared ? 0.18 : current ? 0.82 : 0.38;
+      ctx.fillStyle = cleared ? `rgba(101,245,234,${alpha})` : `rgba(255,205,112,${alpha})`;
+      ctx.fillRect(step.gateX - (current ? 6 : 3), 165, current ? 12 : 6, floorY - 165);
+      ctx.strokeStyle = cleared ? "rgba(101,245,234,0.34)" : "rgba(255,205,112,0.5)";
+      ctx.setLineDash([10, 8]);
+      ctx.strokeRect(step.gateX - 14, 165, 28, floorY - 165);
+      ctx.setLineDash([]);
+      ctx.fillStyle = cleared ? "#65f5ea" : current ? "#ffda86" : "#81929a";
+      ctx.font = "900 11px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`${String(index + 1).padStart(2, "0")} // ${step.title}`, step.gateX - 5, 142);
+    });
+
+    // Holographic silhouettes for the final weapon check.
+    [3180, 3440].forEach((x, index) => {
+      const pulse = 0.45 + Math.sin(game.time * 4 + index) * 0.18;
+      ctx.strokeStyle = `rgba(101,245,234,${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, floorY - 104, 42, 104);
+      ctx.beginPath();
+      ctx.arc(x + 21, floorY - 78, 12, 0, TAU);
+      ctx.moveTo(x + 21, floorY - 66);
+      ctx.lineTo(x + 21, floorY - 24);
+      ctx.moveTo(x + 4, floorY - 52);
+      ctx.lineTo(x + 38, floorY - 52);
+      ctx.stroke();
+    });
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
+
   function drawWorld() {
     const effectiveShake = game.cutscene || game.story ? 0 : game.shake * SCREEN_SHAKE_SCALE;
     const shakeX = effectiveShake > 0 ? (hash(game.time * 1000) - 0.5) * effectiveShake : 0;
@@ -9141,6 +9378,7 @@
     const left = camera.x - 200;
     const right = camera.x + W + 200;
     drawBossArenaBackdrop(left, right);
+    drawTutorialStageScenery(left, right);
     for (const backdrop of adminBackdrops) if (!backdrop.hidden && backdrop.x + backdrop.w > left && backdrop.x < right) drawAdminBackdrop(backdrop);
     for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
     for (const platform of platforms) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
@@ -9572,6 +9810,43 @@
     ctx.restore();
   }
 
+  function drawTutorialHud() {
+    if (!game.tutorialActive) return;
+    const step = getTutorialStep();
+    if (!step) return;
+    const panelW = Math.min(620, W - 44);
+    const panelX = (W - panelW) / 2;
+    const panelY = 24;
+    ctx.save();
+    ctx.fillStyle = "rgba(3, 10, 18, 0.93)";
+    ctx.fillRect(panelX, panelY, panelW, 94);
+    ctx.strokeStyle = game.tutorialPulse > 0 ? palette.white : palette.cyan;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, 94);
+    ctx.fillStyle = palette.cyan;
+    ctx.fillRect(panelX, panelY, 5, 94);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font = "900 10px monospace";
+    ctx.fillStyle = "#80a7b2";
+    ctx.fillText(`MOONLIT MOBILITY COURSE // ${game.tutorialStep + 1}/${TUTORIAL_STEPS.length}`, W / 2, panelY + 10);
+    ctx.font = "900 18px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = game.tutorialPulse > 0 ? palette.white : palette.cyan;
+    ctx.fillText(step.title, W / 2, panelY + 29);
+    ctx.font = "800 12px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = "#d8e7e9";
+    ctx.fillText(step.instruction, W / 2, panelY + 55);
+    const dotStart = W / 2 - ((TUTORIAL_STEPS.length - 1) * 13) / 2;
+    TUTORIAL_STEPS.forEach((_, index) => {
+      ctx.fillStyle = index < game.tutorialStep ? palette.cyan : index === game.tutorialStep ? palette.amber : "#30434d";
+      ctx.beginPath();
+      ctx.arc(dotStart + index * 13, panelY + 82, index === game.tutorialStep ? 4 : 3, 0, TAU);
+      ctx.fill();
+    });
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
+
   function drawHud() {
     ctx.save();
     ctx.textBaseline = "top";
@@ -9603,6 +9878,8 @@
       ctx.fillText("현재 위치 유지 · 적 공격·피해·봉쇄 활성화 · R 관리자 복귀", W / 2, 125);
       ctx.textAlign = "left";
     }
+
+    drawTutorialHud();
 
     ctx.save();
     ctx.translate(7, 7);
@@ -10342,10 +10619,11 @@
   }
 
   applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
+  prepareTutorialBriefing();
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.1.9",
+    version: "2.2.0",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10372,6 +10650,14 @@
     perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
+    tutorialStage: true,
+    tutorialSteps: TUTORIAL_STEPS.length,
+    tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
+    tutorialActive: game.tutorialActive,
+    tutorialCompleted: game.tutorialCompleted,
+    tutorialStep: game.tutorialStep,
+    tutorialCurrentSkill: game.tutorialActive ? getTutorialStep()?.id || null : null,
+    shieldBaseHp: SHIELD_BASE_HP,
     shotgunDamage: SHOTGUN_DAMAGE,
     shotgunPelletLife: SHOTGUN_PELLET_LIFE,
     overchargedShotgunPelletLife: OVERCHARGED_SHOTGUN_PELLET_LIFE,
@@ -10386,7 +10672,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.1.9",
+    gameVersion: "2.2.0",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10399,7 +10685,7 @@
     midBossHp: stages.map((stage) => `${stage.midBossKind}:${BOSS_DEFINITIONS[stage.midBossKind].hp}`).join(","),
     bossHp: stages.map((stage) => `${stage.bossKind}:${BOSS_DEFINITIONS[stage.bossKind].hp}`).join(","),
     bossDeathPickupSuppressed: "true",
-    shieldBaseHp: "3",
+    shieldBaseHp: String(SHIELD_BASE_HP),
     shieldGuardMax: "2",
     shieldBreakSeconds: "3.2",
     shieldAttackCooldown: "2.15",
@@ -10422,6 +10708,9 @@
     perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
+    tutorialStage: "true",
+    tutorialSteps: String(TUTORIAL_STEPS.length),
+    tutorialSkills: TUTORIAL_STEPS.map((step) => step.id).join(","),
     shotgunDamage: String(SHOTGUN_DAMAGE),
     shotgunPelletLife: String(SHOTGUN_PELLET_LIFE),
     overchargedShotgunPelletLife: String(OVERCHARGED_SHOTGUN_PELLET_LIFE),
