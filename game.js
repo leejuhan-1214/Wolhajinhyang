@@ -1048,16 +1048,11 @@
     runCycle: 0,
   };
 
-  function getBossRewardLevel() {
-    return stages.reduce((count, stage) => count + (game.defeatedBosses.has(stage.bossKind) ? 1 : 0), 0);
-  }
-
   function applyBossRewards({ refill = false } = {}) {
-    const rewardLevel = getBossRewardLevel();
     const baseHp = difficultySettings[game.difficulty]?.hp || 5;
-    player.rewardPower = rewardLevel;
-    player.maxHp = baseHp + Math.ceil(rewardLevel / 2);
-    player.maxShells = 2 + Math.floor(rewardLevel / 2);
+    player.rewardPower = 0;
+    player.maxHp = baseHp;
+    player.maxShells = 2;
     if (refill) {
       player.hp = player.maxHp;
       player.shells = player.maxShells;
@@ -4155,8 +4150,6 @@
         if (summon.alive && summon.summonedByBossId === enemy.id) killEnemy(summon, { silent: true, countKill: false });
       }
       if (enemy.isMidBoss) {
-        player.hp = Math.min(player.maxHp, player.hp + 2);
-        player.airJumpAvailable = true;
         game.hint = `${BOSS_DEFINITIONS[kind].name} 격파 · 후반 작전 구역 개방`;
         game.hintTimer = 6;
         queueStory(MIDBOSS_VICTORY_STORIES[rank]);
@@ -4165,14 +4158,13 @@
         return;
       }
       game.defeatedBosses.add(kind);
-      applyBossRewards({ refill: true });
       game.stageClearTimes[rank] = game.runTime;
       game.stageBossDefeated = game.defeatedBosses.has("warden");
       game.bossDefeated = game.defeatedBosses.has("echo");
       const nextStage = stages[rank + 1];
       game.hint = nextStage
-        ? `${BOSS_DEFINITIONS[kind].name} 격파 · 보상 LV.${player.rewardPower} · 체력·탄창·공격력 강화 — ${nextStage.name} 진입`
-        : "거울 규약 해제 · 최종 보상 완성 — 모든 증언을 도시로 송신";
+        ? `${BOSS_DEFINITIONS[kind].name} 격파 · ${nextStage.name} 진입`
+        : "거울 규약 해제 · 모든 증언을 도시로 송신";
       game.hintTimer = 8;
       const victoryStories = [
         [
@@ -4723,8 +4715,8 @@
         orbitIndex: index,
         orbitCount: count,
         formationSide,
-        shotTimer: 0.72 + index * 0.1,
-        shotsLeft: 2,
+        shotTimer: 0.38 + index * 0.055,
+        shotsLeft: 5,
         color: "#ff496c",
       });
     }
@@ -4923,7 +4915,7 @@
         fireWardenBeam(enemy, target);
         break;
       case "breaker-laser":
-        fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 2, color: "#ffcd70", beamStyle: "breaker" });
+        fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
         break;
       case "furnace-mortar":
         [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
@@ -6241,7 +6233,7 @@
             "#ff496c",
           );
           bullet.shotsLeft -= 1;
-          bullet.shotTimer = 0.82 + bullet.orbitIndex * 0.035;
+          bullet.shotTimer = 0.36 + bullet.orbitIndex * 0.018;
         }
         continue;
       }
@@ -10109,11 +10101,6 @@
     ctx.fillText(game.adminMode ? "관리자 권한 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
     ctx.textAlign = "left";
 
-    if (player.rewardPower > 0) {
-      ctx.fillStyle = palette.amber;
-      ctx.font = "800 9px monospace";
-      ctx.fillText(`BOSS REWARD LV.${player.rewardPower}  ATK +${(player.rewardPower * 0.2).toFixed(1)}`, W - 312, 99);
-    }
 
     const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
     if (boss) {
@@ -10739,7 +10726,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.3",
+    version: "2.2.4",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10754,10 +10741,11 @@
     bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
     bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
-    bossRewardLevel: player.rewardPower,
+    bossRewardsEnabled: false,
+    midBossHealReward: false,
     gongmunSwordMotion: true,
     cheolgakFunnelFormation: "single-side",
-    cheolgakFunnelShots: 2,
+    cheolgakFunnelShots: 5,
     empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
@@ -10770,7 +10758,8 @@
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
     hunterDashTelegraphRange: HUNTER_DASH_RANGE,
     breakerHalfHpLaser: true,
-    breakerBeamDamage: 2,
+    breakerBeamDamage: 1,
+    wardenBeamDamage: 2,
     enemyViewportDespawn: false,
     enemyWorldKillPlaneOnly: true,
     tutorialStage: true,
@@ -10799,7 +10788,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.3",
+    gameVersion: "2.2.4",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10822,10 +10811,13 @@
     adminFlightSpeed: String(INPUT_TUNING.moveSpeed * 2),
     jeokrinPermanentReflect: "true",
     yukhwaShotgunSwap: "true",
-    bossRewardDamagePerLevel: "0.2",
+    bossRewardsEnabled: "false",
+    midBossHealReward: "false",
+    bossRewardDamagePerLevel: "0",
     gongmunSwordMotion: "true",
     cheolgakFunnelFormation: "single-side",
-    cheolgakFunnelShots: "2",
+    cheolgakFunnelShots: "5",
+    cheolgakFunnelShotInterval: "0.36",
     empoweredSlashBonus: String(EMPOWERED_SLASH_BONUS),
     chargedSlashBonus: String(CHARGED_SLASH_BONUS),
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
@@ -10839,7 +10831,8 @@
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
     hunterDashTelegraphRange: String(HUNTER_DASH_RANGE),
     breakerHalfHpLaser: "true",
-    breakerBeamDamage: "2",
+    breakerBeamDamage: "1",
+    wardenBeamDamage: "2",
     enemyViewportDespawn: "false",
     enemyWorldKillPlaneOnly: "true",
     tutorialStage: "true",
