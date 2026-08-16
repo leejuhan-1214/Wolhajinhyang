@@ -102,6 +102,8 @@
   const PARRY_REFLECT_SPEED_MULTIPLIER = 1.25;
   const PARRY_REFLECT_MIN_SPEED = 560;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
+  const HUNTER_REFLECT_BREAK_SECONDS = 2.2;
+  const HUNTER_DASH_RANGE = 360;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
   const ADMIN_REMOVED_ENEMIES_KEY = "moonlit-echo-admin-removed-enemies-v1";
   const ADMIN_SPAWNED_ENEMIES_KEY = "moonlit-echo-admin-spawned-enemies-v1";
@@ -1370,6 +1372,27 @@
     pickups.push({ id: `pickup:${pickupSerial++}`, x, y, w: 24, h: 24, kind, active: true, bob: hash(x) * TAU });
   }
 
+  function removeEmbeddedRepairPickups() {
+    let removed = 0;
+    for (let index = pickups.length - 1; index >= 0; index -= 1) {
+      const pickup = pickups[index];
+      if (pickup.kind !== "repair" || pickup.adminPlaced) continue;
+      const centerX = pickup.x + pickup.w / 2;
+      const centerY = pickup.y + pickup.h / 2;
+      const embedded = platforms.some((platform) => (
+        !platform.hidden
+        && centerX > platform.x + 4
+        && centerX < platform.x + platform.w - 4
+        && centerY > platform.y + 4
+        && centerY < platform.y + platform.h - 4
+      ));
+      if (!embedded) continue;
+      pickups.splice(index, 1);
+      removed += 1;
+    }
+    return removed;
+  }
+
   function addBoostNode(x, y, launchX = 0, launchY = -430) {
     boostNodes.push({ id: `boost:${boostSerial++}`, x, y, w: 38, h: 38, launchX, launchY, hitAttackId: -1, pulse: hash(x + y) * TAU });
   }
@@ -1472,6 +1495,9 @@
       barrierCooldown: 3.2,
       reflectTimer: 0,
       reflectCooldown: 2.8,
+      reflectBreakTimer: 0,
+      dashDirection: 0,
+      dashRange: 0,
       funnelCooldown: 0,
       countedKill: false,
     };
@@ -2600,6 +2626,7 @@
     }
 
     applyAdminWorldEdits();
+    removeEmbeddedRepairPickups();
     restoreAdminPlacedObjects();
     restoreAdminSpawnedEnemies();
     for (let index = pickups.length - 1; index >= 0; index -= 1) {
@@ -3922,7 +3949,7 @@
       return;
     }
 
-    if (enemy.type === "boss" && enemy.bossKind === "hunter" && player.burstTimer > 0) {
+    if (enemy.type === "boss" && enemy.bossKind === "hunter" && player.burstTimer > 0 && (enemy.reflectBreakTimer || 0) <= 0) {
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 12, 250, 0.34, 0);
       game.hint = "적린 · 산탄과 버스트 반사 · 일본도만 유효";
       game.hintTimer = 1.35;
@@ -4044,7 +4071,7 @@
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + 26, palette.red, 18, 360, 0.5, 440);
     }
     enemy.hitShotId = bullet.shotId;
-    if (enemy.type === "boss" && enemy.bossKind === "hunter") {
+    if (enemy.type === "boss" && enemy.bossKind === "hunter" && (enemy.reflectBreakTimer || 0) <= 0) {
       reflectShotgun(enemy);
       return true;
     }
@@ -4267,6 +4294,9 @@
       enemy.barrierCooldown = 3.2;
       enemy.reflectTimer = 0;
       enemy.reflectCooldown = 2.8;
+      enemy.reflectBreakTimer = 0;
+      enemy.dashDirection = 0;
+      enemy.dashRange = 0;
       enemy.funnelCooldown = 0;
       enemy.stuckTimer = 0;
       enemy.hitAttackId = -1;
@@ -4540,7 +4570,7 @@
     }
   }
 
-  function fireWardenBeam(enemy, target) {
+  function fireWardenBeam(enemy, target, { length = 1700, thickness = 92, duration = 0.58, damage = 2, color = "#ff304f", beamStyle = "warden" } = {}) {
     const originX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.55;
     const originY = enemy.y + enemy.h * 0.45;
     const angle = Math.atan2(target.y - originY, target.x - originX);
@@ -4551,21 +4581,23 @@
       h: 1,
       vx: 0,
       vy: 0,
-      life: 0.58,
-      maxLife: 0.58,
+      life: duration,
+      maxLife: duration,
       enemy: true,
       harmless: true,
       kind: "warden-beam",
       beamDX: Math.cos(angle),
       beamDY: Math.sin(angle),
-      beamLength: 1700,
-      beamThickness: 92,
+      beamLength: length,
+      beamThickness: thickness,
+      damage,
+      beamStyle,
       hitPlayer: false,
       gravity: 0,
-      color: "#ff304f",
+      color,
     });
     game.shake = Math.max(game.shake, 32);
-    sound.tone(46, 0.58, "sawtooth", 0.075, 0.34);
+    sound.tone(beamStyle === "breaker" ? 72 : 46, duration, "sawtooth", 0.075, beamStyle === "breaker" ? 0.48 : 0.34);
   }
 
   function summonMagicSigil(enemy, spell, x, y, delay = 0.72) {
@@ -4704,10 +4736,15 @@
     const originY = enemy.y + enemy.h * 0.42;
     const target = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
     [-0.12, 0, 0.12].forEach((spread) => firePointBullet(originX, originY, target, 520, spread, "reflected-shotgun", "#a6f7ff"));
-    enemy.reflectTimer = 1;
+    enemy.reflectTimer = 0;
+    enemy.reflectBreakTimer = HUNTER_REFLECT_BREAK_SECONDS;
     spawnParticles(originX, originY, "#a6f7ff", 22, 390, 0.48, 0);
+    spawnParticles(originX, originY, palette.red, 14, 280, 0.38, 120);
+    game.hint = `적린 · 반사 장벽 과부하 · ${HUNTER_REFLECT_BREAK_SECONDS.toFixed(1)}초 동안 산탄 유효`;
+    game.hintTimer = 2.15;
     game.shake = Math.max(game.shake, 12);
     sound.tone(560, 0.13, "square", 0.04, 0.55);
+    sound.tone(145, 0.18, "sawtooth", 0.035, 0.72);
   }
 
   function swapBossWithPlayer(enemy, { grantInvincibility = true, shake = 16 } = {}) {
@@ -4884,6 +4921,9 @@
         break;
       case "warden-core":
         fireWardenBeam(enemy, target);
+        break;
+      case "breaker-laser":
+        fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
         break;
       case "furnace-mortar":
         [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
@@ -5691,7 +5731,13 @@
     enemy.swordSwingTimer = Math.max(0, (enemy.swordSwingTimer || 0) - dt);
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
-      if (bossKind === "warden") {
+      if (bossKind === "breaker") {
+        enemy.halfPhaseTriggered = true;
+        startBossChargedShot(enemy, "breaker-laser", dx, 1.58);
+        enemy.cooldown = 3.15;
+        game.hint = "쇄우 · 반파 노심 개방 · 레이저포 충전";
+        game.hintTimer = 2.8;
+      } else if (bossKind === "warden") {
         enemy.halfPhaseTriggered = true;
         startBossChargedShot(enemy, "warden-core", dx, 2.08);
         enemy.cooldown = 3.5;
@@ -5707,7 +5753,8 @@
     }
 
     if (bossKind === "hunter") {
-      enemy.reflectTimer = 1;
+      enemy.reflectBreakTimer = Math.max(0, (enemy.reflectBreakTimer || 0) - dt);
+      enemy.reflectTimer = enemy.reflectBreakTimer > 0 ? 0 : 1;
     }
 
     if (bossKind === "oracle") {
@@ -5780,7 +5827,11 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     if (chargingShot) {
-      const beamRetreatBoost = bossKind === "warden" && enemy.bossShotPattern === "warden-core" ? 2.25 : 1;
+      const beamRetreatBoost = bossKind === "warden" && enemy.bossShotPattern === "warden-core"
+        ? 2.25
+        : bossKind === "breaker" && enemy.bossShotPattern === "breaker-laser"
+          ? 1.65
+          : 1;
       const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor * beamRetreatBoost;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
     } else if (distance < 760 && Math.abs(dx) > 115) {
@@ -5850,6 +5901,8 @@
         } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.44;
           enemy.bossAction = "reflectRush";
+          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+          enemy.dashRange = HUNTER_DASH_RANGE;
           enemy.cooldown = 1.55 * recovery;
         } else if (enemy.bossPhase === 2) {
           enemy.windup = 0.34;
@@ -5861,6 +5914,8 @@
         } else {
           enemy.windup = 0.48;
           enemy.bossAction = "reflectRush";
+          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+          enemy.dashRange = HUNTER_DASH_RANGE;
           enemy.cooldown = 1.6 * recovery;
         }
       } else if (bossKind === "oracle") {
@@ -6065,7 +6120,7 @@
         } else if (enemy.bossAction === "positionSwap") {
           swapBossWithPlayer(enemy);
         } else if (enemy.bossAction === "reflectRush") {
-          enemy.vx = Math.sign(dx || 1) * 690;
+          enemy.vx = (enemy.dashDirection || Math.sign(dx || 1)) * 690;
           if (Math.abs(dx) < 150 && Math.abs(player.y - enemy.y) < 92) damagePlayer(1, enemy.x);
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.46, "#a6f7ff", 18, 420, 0.4, 0);
         } else if (enemy.bossAction === "mirrorStep") {
@@ -6232,7 +6287,7 @@
           const closestY = bullet.y + bullet.beamDY * projection;
           if (Math.hypot(playerCenterX - closestX, playerCenterY - closestY) <= bullet.beamThickness * 0.5) {
             bullet.hitPlayer = true;
-            damagePlayer(2, bullet.x);
+            damagePlayer(bullet.damage || 2, bullet.x);
           }
         }
         if (bullet.life <= 0) bullets.splice(i, 1);
@@ -7503,6 +7558,33 @@
       ctx.arc(muzzleX, muzzleY, 4 + progress * 9, 0, TAU);
       ctx.fill();
       ctx.restore();
+    } else if (enemy.type === "boss" && enemy.bossKind === "hunter" && enemy.bossAction === "reflectRush") {
+      const direction = enemy.dashDirection || enemy.facing || 1;
+      const startX = enemy.x + enemy.w / 2;
+      const endX = startX + direction * (enemy.dashRange || HUNTER_DASH_RANGE);
+      const laneY = enemy.y + enemy.h - 24;
+      const left = Math.min(startX, endX);
+      const width = Math.abs(endX - startX);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = `rgba(255, 92, 72, ${0.1 + pulse * 0.12})`;
+      ctx.fillRect(left, laneY - 34, width, 68);
+      ctx.strokeStyle = `rgba(255, 155, 84, ${0.58 + pulse * 0.35})`;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([18, 10]);
+      ctx.strokeRect(left, laneY - 34, width, 68);
+      ctx.setLineDash([]);
+      for (let offset = 72; offset < width; offset += 88) {
+        const arrowX = startX + direction * offset;
+        ctx.fillStyle = "rgba(255, 213, 156, 0.78)";
+        ctx.beginPath();
+        ctx.moveTo(arrowX + direction * 18, laneY);
+        ctx.lineTo(arrowX - direction * 8, laneY - 12);
+        ctx.lineTo(arrowX - direction * 8, laneY + 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
     } else if (enemy.type === "piercer" && Number.isFinite(enemy.targetX)) {
       ctx.save();
       ctx.strokeStyle = `rgba(121, 223, 255, ${pulse})`;
@@ -7721,11 +7803,22 @@
       ctx.fillStyle = flash ? "#fff" : "#6b352b"; ctx.beginPath(); ctx.moveTo(-20, 17); ctx.lineTo(17, 13); ctx.lineTo(26, 56); ctx.lineTo(0, 69); ctx.lineTo(-24, 53); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#14222b"; ctx.fillRect(-13, 25, 30, 19);
       ctx.fillStyle = "#a6f7ff"; ctx.fillRect(-8, 29, 20, 4);
-      // 반사 방패와 짧은 산탄총.
-      ctx.fillStyle = "rgba(166,247,255,0.22)"; ctx.strokeStyle = "#a6f7ff"; ctx.lineWidth = 3;
+      // 반사 방패와 짧은 산탄총. 산탄을 반사한 직후에는 붉은 균열로 과부하 상태를 표시한다.
+      const reflectionBroken = (enemy.reflectBreakTimer || 0) > 0;
+      ctx.fillStyle = reflectionBroken ? "rgba(255,73,108,0.16)" : "rgba(166,247,255,0.22)";
+      ctx.strokeStyle = reflectionBroken ? "#ff496c" : "#a6f7ff"; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(-32, 8); ctx.lineTo(-52, 24); ctx.lineTo(-48, 65); ctx.lineTo(-27, 74); ctx.lineTo(-18, 31); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#30201e"; ctx.fillRect(17, 28, 45, 13);
       for (let barrel = 0; barrel < 3; barrel += 1) { ctx.fillStyle = "#c88a70"; ctx.fillRect(53, 28 + barrel * 5, 22, 3); }
+      if (reflectionBroken) {
+        ctx.strokeStyle = "#ffd2d9";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-43, 20); ctx.lineTo(-31, 34); ctx.lineTo(-46, 47); ctx.lineTo(-29, 60);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,73,108,0.72)";
+        ctx.fillRect(-49, 79, 42 * clamp(enemy.reflectBreakTimer / HUNTER_REFLECT_BREAK_SECONDS, 0, 1), 4);
+      }
       if (enemy.reflectTimer > 0) {
         ctx.strokeStyle = `rgba(166,247,255,${0.58 + pulse * 0.35})`; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(-5, 42, 61, -1.85, 1.85); ctx.stroke();
@@ -8994,13 +9087,18 @@
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.lineCap = "round";
-      ctx.strokeStyle = `rgba(255, 36, 72, ${0.18 + alpha * 0.18})`;
+      const breakerBeam = bullet.beamStyle === "breaker";
+      ctx.strokeStyle = breakerBeam
+        ? `rgba(255, 205, 112, ${0.18 + alpha * 0.2})`
+        : `rgba(255, 36, 72, ${0.18 + alpha * 0.18})`;
       ctx.lineWidth = bullet.beamThickness + 46;
       ctx.beginPath();
       ctx.moveTo(bullet.x, bullet.y);
       ctx.lineTo(endX, endY);
       ctx.stroke();
-      ctx.strokeStyle = `rgba(255, 58, 86, ${0.62 + alpha * 0.25})`;
+      ctx.strokeStyle = breakerBeam
+        ? `rgba(255, 176, 64, ${0.66 + alpha * 0.25})`
+        : `rgba(255, 58, 86, ${0.62 + alpha * 0.25})`;
       ctx.lineWidth = bullet.beamThickness;
       ctx.beginPath();
       ctx.moveTo(bullet.x, bullet.y);
@@ -10646,7 +10744,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.1",
+    version: "2.2.2",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10673,6 +10771,10 @@
     perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
+    embeddedRepairPickupsRemoved: true,
+    hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
+    hunterDashTelegraphRange: HUNTER_DASH_RANGE,
+    breakerHalfHpLaser: true,
     tutorialStage: true,
     tutorialSteps: TUTORIAL_STEPS.length,
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
@@ -10699,7 +10801,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.1",
+    gameVersion: "2.2.2",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10735,6 +10837,10 @@
     perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
+    embeddedRepairPickupsRemoved: "true",
+    hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
+    hunterDashTelegraphRange: String(HUNTER_DASH_RANGE),
+    breakerHalfHpLaser: "true",
     tutorialStage: "true",
     tutorialSteps: String(TUTORIAL_STEPS.length),
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id).join(","),
