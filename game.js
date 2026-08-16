@@ -1027,6 +1027,10 @@
     perfectParryFlash: 0,
     perfectParryCount: 0,
     attackDir: { x: 1, y: -0.2 },
+    parryAnchorX: 0,
+    parryAnchorY: 0,
+    parryDirX: 1,
+    parryDirY: 0,
     invincible: 0,
     hp: 5,
     maxHp: 5,
@@ -4080,6 +4084,12 @@
       player.attackDir.x = dirX / directionLength;
       player.attackDir.y = dirY / directionLength;
     }
+    // 탄환 패링 판정은 발도를 시작한 순간의 위치와 방향에 고정한다.
+    // 공격 중 낙하·상승·대시로 큰 사각형을 쓸어 담던 방향별 확률 차이를 제거한다.
+    player.parryAnchorX = player.x + player.w / 2;
+    player.parryAnchorY = player.y + player.h / 2;
+    player.parryDirX = player.attackDir.x;
+    player.parryDirY = player.attackDir.y;
     player.chargedAttack = false;
 
     if (player.grounded) {
@@ -4159,6 +4169,27 @@
 
   function attackBox() {
     return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
+  }
+
+  function bulletIntersectsSlashParryZone(bullet) {
+    if (!bullet?.enemy) return false;
+    const dirLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
+    const dirX = player.parryDirX / dirLength;
+    const dirY = player.parryDirY / dirLength;
+    const bulletCenterX = bullet.x + bullet.w / 2;
+    const bulletCenterY = bullet.y + bullet.h / 2;
+    const relativeX = bulletCenterX - player.parryAnchorX;
+    const relativeY = bulletCenterY - player.parryAnchorY;
+    const alongBlade = relativeX * dirX + relativeY * dirY;
+    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
+    const bulletRadius = Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5);
+    const reachEnd = player.chargedAttack ? 156 : 146;
+    const halfWidth = player.chargedAttack ? 40 : 34;
+    return (
+      alongBlade >= 20 - bulletRadius
+      && alongBlade <= reachEnd + bulletRadius
+      && acrossBlade <= halfWidth + bulletRadius
+    );
   }
 
   function isAttackActive() {
@@ -5651,7 +5682,7 @@
         }
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
-        if (bullets[i].enemy && overlaps(hitbox, bullets[i])) {
+        if (bullets[i].enemy && bulletIntersectsSlashParryZone(bullets[i])) {
           const perfectParry = isPerfectParryWindow() && canPerfectParryBullet(bullets[i]);
           if (perfectParry) {
             reflectPerfectParryBullet(bullets[i]);
@@ -11033,7 +11064,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.3.0",
+    version: "2.3.1",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -11041,7 +11072,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "reinforced-v2.3.0",
+    enemyPlacementDensity: "reinforced-v2.3.1",
     reinforcementBaseByStage: [2, 3, 3, 4, 4],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
@@ -11074,6 +11105,9 @@
     perfectParryReflect: true,
     perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
+    directionNeutralParry: true,
+    parryUsesFrozenAttackAnchor: true,
+    parryBladeHalfWidth: 34,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     embeddedRepairPickupsRemoved: true,
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
@@ -11118,7 +11152,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.3.0",
+    gameVersion: "2.3.1",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -11134,7 +11168,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "reinforced-v2.3.0",
+    enemyPlacementDensity: "reinforced-v2.3.1",
     reinforcementBaseByStage: "2,3,3,4,4",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
@@ -11170,6 +11204,9 @@
     perfectParryReflect: "true",
     perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
+    directionNeutralParry: "true",
+    parryUsesFrozenAttackAnchor: "true",
+    parryBladeHalfWidth: "34",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     embeddedRepairPickupsRemoved: "true",
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
