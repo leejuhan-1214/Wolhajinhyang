@@ -671,14 +671,17 @@
 
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
+    stageIndex,
     x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W * 2 - 620,
     lines,
   }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
+    stageIndex,
     x: stages[stageIndex].x + (eventIndex + 13) * ZONE_W - 620,
     lines,
   })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
+    stageIndex,
     x: stages[stageIndex].x + (eventIndex === 0 ? MID_BOSS_ZONE_INDEX - 0.58 : MID_BOSS_ZONE_INDEX + 1.55) * ZONE_W,
     lines,
   }))));
@@ -686,7 +689,7 @@
   const CUTSCENE_EVENTS = [
     {
       id: "cutscene-prologue",
-      x: 520,
+      x: TUTORIAL_END_X + 620,
       title: "프롤로그 · 죽은 자의 구조 신호",
       location: "6년 전 / 백야 폐기장",
       visual: "rain",
@@ -2995,7 +2998,7 @@
       stageClearTimes: Array(stages.length).fill(0),
       startedAt: performance.now(),
       burstUnlocked: false,
-      storyQueue: INTRO_STORY.map((line) => ({ ...line })),
+      storyQueue: [],
       story: null,
       storyTimer: 0,
       storySeen: new Set(),
@@ -3017,7 +3020,10 @@
       game.tutorialActive = !game.adminMode;
       game.tutorialCompleted = game.adminMode;
       game.burstUnlocked = true;
-      game.storyQueue = game.tutorialActive ? [] : INTRO_STORY.map((line) => ({ ...line }));
+      game.storyQueue = [];
+      if (!game.tutorialActive && !game.adminMode) {
+        queueStory(INTRO_STORY, { stageIndex: 0, minX: TUTORIAL_END_X + 260, maxX: stages[0].end });
+      }
       if (checkpoints[0]) setRespawnCheckpoint(checkpoints[0], 0);
       camera.x = 0;
       camera.y = 0;
@@ -3113,7 +3119,7 @@
     game.zoneTitle = 0;
     game.hint = "기동 훈련 완료 · 초승 훈련장을 나가 첫 작전을 시작하세요";
     game.hintTimer = 5;
-    game.storyQueue.push(...INTRO_STORY.map((line) => ({ ...line })));
+    queueStory(INTRO_STORY, { stageIndex: 0, minX: TUTORIAL_END_X + 260, maxX: stages[0].end });
     syncTutorialDataset();
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 32, 440, 0.75, 260);
     sound.checkpoint();
@@ -3571,16 +3577,45 @@
     return spawnAdminEnemy(type);
   }
 
-  function queueStory(lines) {
-    for (const line of lines) game.storyQueue.push({ duration: 4.8, tone: "archive", ...line });
+  function getStoryStageIndex(item) {
+    return Number.isInteger(item?.stageIndex) ? item.stageIndex : null;
+  }
+
+  function isStoryContextValid(item) {
+    if (!item || game.tutorialActive || !game.tutorialCompleted || game.adminMode) return false;
+    const currentStageIndex = getStageIndexAt(player.x);
+    const contextStageIndex = getStoryStageIndex(item);
+    if (contextStageIndex !== null && contextStageIndex !== currentStageIndex) return false;
+    const minX = Number.isFinite(item.minX) ? item.minX : -Infinity;
+    const maxX = Number.isFinite(item.maxX) ? item.maxX : Infinity;
+    return player.x >= minX && player.x < maxX;
+  }
+
+  function queueStory(lines, context = {}) {
+    for (const line of lines) game.storyQueue.push({ duration: 4.8, tone: "archive", ...context, ...line });
   }
 
   function updateStory(dt) {
+    if (game.story && !isStoryContextValid(game.story)) {
+      game.story = null;
+      game.storyTimer = 0;
+    }
     if (game.story) {
       game.storyTimer -= dt;
       if (game.storyTimer <= 0) game.story = null;
     }
-    if (!game.story && game.storyQueue.length > 0) {
+
+    const currentStageIndex = getStageIndexAt(player.x);
+    while (!game.story && game.storyQueue.length > 0) {
+      const next = game.storyQueue[0];
+      const contextStageIndex = getStoryStageIndex(next);
+      const staleStage = contextStageIndex !== null && contextStageIndex < currentStageIndex;
+      const stalePosition = Number.isFinite(next.maxX) && player.x >= next.maxX;
+      if (!staleStage && !stalePosition) break;
+      game.storyQueue.shift();
+    }
+
+    if (!game.story && game.storyQueue.length > 0 && isStoryContextValid(game.storyQueue[0])) {
       game.story = game.storyQueue.shift();
       game.storyTimer = game.story.duration;
       const signalTone = game.story.tone === "hostile" ? 105 : game.story.tone === "operative" ? 320 : 470;
@@ -4152,7 +4187,7 @@
       if (enemy.isMidBoss) {
         game.hint = `${BOSS_DEFINITIONS[kind].name} 격파 · 후반 작전 구역 개방`;
         game.hintTimer = 6;
-        queueStory(MIDBOSS_VICTORY_STORIES[rank]);
+        queueStory(MIDBOSS_VICTORY_STORIES[rank], { stageIndex: rank, minX: stages[rank].x, maxX: stages[rank].end });
         saveCampaign();
         if (deathIsNearPlayer) sound.tone(118, 0.62, "sawtooth", 0.065, 0.42);
         return;
@@ -4193,7 +4228,7 @@
           { speaker: "한서린과 잔영-00", text: "작전 4호 종료. 폐기된 모든 이름을 생존자 명단으로 정정한다.", tone: "operative", duration: 6.0 },
         ],
       ];
-      queueStory(victoryStories[rank]);
+      queueStory(victoryStories[rank], { stageIndex: rank, minX: stages[rank].x, maxX: stages[rank].end });
       saveCampaign();
       if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
     } else if (countKill && !silent && player.hp < player.maxHp) {
@@ -6495,18 +6530,25 @@
     updateCamera(dt);
     cullEnemiesOutsideVerticalView();
 
+    const narrationStageIndex = getStageIndexAt(player.x);
+    const narrationIdle = !game.story && game.storyQueue.length === 0;
+    const storyContextEnabled = game.tutorialCompleted && !game.tutorialActive && !game.adminMode && narrationIdle;
     let startedCutscene = false;
-    for (const event of CUTSCENE_EVENTS) {
-      if (player.x < event.x || game.cutsceneSeen.has(event.id)) continue;
-      startCutscene(event);
-      startedCutscene = true;
-      break;
+    if (storyContextEnabled) {
+      for (const event of CUTSCENE_EVENTS) {
+        const eventStageIndex = getStageIndexAt(event.x);
+        if (eventStageIndex !== narrationStageIndex || player.x < event.x || game.cutsceneSeen.has(event.id)) continue;
+        startCutscene(event);
+        startedCutscene = true;
+        break;
+      }
     }
-    if (!startedCutscene) {
+    if (storyContextEnabled && !startedCutscene) {
       for (const event of STORY_EVENTS) {
-        if (player.x < event.x || game.storySeen.has(event.id)) continue;
+        if (event.stageIndex !== narrationStageIndex || player.x < event.x || game.storySeen.has(event.id)) continue;
         game.storySeen.add(event.id);
-        queueStory(event.lines);
+        queueStory(event.lines, { stageIndex: event.stageIndex, minX: event.x, maxX: stages[event.stageIndex].end });
+        break;
       }
     }
 
@@ -10726,7 +10768,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.4",
+    version: "2.2.5",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10785,10 +10827,14 @@
     oracleShotgunSwapDelay: 0.12,
     oracleReturnImpactDelay: 0.24,
     oracleReturnDamagesPlayer: true,
+    storyTutorialGate: true,
+    storyStageContext: true,
+    storyQueueContext: true,
+    prologueTriggerX: TUTORIAL_END_X + 620,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.4",
+    gameVersion: "2.2.5",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10851,6 +10897,10 @@
     oracleShotgunSwapDelay: "0.12",
     oracleReturnImpactDelay: "0.24",
     oracleReturnDamagesPlayer: "true",
+    storyTutorialGate: "true",
+    storyStageContext: "true",
+    storyQueueContext: "true",
+    prologueTriggerX: String(TUTORIAL_END_X + 620),
   });
   updateContinueButton();
   requestAnimationFrame(frame);
