@@ -160,6 +160,9 @@
   let levelReady = false;
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
+  let platformSpatialBuckets = [];
+  let platformSpatialDirty = true;
+  let enemyWorldCullAccumulator = 0;
 
   const stages = [
     { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 390 },
@@ -1284,7 +1287,7 @@
   function ejectEnemyFromPlatforms(enemy) {
     let ejected = false;
     for (let pass = 0; pass < 4; pass += 1) {
-      const embedded = platforms.filter((platform) => !platform.hidden && overlaps(enemy, platform));
+      const embedded = getNearbyPlatforms(enemy, 96).filter((platform) => !platform.hidden && overlaps(enemy, platform));
       if (embedded.length === 0) break;
       const nearestSurface = Math.min(...embedded.map((platform) => platform.y));
       enemy.y = nearestSurface - enemy.h - 1;
@@ -1358,6 +1361,39 @@
     return { letter: "D", name: "교전 개시", color: "#7f98a5" };
   }
 
+  function markPlatformSpatialIndexDirty() {
+    platformSpatialDirty = true;
+  }
+
+  function rebuildPlatformSpatialIndex() {
+    platformSpatialBuckets = Array.from({ length: zones.length }, () => []);
+    for (const platform of platforms) {
+      const firstBucket = clamp(Math.floor(platform.x / ZONE_W), 0, zones.length - 1);
+      const lastBucket = clamp(Math.floor((platform.x + Math.max(1, platform.w) - 1) / ZONE_W), 0, zones.length - 1);
+      for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) platformSpatialBuckets[bucket].push(platform);
+    }
+    platformSpatialDirty = false;
+  }
+
+  function getNearbyPlatforms(entity, padding = 72) {
+    if (platformSpatialDirty || platformSpatialBuckets.length !== zones.length) rebuildPlatformSpatialIndex();
+    const left = clamp(entity.x - padding, 0, WORLD_W - 1);
+    const right = clamp(entity.x + entity.w + padding, 0, WORLD_W - 1);
+    const firstBucket = clamp(Math.floor(left / ZONE_W), 0, zones.length - 1);
+    const lastBucket = clamp(Math.floor(right / ZONE_W), 0, zones.length - 1);
+    if (firstBucket === lastBucket) return platformSpatialBuckets[firstBucket];
+    const nearby = [];
+    const seen = new Set();
+    for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) {
+      for (const platform of platformSpatialBuckets[bucket]) {
+        if (seen.has(platform)) continue;
+        seen.add(platform);
+        nearby.push(platform);
+      }
+    }
+    return nearby;
+  }
+
   function addPlatform(x, y, w, h = 36, kind = "roof") {
     const platform = {
       id: `platform:${platformSerial++}`,
@@ -1371,6 +1407,7 @@
     };
     platform.adminWorldBase = { x, y, originalY: y, w, h, kind, hidden: false };
     platforms.push(platform);
+    markPlatformSpatialIndexDirty();
     return platform;
   }
 
@@ -1680,7 +1717,7 @@
     entity.y += deltaY;
   }
 
-  function updateCombatTerrain(dt) {
+  function updateCombatTerrain(dt, activeEnemies = getActiveEnemies()) {
     for (const room of combatRooms) {
       const nearRoom = player.x > room.left - 220 && player.x < room.right + 220;
       const active = room.triggered && !room.cleared && !game.adminMode && nearRoom;
@@ -1704,7 +1741,7 @@
         const deltaY = platform.y - previousY;
         if (Math.abs(deltaY) < 0.001) continue;
         carryEntityWithPlatform(player, platform, previousY, deltaY);
-        for (const enemy of enemies) {
+        for (const enemy of activeEnemies) {
           if (enemy.alive && enemy.type !== "drone") carryEntityWithPlatform(enemy, platform, previousY, deltaY);
         }
       }
@@ -2816,6 +2853,7 @@
     for (let index = boostNodes.length - 1; index >= 0; index -= 1) {
       if (adminRemovedObjectIds.has(boostNodes[index].id)) boostNodes.splice(index, 1);
     }
+    rebuildPlatformSpatialIndex();
     configureCombatRooms();
     applyAdminRemovedEnemyData();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
@@ -3528,6 +3566,7 @@
     game.hintTimer = 2.6;
     setAdminWorldEditor(true, object);
     sound.tone(690, 0.12, "sine", 0.025, 1.25);
+    markPlatformSpatialIndexDirty();
     return true;
   }
 
@@ -3552,6 +3591,7 @@
     game.hint = "관리자 편집 · 배경 요소 숨김/삭제 완료";
     game.hintTimer = 2.6;
     setAdminWorldEditor(false);
+    markPlatformSpatialIndexDirty();
     return true;
   }
 
@@ -3564,6 +3604,7 @@
     setAdminWorldEditor(true, object);
     game.hint = "관리자 편집 · 기본 맵 상태로 복원";
     game.hintTimer = 2.6;
+    markPlatformSpatialIndexDirty();
     return true;
   }
 
@@ -5340,12 +5381,13 @@
     player.grounded = false;
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(player.vx * dt), Math.abs(player.vy * dt)) / 7));
     const stepTime = dt / steps;
+    const nearbyPlatforms = getNearbyPlatforms(player, 160 + Math.abs(player.vx * dt));
 
     for (let step = 0; step < steps; step += 1) {
       const previousX = player.x;
       player.x += player.vx * stepTime;
       player.x = clamp(player.x, 0, WORLD_W - player.w);
-      for (const platform of platforms) {
+      for (const platform of nearbyPlatforms) {
         if (platform.hidden) continue;
         if (!overlaps(player, platform)) continue;
         if (previousX + player.w <= platform.x + 1 && player.vx > 0) {
@@ -5373,7 +5415,7 @@
       const previousY = player.y;
       const previousBottom = previousY + player.h;
       player.y += player.vy * stepTime;
-      for (const platform of platforms) {
+      for (const platform of nearbyPlatforms) {
         if (platform.hidden) continue;
         if (!overlaps(player, platform)) continue;
         if (previousBottom <= platform.y + 2 && player.vy >= 0) {
@@ -5401,7 +5443,7 @@
 
     const leftProbe = { x: player.x - 3, y: player.y + 5, w: 3, h: player.h - 10 };
     const rightProbe = { x: player.x + player.w, y: player.y + 5, w: 3, h: player.h - 10 };
-    for (const platform of platforms) {
+    for (const platform of nearbyPlatforms) {
       if (platform.hidden) continue;
       if (overlaps(leftProbe, platform)) player.wallLeft = true;
       if (overlaps(rightProbe, platform)) player.wallRight = true;
@@ -5668,6 +5710,7 @@
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(enemy.vx * dt), Math.abs(enemy.vy * dt)) / 7));
     const stepTime = dt / steps;
     let blocked = false;
+    const nearbyPlatforms = getNearbyPlatforms(enemy, 150 + Math.abs(enemy.vx * dt));
 
     for (let step = 0; step < steps; step += 1) {
       const oldX = enemy.x;
@@ -5676,7 +5719,7 @@
         constrainEnemyToLockdown(enemy, lockdownBounds);
         blocked = true;
       }
-      for (const platform of platforms) {
+      for (const platform of nearbyPlatforms) {
         if (platform.hidden) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldX + enemy.w <= platform.x + 1 && enemy.vx > 0) enemy.x = platform.x - enemy.w;
@@ -5691,7 +5734,7 @@
       const oldY = enemy.y;
       const oldBottom = oldY + enemy.h;
       enemy.y += enemy.vy * stepTime;
-      for (const platform of platforms) {
+      for (const platform of nearbyPlatforms) {
         if (platform.hidden) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldBottom <= platform.y + 2 && enemy.vy >= 0) {
@@ -5776,7 +5819,7 @@
     if (!direction) return true;
     const probeX = direction > 0 ? entity.x + entity.w + distance - 8 : entity.x - distance;
     const probe = { x: probeX, y: entity.y + entity.h, w: 8, h: 34 };
-    return platforms.some((platform) => !platform.hidden && overlaps(probe, platform));
+    return getNearbyPlatforms(probe, 24).some((platform) => !platform.hidden && overlaps(probe, platform));
   }
 
   function updateEnemy(enemy, dt) {
@@ -5832,7 +5875,7 @@
         enemy.x += clamp(dx, -1, 1) * 42 * enemySpeedScale * dt;
         enemy.x = clamp(enemy.x, enemy.originX - enemy.range, enemy.originX + enemy.range);
       }
-      if (platforms.some((platform) => !platform.hidden && overlaps(enemy, platform))) {
+      if (getNearbyPlatforms(enemy, 72).some((platform) => !platform.hidden && overlaps(enemy, platform))) {
         enemy.x = previousDroneX;
         enemy.y = previousDroneY;
         enemy.baseY -= Math.sign(Math.sin(enemy.anim * 2.2) || 1) * 8;
@@ -6423,7 +6466,7 @@
     sound.tone(72, 0.22, "sawtooth", 0.045, 0.42);
   }
 
-  function updateBullets(dt) {
+  function updateBullets(dt, activeEnemies = getActiveEnemies()) {
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
       const bullet = bullets[i];
 
@@ -6550,6 +6593,9 @@
       }
       const steps = Math.max(1, Math.ceil(Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)) / 6));
       const stepTime = dt / steps;
+      const nearbyBulletPlatforms = bullet.piercePlatforms
+        ? []
+        : getNearbyPlatforms(bullet, 110 + Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)));
 
       for (let step = 0; step < steps && !remove; step += 1) {
         bullet.x += bullet.vx * stepTime;
@@ -6574,7 +6620,7 @@
         }
 
         if (!bullet.enemy) {
-          for (const enemy of enemies) {
+          for (const enemy of activeEnemies) {
             if (!enemy.alive || !overlaps(bullet, enemy)) continue;
             damageEnemyWithShotgun(enemy, bullet);
             if (!bullet.piercing) remove = true;
@@ -6583,7 +6629,7 @@
         }
 
         if (remove) break;
-        for (const platform of platforms) {
+        for (const platform of nearbyBulletPlatforms) {
           if (platform.hidden) continue;
           if (bullet.piercePlatforms) continue;
           if (overlaps(bullet, platform)) {
@@ -6632,7 +6678,10 @@
     camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.0007, dt));
   }
 
-  function cullEnemiesOutsideVerticalView() {
+  function cullEnemiesOutsideVerticalView(dt = 0) {
+    enemyWorldCullAccumulator += dt;
+    if (enemyWorldCullAccumulator < 0.5) return;
+    enemyWorldCullAccumulator = 0;
     // 카메라 화면을 벗어난 것만으로 맵에 원래 배치된 적을 제거하지 않는다.
     // 실제 월드 처치 경계를 벗어난 경우에만 사망/복귀 처리한다.
     for (const enemy of enemies) {
@@ -6703,8 +6752,8 @@
       }
     }
 
-    updateCombatTerrain(dt);
     const activeEnemies = getActiveEnemies();
+    updateCombatTerrain(dt, activeEnemies);
     enforceEnemyLockdowns(activeEnemies);
     updatePlayer(dt);
     updateTutorialStage(dt);
@@ -6712,11 +6761,11 @@
     resolveEnemySeparation(activeEnemies);
     resolvePlayerEnemyOverlap(activeEnemies);
     updateCombatRooms();
-    updateBullets(dt);
+    updateBullets(dt, activeEnemies);
     enforceEnemyLockdowns(activeEnemies);
     updateParticles(dt);
     updateCamera(dt);
-    cullEnemiesOutsideVerticalView();
+    cullEnemiesOutsideVerticalView(dt);
 
     const narrationStageIndex = getStageIndexAt(player.x);
     const narrationIdle = !game.story && game.storyQueue.length === 0;
@@ -9719,7 +9768,7 @@
     drawTutorialStageScenery(left, right);
     for (const backdrop of adminBackdrops) if (!backdrop.hidden && backdrop.x + backdrop.w > left && backdrop.x < right) drawAdminBackdrop(backdrop);
     for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
-    for (const platform of platforms) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
+    for (const platform of getNearbyPlatforms({ x: left, w: right - left }, 0)) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
     for (const hazard of hazards) if (!hazard.hidden && hazard.x + hazard.w > left && hazard.x < right) drawHazard(hazard);
     for (const checkpoint of checkpoints) if (checkpoint.x > left && checkpoint.x < right) drawCheckpoint(checkpoint);
     for (const pickup of pickups) if (pickup.x > left && pickup.x < right) drawPickup(pickup);
@@ -10956,7 +11005,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.8",
+    version: "2.2.9",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10974,6 +11023,11 @@
     backgroundStyle: "restored-v2.2.6",
     progressiveTerrainDifficulty: true,
     terrainDifficultyTiers: [1, 2, 3, 4, 5],
+    platformSpatialIndex: true,
+    platformSpatialBucketWidth: ZONE_W,
+    activeEnemyBulletCollisionOnly: true,
+    combatTerrainActiveEnemyOnly: true,
+    enemyWorldCullIntervalSeconds: 0.5,
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
     bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
     bossDeathPickupSuppressed: true,
@@ -11034,7 +11088,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.8",
+    gameVersion: "2.2.9",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -11045,6 +11099,11 @@
     backgroundStyle: "restored-v2.2.6",
     progressiveTerrainDifficulty: "true",
     terrainDifficultyTiers: "1,2,3,4,5",
+    platformSpatialIndex: "true",
+    platformSpatialBucketWidth: String(ZONE_W),
+    activeEnemyBulletCollisionOnly: "true",
+    combatTerrainActiveEnemyOnly: "true",
+    enemyWorldCullIntervalSeconds: "0.5",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
