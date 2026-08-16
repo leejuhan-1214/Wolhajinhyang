@@ -1116,6 +1116,77 @@
       this.tone(180, 0.18, "sawtooth", 0.05, 0.32);
     }
 
+    beamCharge(duration = 1.4, style = "warden") {
+      if (!this.context || !this.enabled) return;
+      const now = this.context.currentTime;
+      const master = this.context.createGain();
+      const filter = this.context.createBiquadFilter();
+      const base = style === "breaker" ? 82 : 58;
+      filter.type = "bandpass";
+      filter.Q.setValueAtTime(5.5, now);
+      filter.frequency.setValueAtTime(base * 2.2, now);
+      filter.frequency.exponentialRampToValueAtTime(base * 8.2, now + duration);
+      master.gain.setValueAtTime(0.0001, now);
+      master.gain.exponentialRampToValueAtTime(style === "breaker" ? 0.046 : 0.058, now + duration * 0.76);
+      master.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      filter.connect(master).connect(this.context.destination);
+      [1, 2.03, 3.96].forEach((ratio, index) => {
+        const oscillator = this.context.createOscillator();
+        oscillator.type = index === 0 ? "sawtooth" : index === 1 ? "triangle" : "sine";
+        oscillator.frequency.setValueAtTime(base * ratio, now);
+        oscillator.frequency.exponentialRampToValueAtTime(base * ratio * (style === "breaker" ? 2.8 : 3.4), now + duration);
+        oscillator.connect(filter);
+        oscillator.start(now);
+        oscillator.stop(now + duration + 0.03);
+      });
+    }
+
+    beamFire(style = "warden") {
+      const breaker = style === "breaker";
+      this.tone(breaker ? 72 : 46, breaker ? 0.46 : 0.62, "sawtooth", breaker ? 0.074 : 0.09, breaker ? 0.34 : 0.25);
+      this.tone(breaker ? 740 : 560, 0.14, "square", 0.036, 0.42);
+      this.tone(breaker ? 126 : 96, 0.32, "sine", 0.044, 0.31);
+    }
+
+    glassShatter() {
+      if (!this.context || !this.enabled) return;
+      const now = this.context.currentTime;
+      const frameCount = Math.max(1, Math.floor(this.context.sampleRate * 0.2));
+      const buffer = this.context.createBuffer(1, frameCount, this.context.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let index = 0; index < frameCount; index += 1) {
+        const decay = 1 - index / frameCount;
+        data[index] = (Math.random() * 2 - 1) * decay * decay;
+      }
+      const noise = this.context.createBufferSource();
+      const highpass = this.context.createBiquadFilter();
+      const noiseGain = this.context.createGain();
+      noise.buffer = buffer;
+      highpass.type = "highpass";
+      highpass.frequency.setValueAtTime(1350, now);
+      highpass.Q.setValueAtTime(1.4, now);
+      noiseGain.gain.setValueAtTime(0.078, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      noise.connect(highpass).connect(noiseGain).connect(this.context.destination);
+      noise.start(now);
+      noise.stop(now + 0.21);
+      [1280, 1840, 2570, 3460, 4210].forEach((frequency, index) => {
+        const oscillator = this.context.createOscillator();
+        const gain = this.context.createGain();
+        const start = now + index * 0.007;
+        const duration = 0.085 + index * 0.012;
+        oscillator.type = index % 2 ? "square" : "triangle";
+        oscillator.frequency.setValueAtTime(frequency, start);
+        oscillator.frequency.exponentialRampToValueAtTime(frequency * 0.56, start + duration);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.024 - index * 0.0025, start + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        oscillator.connect(gain).connect(this.context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + duration + 0.01);
+      });
+    }
+
     checkpoint() {
       this.tone(440, 0.12, "sine", 0.04, 1.5);
       setTimeout(() => this.tone(660, 0.18, "sine", 0.035, 1.25), 80);
@@ -4624,7 +4695,7 @@
       color,
     });
     game.shake = Math.max(game.shake, 32);
-    sound.tone(beamStyle === "breaker" ? 72 : 46, duration, "sawtooth", 0.075, beamStyle === "breaker" ? 0.48 : 0.34);
+    sound.beamFire(beamStyle);
   }
 
   function summonMagicSigil(enemy, spell, x, y, delay = 0.72) {
@@ -4901,6 +4972,7 @@
     });
     spawnParticles(centerX, centerY, bullet.color, 24, 360, 0.62, 180);
     game.shake = Math.max(game.shake, 9);
+    sound.glassShatter();
     sound.tone(118, 0.18, "sawtooth", 0.038, 0.48);
   }
 
@@ -4924,7 +4996,11 @@
       duration,
       0,
     );
-    sound.tone(105 + rank * 22, duration * 0.7, "sawtooth", 0.018, 1.7);
+    if (pattern === "warden-core" || pattern === "breaker-laser") {
+      sound.beamCharge(duration, pattern === "breaker-laser" ? "breaker" : "warden");
+    } else {
+      sound.tone(105 + rank * 22, duration * 0.7, "sawtooth", 0.018, 1.7);
+    }
   }
 
   function releaseBossChargedShot(enemy) {
@@ -10768,7 +10844,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.5",
+    version: "2.2.6",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10828,13 +10904,16 @@
     oracleReturnImpactDelay: 0.24,
     oracleReturnDamagesPlayer: true,
     storyTutorialGate: true,
+    proceduralBeamChargeSfx: true,
+    proceduralBeamFireSfx: true,
+    proceduralFlaskShatterSfx: true,
     storyStageContext: true,
     storyQueueContext: true,
     prologueTriggerX: TUTORIAL_END_X + 620,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.5",
+    gameVersion: "2.2.6",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10898,6 +10977,9 @@
     oracleReturnImpactDelay: "0.24",
     oracleReturnDamagesPlayer: "true",
     storyTutorialGate: "true",
+    proceduralBeamChargeSfx: "true",
+    proceduralBeamFireSfx: "true",
+    proceduralFlaskShatterSfx: "true",
     storyStageContext: "true",
     storyQueueContext: "true",
     prologueTriggerX: String(TUTORIAL_END_X + 620),
