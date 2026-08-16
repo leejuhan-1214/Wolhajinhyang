@@ -159,6 +159,7 @@
   let selectedAdminWorldObject = null;
   let levelReady = false;
   let lastResetAt = -Infinity;
+  let initialOffscreenEnemyRemovals = 0;
 
   const stages = [
     { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 390 },
@@ -1517,6 +1518,22 @@
     return `${zone.code} · 구역 ${localZoneIndex + 1}/${ZONES_PER_STAGE} · ${routeLabels[zone.template] || "작전 진행"}`;
   }
 
+  function removeInitiallyOffscreenEnemies() {
+    // 전체 월드는 가로로 길기 때문에 X 위치는 검사하지 않는다.
+    // 생성 직후 위·아래 화면 범위를 완전히 벗어난 잘못된 배치만 배열에서 제거한다.
+    let removed = 0;
+    for (let index = enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = enemies[index];
+      const outsideVerticalScreen = !Number.isFinite(enemy.y)
+        || enemy.y + enemy.h <= 0
+        || enemy.y >= H;
+      if (!outsideVerticalScreen) continue;
+      enemies.splice(index, 1);
+      removed += 1;
+    }
+    return removed;
+  }
+
   function addEnemy(type, x, surfaceY, range = 150) {
     const stageIndex = getStageIndexAt(x);
     const sizes = {
@@ -2767,6 +2784,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name);
     }
 
+    initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies();
     applyAdminWorldEdits();
     removeEmbeddedRepairPickups();
     restoreAdminPlacedObjects();
@@ -11010,6 +11028,8 @@
     wardenBeamDamage: 2,
     enemyViewportDespawn: false,
     enemyWorldKillPlaneOnly: true,
+    initialOffscreenEnemyCleanup: true,
+    initialOffscreenEnemyRemovals,
     tutorialStage: true,
     tutorialSteps: TUTORIAL_STEPS.length,
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
@@ -11094,6 +11114,8 @@
     wardenBeamDamage: "2",
     enemyViewportDespawn: "false",
     enemyWorldKillPlaneOnly: "true",
+    initialOffscreenEnemyCleanup: "true",
+    initialOffscreenEnemyRemovals: String(initialOffscreenEnemyRemovals),
     tutorialStage: "true",
     tutorialSteps: String(TUTORIAL_STEPS.length),
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id).join(","),
