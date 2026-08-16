@@ -1031,6 +1031,7 @@
     parryAnchorY: 0,
     parryDirX: 1,
     parryDirY: 0,
+    parryFacing: 1,
     invincible: 0,
     hp: 5,
     maxHp: 5,
@@ -4090,6 +4091,7 @@
     player.parryAnchorY = player.y + player.h / 2;
     player.parryDirX = player.attackDir.x;
     player.parryDirY = player.attackDir.y;
+    player.parryFacing = player.facing;
     player.chargedAttack = false;
 
     if (player.grounded) {
@@ -4173,22 +4175,26 @@
 
   function bulletIntersectsSlashParryZone(bullet) {
     if (!bullet?.enemy) return false;
-    const dirLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
-    const dirX = player.parryDirX / dirLength;
-    const dirY = player.parryDirY / dirLength;
+    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
+    const aimX = player.parryDirX / aimLength;
+    const aimY = player.parryDirY / aimLength;
+    const facing = player.parryFacing < 0 ? -1 : 1;
+
+    // 정면에서 약 16도 이내로 휘두른 발도만 탄환을 패링할 수 있다.
+    // 위·아래·대각선 발도는 적 공격 판정만 유지하고 탄환에는 영향을 주지 않는다.
+    if (Math.abs(aimY) > 0.28 || aimX * facing < 0.96) return false;
+
     const bulletCenterX = bullet.x + bullet.w / 2;
     const bulletCenterY = bullet.y + bullet.h / 2;
-    const relativeX = bulletCenterX - player.parryAnchorX;
+    const relativeX = (bulletCenterX - player.parryAnchorX) * facing;
     const relativeY = bulletCenterY - player.parryAnchorY;
-    const alongBlade = relativeX * dirX + relativeY * dirY;
-    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
     const bulletRadius = Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5);
     const reachEnd = player.chargedAttack ? 156 : 146;
     const halfWidth = player.chargedAttack ? 40 : 34;
     return (
-      alongBlade >= 20 - bulletRadius
-      && alongBlade <= reachEnd + bulletRadius
-      && acrossBlade <= halfWidth + bulletRadius
+      relativeX >= 20 - bulletRadius
+      && relativeX <= reachEnd + bulletRadius
+      && Math.abs(relativeY) <= halfWidth + bulletRadius
     );
   }
 
@@ -11064,7 +11070,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.3.1",
+    version: "2.3.2",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -11072,7 +11078,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "reinforced-v2.3.1",
+    enemyPlacementDensity: "reinforced-v2.3.2",
     reinforcementBaseByStage: [2, 3, 3, 4, 4],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
@@ -11105,7 +11111,9 @@
     perfectParryReflect: true,
     perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
-    directionNeutralParry: true,
+    directionNeutralParry: false,
+    frontOnlyParry: true,
+    parryForwardAngleDegrees: 16,
     parryUsesFrozenAttackAnchor: true,
     parryBladeHalfWidth: 34,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
@@ -11152,7 +11160,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.3.1",
+    gameVersion: "2.3.2",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -11168,7 +11176,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "reinforced-v2.3.1",
+    enemyPlacementDensity: "reinforced-v2.3.2",
     reinforcementBaseByStage: "2,3,3,4,4",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
@@ -11204,7 +11212,9 @@
     perfectParryReflect: "true",
     perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
-    directionNeutralParry: "true",
+    directionNeutralParry: "false",
+    frontOnlyParry: "true",
+    parryForwardAngleDegrees: "16",
     parryUsesFrozenAttackAnchor: "true",
     parryBladeHalfWidth: "34",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
