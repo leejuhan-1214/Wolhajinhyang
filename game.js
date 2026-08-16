@@ -4923,7 +4923,7 @@
         fireWardenBeam(enemy, target);
         break;
       case "breaker-laser":
-        fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
+        fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 2, color: "#ffcd70", beamStyle: "breaker" });
         break;
       case "furnace-mortar":
         [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
@@ -6418,22 +6418,17 @@
   }
 
   function cullEnemiesOutsideVerticalView() {
-    const viewLeft = camera.x;
-    const viewRight = camera.x + W;
-    const viewTop = camera.y;
-    const viewBottom = camera.y + H;
+    // 카메라 화면을 벗어난 것만으로 맵에 원래 배치된 적을 제거하지 않는다.
+    // 실제 월드 처치 경계를 벗어난 경우에만 사망/복귀 처리한다.
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      const horizontallyVisible = enemy.x + enemy.w > viewLeft && enemy.x < viewRight;
-      if (!horizontallyVisible) continue;
-      const leftAboveScreen = enemy.y + enemy.h <= viewTop;
-      const fellBelowScreen = enemy.y >= viewBottom;
-      if (!leftAboveScreen && !fellBelowScreen) continue;
-      if (enemy.type === "boss") {
+      if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
         recoverEnemyToHome(enemy);
         continue;
       }
-      killEnemy(enemy, { silent: true, countKill: false });
+      if (enemy.y <= WORLD_H + 100) continue;
+      if (enemy.type === "boss") recoverEnemyToHome(enemy);
+      else killEnemy(enemy, { silent: true, countKill: false });
     }
   }
 
@@ -10744,7 +10739,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.2",
+    version: "2.2.3",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10775,6 +10770,9 @@
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
     hunterDashTelegraphRange: HUNTER_DASH_RANGE,
     breakerHalfHpLaser: true,
+    breakerBeamDamage: 2,
+    enemyViewportDespawn: false,
+    enemyWorldKillPlaneOnly: true,
     tutorialStage: true,
     tutorialSteps: TUTORIAL_STEPS.length,
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
@@ -10801,7 +10799,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.2",
+    gameVersion: "2.2.3",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -10841,6 +10839,9 @@
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
     hunterDashTelegraphRange: String(HUNTER_DASH_RANGE),
     breakerHalfHpLaser: "true",
+    breakerBeamDamage: "2",
+    enemyViewportDespawn: "false",
+    enemyWorldKillPlaneOnly: "true",
     tutorialStage: "true",
     tutorialSteps: String(TUTORIAL_STEPS.length),
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id).join(","),
