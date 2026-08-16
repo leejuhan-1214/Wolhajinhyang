@@ -2472,15 +2472,43 @@
 
     function addZoneEnemies(zone, floorY, spawnPoints) {
       const pool = enemyPools[zone.stageIndex];
-      const extraCount = zone.stageIndex;
+      const localZoneIndex = Math.round((zone.x - stages[zone.stageIndex].x) / ZONE_W);
+      const depthTier = Math.floor(localZoneIndex / 6);
       const points = [...spawnPoints];
-      for (let extra = 0; extra < extraCount; extra += 1) {
+      const legacyExtraCount = zone.stageIndex;
+      for (let extra = 0; extra < legacyExtraCount; extra += 1) {
         points.push([3250 + extra * 230, floorY]);
       }
+
+      // 각 막의 일반 구역을 비어 보이지 않게 보강하되, 초반보다 후반의 밀도를 높인다.
+      // 기존 지형 위의 안전한 생성점을 재사용해 낭떠러지나 구조물 내부에 생기는 일을 막는다.
+      const reinforcementBases = [2, 3, 3, 4, 4];
+      const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
+      const reinforcementCount = reinforcementBases[zone.stageIndex] + Math.floor(depthTier / 2) + combatBonus;
+      const reinforcementPatterns = [
+        ["runner", "gunner", "runner", "drone"],
+        ["gunner", "runner", "shield", "drone", "mortar"],
+        ["piercer", "gunner", "shield", "drone", "mortar", "runner"],
+        ["piercer", "mortar", "gunner", "drone", "shield", "runner"],
+        ["piercer", "mortar", "drone", "shield", "gunner", "mortar", "runner"],
+      ];
+      const pattern = reinforcementPatterns[zone.stageIndex];
+      const anchors = spawnPoints.length ? spawnPoints : [[560, floorY], [1450, floorY], [2450, floorY], [3440, floorY]];
+      const offsets = [-58, 58, -82, 82, -36, 36];
+
+      for (let reinforcement = 0; reinforcement < reinforcementCount; reinforcement += 1) {
+        const anchorIndex = (reinforcement * 3 + localZoneIndex + zone.stageIndex) % anchors.length;
+        const [anchorX, anchorY] = anchors[anchorIndex];
+        const localX = clamp(anchorX + offsets[(reinforcement + localZoneIndex) % offsets.length], 210, ZONE_W - 210);
+        const type = pattern[(localZoneIndex * 2 + reinforcement * 3 + depthTier) % pattern.length];
+        points.push([localX, anchorY, type]);
+      }
+
       points.forEach(([localX, surfaceY, forcedType], index) => {
         const type = forcedType || pool[(zone.x / ZONE_W + index * 2) % pool.length];
         const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
-        addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
+        const enemy = addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
+        enemy.placementWave = index >= spawnPoints.length + legacyExtraCount ? "reinforcement" : "original";
       });
     }
 
@@ -11005,7 +11033,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.9",
+    version: "2.3.0",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -11013,6 +11041,8 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
+    enemyPlacementDensity: "reinforced-v2.3.0",
+    reinforcementBaseByStage: [2, 3, 3, 4, 4],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -11088,7 +11118,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.9",
+    gameVersion: "2.3.0",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -11104,6 +11134,8 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
+    enemyPlacementDensity: "reinforced-v2.3.0",
+    reinforcementBaseByStage: "2,3,3,4,4",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
