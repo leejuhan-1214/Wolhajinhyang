@@ -176,12 +176,19 @@
     ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "명명되지 않은 문", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
+  const STAGE_MAP_IDENTITIES = Object.freeze([
+    "백야 크레인 묘지",
+    "적열 피스톤 제련소",
+    "기억 대성당",
+    "폭풍 안테나 첨탑",
+    "원형 거울 미궁",
+  ]);
   const zoneTemplateRows = [
-    ["terrace", "wreckfield", "chasm", "crusher", "bridge", "vertical", "fork", "gauntlet", "zigzag", "crusher", "cavern", "midboss", "spiral", "chasm", "gauntlet", "wreckfield", "crusher", "fork", "bridge", "cavern", "zigzag", "vertical", "spiral", "boss"],
-    ["conveyor", "chasm", "zigzag", "crusher", "cavern", "gauntlet", "bridge", "conveyor", "vertical", "spiral", "fork", "midboss", "crusher", "bridge", "cavern", "zigzag", "conveyor", "fork", "gauntlet", "chasm", "spiral", "vertical", "crusher", "boss"],
-    ["spiral", "cavern", "vertical", "bridge", "zigzag", "fork", "archiveMaze", "chasm", "spiral", "gauntlet", "terrace", "midboss", "archiveMaze", "vertical", "cavern", "bridge", "fork", "zigzag", "spiral", "chasm", "gauntlet", "archiveMaze", "vertical", "boss"],
-    ["bridge", "vertical", "towerClimb", "gauntlet", "zigzag", "cavern", "towerClimb", "fork", "bridge", "spiral", "crusher", "midboss", "vertical", "towerClimb", "chasm", "zigzag", "gauntlet", "bridge", "cavern", "fork", "spiral", "towerClimb", "crusher", "boss"],
-    ["mirrorMaze", "spiral", "bridge", "cavern", "vertical", "mirrorMaze", "zigzag", "fork", "chasm", "spiral", "gauntlet", "midboss", "mirrorMaze", "bridge", "cavern", "vertical", "zigzag", "spiral", "fork", "chasm", "mirrorMaze", "gauntlet", "bridge", "boss"],
+    ["terrace", "wreckfield", "scrapCrane", "crusher", "bridge", "scrapCrane", "fork", "wreckfield", "chasm", "crusher", "cavern", "midboss", "scrapCrane", "chasm", "gauntlet", "wreckfield", "crusher", "scrapCrane", "bridge", "cavern", "zigzag", "vertical", "wreckfield", "boss"],
+    ["conveyor", "furnacePiston", "conveyor", "crusher", "furnacePiston", "gauntlet", "bridge", "conveyor", "furnacePiston", "spiral", "conveyor", "midboss", "crusher", "furnacePiston", "conveyor", "zigzag", "conveyor", "furnacePiston", "gauntlet", "chasm", "furnacePiston", "vertical", "crusher", "boss"],
+    ["cathedralNave", "archiveMaze", "cathedralNave", "bridge", "archiveMaze", "cathedralNave", "archiveMaze", "chasm", "cathedralNave", "gauntlet", "archiveMaze", "midboss", "cathedralNave", "vertical", "archiveMaze", "cathedralNave", "fork", "archiveMaze", "cathedralNave", "chasm", "gauntlet", "archiveMaze", "cathedralNave", "boss"],
+    ["antennaShaft", "towerClimb", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "towerClimb", "fork", "antennaShaft", "spiral", "towerClimb", "midboss", "antennaShaft", "towerClimb", "chasm", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "fork", "spiral", "towerClimb", "antennaShaft", "boss"],
+    ["memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "cavern", "mirrorMaze", "memoryLabyrinth", "mirrorMaze", "fork", "memoryLabyrinth", "spiral", "mirrorMaze", "midboss", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "vertical", "mirrorMaze", "memoryLabyrinth", "fork", "chasm", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "boss"],
   ];
   const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => ({
     x: stage.x + zoneIndex * ZONE_W,
@@ -1484,6 +1491,11 @@
 
   function getZoneSignSub(zone, localZoneIndex) {
     const routeLabels = {
+      scrapCrane: "크레인 환승 / 공중 잔해",
+      furnacePiston: "왕복 피스톤 / 증기 간격",
+      cathedralNave: "수직 예배당 / 부유 제단",
+      antennaShaft: "안테나 첨탑 / 폭풍 도약",
+      memoryLabyrinth: "비대칭 미궁 / 거울 분기",
       terrace: "층계 전투 / 상단 우회",
       chasm: "낙하 주의 / 도약 지점",
       crusher: "압축 설비 / 봉쇄 전투",
@@ -2523,6 +2535,67 @@
         addSign(origin + 1650, floorY - 485, "수직 기동", "벽타기 · 벽점프");
         addSign(origin + 2450, floorY - 190, "긴급 회피", "버스트");
         addSign(origin + 3160, floorY - 205, "무장 점검", "발도 · 샷건");
+      } else if (zone.template === "scrapCrane") {
+        // 1막: 바닥 대신 매달린 크레인과 기울어진 폐선 잔해를 갈아타는 공중 항로.
+        addPlatform(origin, floorY, 860, WORLD_H - floorY, "cargo");
+        addPlatform(origin + 1320, floorY + 25, 690, WORLD_H - floorY - 25, "factory");
+        addPlatform(origin + 2480, floorY - 15, 1520, WORLD_H - floorY + 15, "cargo");
+        [[520, -145, 430], [980, -285, 330], [1430, -420, 360], [1870, -245, 420], [2320, -390, 330], [2780, -250, 520], [3400, -430, 360]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, index % 2 ? 34 : 24, index % 2 ? "roof" : "cargo"));
+        addPlatform(origin + 1110, 120, 46, floorY - 330, "factory");
+        addPlatform(origin + 3270, 85, 52, floorY - 360, "factory");
+        addBoostNode(origin + 820, floorY - 105, 230, -560);
+        addBoostNode(origin + 2260, floorY - 115, 250, -520);
+        addHazard(origin + 860, floorY - 22, 460, 22, "spike");
+        addHazard(origin + 2010, floorY - 22, 470, 22, "spike");
+        spawns.push([430, floorY - 145], [1060, floorY - 285], [1510, floorY - 420, "drone"], [1980, floorY - 245], [2400, floorY - 390], [2920, floorY - 250], [3500, floorY - 430]);
+      } else if (zone.template === "furnacePiston") {
+        // 2막: 낮고 긴 제련 라인을 달리며 박자가 다른 증기 피스톤을 통과한다.
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "foundry");
+        [[180, -70, 560], [880, -155, 500], [1530, -70, 600], [2280, -190, 470], [2900, -90, 520], [3520, -170, 360]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, index % 2 ? "turbine" : "channel"));
+        [760, 1420, 2160, 2810, 3450].forEach((x, index) => {
+          addHazard(origin + x, floorY - (index % 2 ? 360 : 270), 34, index % 2 ? 360 : 270, "steam", index * 0.56 + localZoneIndex * 0.17);
+        });
+        addHazard(origin + 1840, floorY - 22, 180, 22, "spike");
+        spawns.push([340, floorY - 70], [1010, floorY - 155], [1670, floorY - 70], [2400, floorY - 190], [3030, floorY - 90], [3600, floorY - 170]);
+      } else if (zone.template === "cathedralNave") {
+        // 3막: 바닥을 가로지르기보다 부유 제단을 타고 천장 가까이 오르는 기억 성당.
+        addPlatform(origin, floorY, 650, WORLD_H - floorY, "archive");
+        addPlatform(origin + 3380, floorY, 620, WORLD_H - floorY, "archive");
+        [[520, -120, 360], [850, -280, 330], [1190, -455, 340], [1580, -610, 430], [2050, -470, 380], [2460, -315, 360], [2830, -505, 340], [3160, -245, 350]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, index % 3 === 1 ? "shrine" : "archive"));
+        addPlatform(origin + 1510, 70, 54, floorY - 500, "shrine");
+        addPlatform(origin + 2780, 90, 54, floorY - 470, "shrine");
+        addBoostNode(origin + 540, floorY - 90, 170, -690);
+        addBoostNode(origin + 1930, floorY - 90, 120, -710);
+        addBoostNode(origin + 3140, floorY - 210, 210, -560);
+        addHazard(origin + 650, floorY - 22, 540, 22, "laser", 0.4 + localZoneIndex * 0.11);
+        addHazard(origin + 2520, floorY - 22, 610, 22, "laser", 1.2 + localZoneIndex * 0.09);
+        spawns.push([420, floorY], [970, floorY - 280], [1310, floorY - 455, "drone"], [1720, floorY - 610], [2180, floorY - 470], [2940, floorY - 505], [3530, floorY]);
+      } else if (zone.template === "antennaShaft") {
+        // 4막: 열린 폭풍 외벽에서 지그재그 안테나를 타고 수직으로 상승한다.
+        addPlatform(origin, floorY, 520, WORLD_H - floorY, "city");
+        addPlatform(origin + 3520, floorY, 480, WORLD_H - floorY, "city");
+        [[430, -90, 330], [760, -250, 310], [1100, -430, 330], [1480, -590, 410], [1950, -405, 350], [2320, -225, 330], [2700, -450, 340], [3070, -610, 400], [3380, -300, 310]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 22, index % 2 ? "array" : "tower"));
+        addBoostNode(origin + 420, floorY - 105, 165, -700);
+        addBoostNode(origin + 1850, floorY - 445, 190, -590);
+        addBoostNode(origin + 3270, floorY - 340, 180, -510);
+        [1270, 2530].forEach((x, index) => addHazard(origin + x, floorY - 460, 26, 460, "laser", 0.35 + index * 1.1 + localZoneIndex * 0.07));
+        spawns.push([300, floorY], [860, floorY - 250], [1210, floorY - 430], [1630, floorY - 590, "drone"], [2070, floorY - 405], [2800, floorY - 450], [3190, floorY - 610, "drone"], [3640, floorY]);
+      } else if (zone.template === "memoryLabyrinth") {
+        // 5막: 좌우가 일부러 어긋난 거울 통로. 위·아래 길이 매 구역 반대로 접힌다.
+        addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "mirror");
+        [[230, -130, 390], [690, -360, 340], [1090, -190, 420], [1580, -530, 360], [2010, -280, 430], [2510, -500, 360], [2940, -220, 430], [3430, -410, 390]]
+          .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, (index + localZoneIndex) % 2 ? "glass" : "mirror"));
+        [[610, 105, 46, 300], [1510, 70, 50, 390], [2440, 120, 46, 300], [3370, 80, 50, 370]]
+          .forEach(([x, y, w, h], index) => addPlatform(origin + x, y + (localZoneIndex % 2) * 35, w, h, index % 2 ? "mirror" : "glass"));
+        addBoostNode(origin + 520, floorY - 95, 170, -620);
+        addBoostNode(origin + 1910, floorY - 90, 150, -690);
+        addBoostNode(origin + 3290, floorY - 250, 190, -520);
+        [1040, 1960, 2860].forEach((x, index) => addHazard(origin + x, floorY - (index === 1 ? 520 : 350), 24, index === 1 ? 520 : 350, "laser", index * 0.8 + localZoneIndex * 0.19));
+        spawns.push([350, floorY - 130], [790, floorY - 360], [1210, floorY - 190], [1690, floorY - 530, "drone"], [2150, floorY - 280], [2630, floorY - 500], [3070, floorY - 220], [3540, floorY - 410]);
       } else if (zone.template === "terrace") {
         addPlatform(origin, floorY, 1550, WORLD_H - floorY, kind);
         addPlatform(origin + 1780, floorY - 40, 2220, WORLD_H - floorY + 40, kind);
@@ -6668,12 +6741,12 @@
 
   function drawBackground() {
     const stageVisuals = [
-      { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" },
-      { top: "#100607", mid: "#1b0d0d", bottom: "#271515", haze: "rgba(255, 91, 54, 0.08)" },
-      { top: "#080711", mid: "#111020", bottom: "#1b1830", haze: "rgba(176, 113, 255, 0.075)" },
-      { top: "#030912", mid: "#071525", bottom: "#111d31", haze: "rgba(91, 184, 255, 0.075)" },
-      { top: "#07040f", mid: "#101226", bottom: "#102a2a", haze: "rgba(99, 255, 198, 0.085)" },
-    ][game.stage] || { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" };
+      { top: "#03070c", mid: "#09121a", bottom: "#17202a", haze: "rgba(101, 245, 234, 0.055)" },
+      { top: "#120303", mid: "#260b08", bottom: "#3a160c", haze: "rgba(255, 91, 54, 0.085)" },
+      { top: "#070412", mid: "#120d25", bottom: "#221944", haze: "rgba(215, 160, 255, 0.07)" },
+      { top: "#020817", mid: "#061b34", bottom: "#0d2944", haze: "rgba(91, 184, 255, 0.075)" },
+      { top: "#080310", mid: "#111128", bottom: "#0a322e", haze: "rgba(99, 255, 198, 0.08)" },
+    ][game.stage] || { top: "#03070c", mid: "#09121a", bottom: "#17202a", haze: "rgba(101, 245, 234, 0.055)" };
     const gradient = ctx.createLinearGradient(0, 0, 0, H);
     gradient.addColorStop(0, stageVisuals.top);
     gradient.addColorStop(0.58, stageVisuals.mid);
@@ -6681,183 +6754,236 @@
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, W, H);
 
-    // 거대한 실내 폐기장: 반복되는 철골, 환풍기, 붉은 경고등이 깊이를 만든다.
-    const beamOffset = -((camera.x * 0.12) % 240);
-    ctx.fillStyle = "#0a111b";
-    ctx.fillRect(0, 0, W, 62);
-    for (let x = beamOffset - 240; x < W + 240; x += 240) {
-      ctx.fillStyle = "#111a25";
-      ctx.fillRect(x, 0, 28, H);
-      ctx.strokeStyle = "rgba(92, 116, 130, 0.16)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(x + 3, 90);
-      ctx.lineTo(x + 25, 160);
-      ctx.moveTo(x + 25, 160);
-      ctx.lineTo(x + 3, 230);
-      ctx.stroke();
-    }
+    const slowX = camera.x * 0.08;
+    const mediumX = camera.x * 0.18;
+    const zonePulse = (game.zone % ZONES_PER_STAGE) / Math.max(1, ZONES_PER_STAGE - 1);
 
-    ctx.save();
-    ctx.translate(1040 - (camera.x * 0.06 % 520), 132);
-    ctx.strokeStyle = "rgba(118, 151, 164, 0.16)";
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.arc(0, 0, 74, 0, TAU);
-    ctx.stroke();
-    ctx.rotate(game.time * 0.18);
-    ctx.fillStyle = "rgba(71, 96, 110, 0.12)";
-    for (let blade = 0; blade < 6; blade += 1) {
-      ctx.rotate(TAU / 6);
-      ctx.fillRect(5, -10, 62, 20);
-    }
-    ctx.restore();
-
-    // 천장 케이블은 서로 다른 주기로 흔들리고, 원거리 수송기는 계속 왕복한다.
-    ctx.lineWidth = 3;
-    for (let cable = 0; cable < 7; cable += 1) {
-      const cableX = ((cable * 223 - camera.x * 0.1) % (W + 260)) - 80;
-      const length = 105 + hash(cable * 8.7) * 170;
-      const sway = Math.sin(game.time * (0.65 + cable * 0.04) + cable) * 18;
-      ctx.strokeStyle = `rgba(61, 83, 96, ${0.18 + hash(cable) * 0.12})`;
-      ctx.beginPath();
-      ctx.moveTo(cableX, 0);
-      ctx.bezierCurveTo(cableX + sway * 0.2, length * 0.32, cableX + sway, length * 0.68, cableX + sway * 0.72, length);
-      ctx.stroke();
-      ctx.fillStyle = cable % 3 === 0 ? "rgba(255, 73, 108, 0.5)" : "rgba(101, 245, 234, 0.24)";
-      ctx.fillRect(cableX + sway * 0.72 - 3, length - 2, 7, 7);
-    }
-
-    const carrierX = ((game.time * 34 - camera.x * 0.2) % (W + 520)) - 260;
-    const carrierY = 96 + Math.sin(game.time * 0.7) * 10;
-    ctx.fillStyle = "rgba(20, 32, 45, 0.82)";
-    ctx.fillRect(carrierX, carrierY, 118, 30);
-    ctx.fillStyle = "rgba(95, 126, 139, 0.38)";
-    ctx.fillRect(carrierX + 10, carrierY + 7, 76, 5);
-    ctx.fillStyle = palette.red;
-    ctx.fillRect(carrierX + 101, carrierY + 8, 8, 4);
-    ctx.fillStyle = "rgba(101, 245, 234, 0.13)";
-    ctx.beginPath();
-    ctx.moveTo(carrierX + 18, carrierY + 30);
-    ctx.lineTo(carrierX + 2, carrierY + 150);
-    ctx.lineTo(carrierX + 112, carrierY + 150);
-    ctx.lineTo(carrierX + 98, carrierY + 30);
-    ctx.fill();
-
-    drawSkyline(0.08, H - 210, 170, "#0b1724", 0.5);
-    drawSkyline(0.16, H - 140, 110, "#101d2c", 0.8);
-    drawSkyline(0.28, H - 70, 72, "#152334", 1);
-
-    if (game.stage === 1) {
-      const pipeOffset = -((camera.x * 0.18) % 330);
-      ctx.strokeStyle = "rgba(157, 64, 47, 0.34)";
-      ctx.lineWidth = 22;
-      for (let x = pipeOffset - 330; x < W + 330; x += 330) {
+    if (game.stage === 0) {
+      // 백야 폐기장: 크레인, 전자석, 기울어진 폐선 산맥.
+      drawSkyline(0.07, H - 165, 150, "#07131b", 0.55);
+      const craneOffset = -((slowX) % 430);
+      for (let x = craneOffset - 430; x < W + 430; x += 430) {
+        const towerH = 330 + hash(x + 17) * 150;
+        ctx.fillStyle = "rgba(18, 32, 42, 0.88)";
+        ctx.fillRect(x, H - towerH, 38, towerH);
+        ctx.fillRect(x - 24, H - towerH, 245, 18);
+        ctx.strokeStyle = "rgba(101, 245, 234, 0.15)";
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(x, 110);
-        ctx.lineTo(x + 80, 300);
-        ctx.lineTo(x + 250, 300);
-        ctx.lineTo(x + 310, 510);
+        ctx.moveTo(x + 8, H - towerH + 20);
+        ctx.lineTo(x + 32, H - 20);
+        ctx.moveTo(x + 32, H - towerH + 20);
+        ctx.lineTo(x + 8, H - 20);
+        ctx.stroke();
+        const hookY = H - towerH + 125 + Math.sin(game.time * 0.45 + x) * 16;
+        ctx.strokeStyle = "rgba(108, 133, 145, 0.35)";
+        ctx.beginPath();
+        ctx.moveTo(x + 170, H - towerH + 18);
+        ctx.lineTo(x + 170, hookY);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(62, 88, 100, 0.72)";
+        ctx.beginPath();
+        ctx.arc(x + 170, hookY + 18, 28, 0, TAU);
+        ctx.fill();
+      }
+      const heapOffset = -((mediumX) % 260);
+      for (let x = heapOffset - 260; x < W + 260; x += 260) {
+        const heapH = 55 + hash(x * 0.17) * 110;
+        ctx.fillStyle = "rgba(37, 49, 57, 0.7)";
+        ctx.beginPath();
+        ctx.moveTo(x - 30, H);
+        ctx.lineTo(x + 80, H - heapH);
+        ctx.lineTo(x + 240, H);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255, 73, 108, 0.5)";
+        ctx.fillRect(x + 76, H - heapH + 18, 6, 4);
+      }
+    } else if (game.stage === 1) {
+      // 적열 제련소: 거대 용광로와 왕복 피스톤, 용탕 창.
+      const pipeOffset = -((slowX) % 380);
+      for (let x = pipeOffset - 380; x < W + 380; x += 380) {
+        ctx.fillStyle = "rgba(43, 18, 14, 0.92)";
+        ctx.fillRect(x, 115, 176, 520);
+        ctx.strokeStyle = "rgba(255, 123, 98, 0.28)";
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.arc(x + 88, 310, 67, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255, ${72 + Math.floor(zonePulse * 55)}, 34, ${0.16 + Math.sin(game.time * 2 + x) * 0.035})`;
+        ctx.fillRect(x + 35, 260, 106, 100);
+        ctx.fillStyle = "rgba(255, 188, 80, 0.3)";
+        ctx.fillRect(x + 48, 286, 80, 48);
+      }
+      ctx.strokeStyle = "rgba(125, 54, 40, 0.55)";
+      ctx.lineWidth = 24;
+      for (let row = 0; row < 3; row += 1) {
+        const y = 105 + row * 155;
+        ctx.beginPath();
+        ctx.moveTo(-80, y);
+        ctx.lineTo(W + 80, y + (row % 2 ? 55 : -25));
         ctx.stroke();
       }
-      ctx.fillStyle = "rgba(255, 92, 48, 0.1)";
-      ctx.fillRect(0, H - 170, W, 170);
+      for (let piston = 0; piston < 7; piston += 1) {
+        const x = ((piston * 205 - mediumX) % (W + 260)) - 80;
+        const travel = (Math.sin(game.time * 1.15 + piston * 0.8) + 1) * 42;
+        ctx.fillStyle = "rgba(79, 37, 29, 0.9)";
+        ctx.fillRect(x, 0, 46, 120 + travel);
+        ctx.fillStyle = "rgba(255, 102, 54, 0.32)";
+        ctx.fillRect(x - 15, 118 + travel, 76, 22);
+      }
+      ctx.fillStyle = "rgba(255, 75, 28, 0.12)";
+      ctx.fillRect(0, H - 145, W, 145);
     } else if (game.stage === 2) {
-      const columnOffset = -((camera.x * 0.11) % 260);
-      for (let x = columnOffset - 260; x < W + 260; x += 260) {
-        ctx.fillStyle = "rgba(93, 77, 130, 0.2)";
-        ctx.fillRect(x, 120, 58, 510);
-        ctx.strokeStyle = "rgba(215, 160, 255, 0.18)";
-        ctx.strokeRect(x + 10, 145, 38, 420);
+      // 기억 성당: 뾰족 아치, 스테인드 메모리 창, 부유하는 기록 조각.
+      const naveOffset = -((slowX) % 310);
+      for (let x = naveOffset - 310; x < W + 310; x += 310) {
+        ctx.fillStyle = "rgba(37, 27, 63, 0.86)";
+        ctx.fillRect(x, 155, 68, 500);
+        ctx.strokeStyle = "rgba(215, 160, 255, 0.24)";
+        ctx.lineWidth = 5;
         ctx.beginPath();
-        ctx.arc(x + 29, 235, 16, 0, TAU);
+        ctx.moveTo(x + 20, 560);
+        ctx.lineTo(x + 20, 260);
+        ctx.quadraticCurveTo(x + 34, 195, x + 48, 260);
+        ctx.lineTo(x + 48, 560);
         ctx.stroke();
+        const glass = ctx.createLinearGradient(x + 22, 230, x + 48, 500);
+        glass.addColorStop(0, "rgba(101, 245, 234, 0.18)");
+        glass.addColorStop(0.5, "rgba(215, 160, 255, 0.22)");
+        glass.addColorStop(1, "rgba(255, 91, 126, 0.12)");
+        ctx.fillStyle = glass;
+        ctx.fillRect(x + 24, 270, 20, 255);
+      }
+      ctx.strokeStyle = "rgba(182, 131, 240, 0.14)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 180);
+      ctx.quadraticCurveTo(W * 0.25, 20, W * 0.5, 180);
+      ctx.quadraticCurveTo(W * 0.75, 20, W, 180);
+      ctx.stroke();
+      for (let shard = 0; shard < 24; shard += 1) {
+        const x = ((hash(shard * 2.3) * (W + 180) - mediumX + game.time * 7) % (W + 180)) - 90;
+        const y = 100 + ((hash(shard * 7.4) * 490 + Math.sin(game.time + shard) * 22) % 490);
+        ctx.fillStyle = shard % 3 ? "rgba(215, 160, 255, 0.2)" : "rgba(101, 245, 234, 0.22)";
+        ctx.fillRect(x, y, 3 + hash(shard) * 6, 12 + hash(shard * 4) * 18);
       }
     } else if (game.stage === 3) {
-      ctx.strokeStyle = "rgba(113, 196, 255, 0.22)";
+      // 새벽 송신탑: 실내 천장을 없앤 폭풍 하늘, 도시와 안테나 첨탑.
+      const sky = ctx.createRadialGradient(W * 0.64, 150, 20, W * 0.64, 150, 420);
+      sky.addColorStop(0, "rgba(94, 165, 255, 0.12)");
+      sky.addColorStop(1, "rgba(3, 9, 24, 0)");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+      drawSkyline(0.05, H - 110, 210, "#061426", 0.45);
+      drawSkyline(0.16, H - 40, 120, "#0a1d32", 0.9);
+      const mastOffset = -((mediumX) % 360);
+      for (let x = mastOffset - 360; x < W + 360; x += 360) {
+        ctx.strokeStyle = "rgba(104, 183, 242, 0.25)";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(x, H);
+        ctx.lineTo(x + 54, 95);
+        ctx.lineTo(x + 108, H);
+        ctx.stroke();
+        for (let bar = 0; bar < 5; bar += 1) {
+          const y = 190 + bar * 82;
+          ctx.beginPath();
+          ctx.moveTo(x + 20, y);
+          ctx.lineTo(x + 88, y);
+          ctx.stroke();
+        }
+        ctx.fillStyle = Math.sin(game.time * 4 + x) > 0 ? "rgba(255, 73, 108, 0.8)" : "rgba(255, 73, 108, 0.18)";
+        ctx.fillRect(x + 50, 86, 8, 8);
+      }
+      for (let beam = 0; beam < 3; beam += 1) {
+        const bx = ((beam * 470 - slowX * 0.8) % (W + 300)) - 100;
+        ctx.fillStyle = "rgba(104, 196, 255, 0.045)";
+        ctx.beginPath();
+        ctx.moveTo(bx, H);
+        ctx.lineTo(bx + 90 + Math.sin(game.time * 0.3 + beam) * 120, 0);
+        ctx.lineTo(bx + 185 + Math.sin(game.time * 0.3 + beam) * 120, 0);
+        ctx.fill();
+      }
+      ctx.strokeStyle = "rgba(154, 215, 255, 0.28)";
       ctx.lineWidth = 2;
-      for (let bolt = 0; bolt < 8; bolt += 1) {
-        const x = ((bolt * 197 - camera.x * 0.16) % (W + 260)) - 80;
-        const flicker = hash(Math.floor(game.time * 3) + bolt) > 0.72;
-        if (!flicker) continue;
+      for (let bolt = 0; bolt < 6; bolt += 1) {
+        if (hash(Math.floor(game.time * 2.3) + bolt * 8.1) < 0.82) continue;
+        const x = hash(bolt * 3.7) * W;
         ctx.beginPath();
         ctx.moveTo(x, 0);
-        ctx.lineTo(x + 24, 90);
-        ctx.lineTo(x - 12, 165);
-        ctx.lineTo(x + 35, 260);
+        ctx.lineTo(x + 24, 100);
+        ctx.lineTo(x - 18, 190);
+        ctx.lineTo(x + 34, 300);
         ctx.stroke();
       }
-    } else if (game.stage === 4) {
-      const mirrorOffset = -((camera.x * 0.14) % 220);
-      for (let x = mirrorOffset - 220; x < W + 220; x += 220) {
-        const reverseX = W - x;
-        ctx.fillStyle = "rgba(58, 37, 91, 0.22)";
-        ctx.fillRect(x, 108, 54, 530);
-        ctx.fillStyle = "rgba(25, 91, 82, 0.18)";
-        ctx.fillRect(reverseX, 160, 38, 430);
-        ctx.strokeStyle = "rgba(168, 121, 255, 0.28)";
-        ctx.strokeRect(x + 8, 126, 38, 472);
-        ctx.strokeStyle = "rgba(99, 255, 198, 0.24)";
+    } else {
+      // 원형 보관소: 뒤집힌 복제 캡슐, 비대칭 거울벽, 회전하는 기억 고리.
+      const mirrorOffset = -((slowX) % 250);
+      for (let x = mirrorOffset - 250; x < W + 250; x += 250) {
+        const flipped = Math.floor((x + slowX) / 250) % 2 === 0;
+        ctx.fillStyle = flipped ? "rgba(48, 32, 79, 0.66)" : "rgba(21, 78, 72, 0.56)";
+        ctx.fillRect(x, flipped ? 95 : 175, 62, flipped ? 520 : 420);
+        ctx.strokeStyle = flipped ? "rgba(168, 121, 255, 0.3)" : "rgba(99, 255, 198, 0.28)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 9, flipped ? 115 : 195, 44, flipped ? 480 : 380);
         ctx.beginPath();
-        ctx.moveTo(x + 27, 126);
-        ctx.lineTo(reverseX + 19, 590);
+        ctx.ellipse(x + 31, flipped ? 240 : 315, 19, 54, 0, 0, TAU);
         ctx.stroke();
       }
       ctx.save();
-      ctx.translate(W / 2, H * 0.42);
-      ctx.rotate(game.time * 0.035);
-      for (let ring = 0; ring < 5; ring += 1) {
-        ctx.strokeStyle = ring % 2 ? "rgba(99, 255, 198, 0.13)" : "rgba(168, 121, 255, 0.15)";
-        ctx.lineWidth = 2;
+      ctx.translate(W / 2 - (mediumX % 140), H * 0.39);
+      ctx.rotate(game.time * 0.025);
+      for (let ring = 0; ring < 7; ring += 1) {
+        ctx.strokeStyle = ring % 2 ? "rgba(99, 255, 198, 0.14)" : "rgba(168, 121, 255, 0.17)";
+        ctx.lineWidth = ring % 3 === 0 ? 4 : 2;
         ctx.beginPath();
-        ctx.arc(0, 0, 95 + ring * 54, 0, TAU);
+        ctx.ellipse(0, 0, 82 + ring * 52, 54 + ring * 34, ring * 0.11, 0, TAU);
         ctx.stroke();
       }
       ctx.restore();
+      for (let shard = 0; shard < 20; shard += 1) {
+        const x = ((hash(shard * 4.1) * (W + 160) - mediumX * 0.7) % (W + 160)) - 80;
+        const y = 90 + ((hash(shard * 8.7) * 520 + game.time * (5 + shard % 4)) % 520);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(game.time * 0.12 + shard);
+        ctx.fillStyle = shard % 2 ? "rgba(99, 255, 198, 0.17)" : "rgba(168, 121, 255, 0.18)";
+        ctx.fillRect(-3, -14, 6, 28);
+        ctx.restore();
+      }
     }
-    ctx.fillStyle = stageVisuals.haze;
-    ctx.fillRect(0, 70, W, H - 70);
 
+    ctx.fillStyle = stageVisuals.haze;
+    ctx.fillRect(0, 0, W, H);
     const zoneColor = zones[game.zone]?.color || palette.cyan;
     const fog = ctx.createLinearGradient(0, H * 0.45, 0, H);
     fog.addColorStop(0, "rgba(10, 20, 34, 0)");
-    fog.addColorStop(1, `${zoneColor}12`);
+    fog.addColorStop(1, `${zoneColor}16`);
     ctx.fillStyle = fog;
     ctx.fillRect(0, 0, W, H);
 
-    ctx.fillStyle = game.zone >= 2 ? "rgba(155, 20, 42, 0.055)" : "rgba(20, 85, 100, 0.035)";
-    ctx.fillRect(0, 70, W, H - 70);
+    // 막마다 입자의 방향과 색도 바꿔 실루엣뿐 아니라 움직임도 구분한다.
+    for (let mote = 0; mote < 38; mote += 1) {
+      const speed = game.stage === 1 ? 26 : game.stage === 3 ? 38 : 10;
+      const drift = game.time * (speed + hash(mote * 4.2) * 15);
+      const moteX = ((hash(mote * 2.7) * (W + 180) + (game.stage === 3 ? -drift : drift * 0.3) - camera.x * 0.045) % (W + 180) + W + 180) % (W + 180) - 90;
+      const moteY = 75 + ((hash(mote * 5.3) * 560 + (game.stage === 1 ? -drift : drift * 0.18)) % 560 + 560) % 560;
+      const moteSize = 1 + hash(mote * 9.8) * 2.6;
+      const colors = ["rgba(130, 187, 194, 0.23)", "rgba(255, 118, 64, 0.42)", "rgba(215, 160, 255, 0.27)", "rgba(121, 202, 255, 0.3)", "rgba(99, 255, 198, 0.26)"];
+      ctx.fillStyle = colors[game.stage];
+      ctx.fillRect(moteX, moteY, moteSize, game.stage === 3 ? moteSize * 2.4 : moteSize);
+    }
 
-    ctx.fillStyle = "rgba(255, 55, 88, 0.55)";
-    for (let x = beamOffset + 86; x < W; x += 480) {
-      ctx.fillRect(x, 66, 6, 4);
-      ctx.fillStyle = "rgba(255, 55, 88, 0.045)";
+    if (game.stage === 0 || game.stage === 3) {
+      ctx.strokeStyle = game.stage === 0 ? "rgba(156, 216, 228, 0.2)" : "rgba(146, 203, 255, 0.17)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x - 60, H);
-      ctx.lineTo(x + 66, 70);
-      ctx.lineTo(x + 130, H);
-      ctx.fill();
-      ctx.fillStyle = "rgba(255, 55, 88, 0.55)";
+      for (const drop of rain) {
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - drop.len * (game.stage === 3 ? 0.6 : 0.22), drop.y + drop.len);
+      }
+      ctx.stroke();
     }
-
-    // 전경 먼지와 작은 불씨는 카메라와 다른 속도로 흘러 깊이를 강조한다.
-    for (let mote = 0; mote < 42; mote += 1) {
-      const drift = game.time * (9 + hash(mote * 4.2) * 22);
-      const moteX = ((hash(mote * 2.7) * (W + 180) + drift - camera.x * 0.055) % (W + 180)) - 90;
-      const moteY = 95 + ((hash(mote * 5.3) * 540 - drift * 0.32) % 540 + 540) % 540;
-      const moteSize = 1 + hash(mote * 9.8) * 2.4;
-      ctx.fillStyle = mote % 9 === 0 ? "rgba(255, 115, 88, 0.42)" : "rgba(115, 193, 202, 0.2)";
-      ctx.fillRect(moteX, moteY, moteSize, moteSize);
-    }
-
-    ctx.strokeStyle = "rgba(156, 216, 228, 0.18)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (const drop of rain) {
-      ctx.moveTo(drop.x, drop.y);
-      ctx.lineTo(drop.x - drop.len * 0.22, drop.y + drop.len);
-    }
-    ctx.stroke();
   }
 
   function drawSkyline(parallax, baseY, spacing, color, lightChance) {
@@ -10844,7 +10970,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.2.6",
+    version: "2.2.7",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -10855,6 +10981,10 @@
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
+    distinctStageMaps: true,
+    stageMapIdentities: [...STAGE_MAP_IDENTITIES],
+    exclusiveStageTemplates: ["scrapCrane", "furnacePiston", "cathedralNave", "antennaShaft", "memoryLabyrinth"],
+    stageBackgroundLandmarks: true,
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
     bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
     bossDeathPickupSuppressed: true,
@@ -10913,10 +11043,14 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.2.6",
+    gameVersion: "2.2.7",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
+    distinctStageMaps: "true",
+    stageMapIdentities: STAGE_MAP_IDENTITIES.join(","),
+    exclusiveStageTemplates: "scrapCrane,furnacePiston,cathedralNave,antennaShaft,memoryLabyrinth",
+    stageBackgroundLandmarks: "true",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
