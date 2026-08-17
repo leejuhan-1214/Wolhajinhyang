@@ -103,7 +103,6 @@
   const SHIELD_BASE_HP = 6;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
-  const PERFECT_PARRY_WINDOW = 0.005;
   const PARRY_REFLECT_SPEED_MULTIPLIER = 1.25;
   const PARRY_REFLECT_MIN_SPEED = 560;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
@@ -240,42 +239,42 @@
   const BOSS_DEFINITIONS = {
     warden: {
       name: "붉은 중장 지휘기 · 철각",
-      hp: 24,
+      hp: 18,
       size: [82, 102],
       accent: "#ff496c",
       patterns: ["육익 판넬", "유도 포화", "중장 돌진", "대공 미사일", "제압 탄막"],
     },
     furnace: {
       name: "용광 심장 · 홍련",
-      hp: 36,
+      hp: 27,
       size: [72, 98],
       accent: "#ff7b62",
       patterns: ["공중 사련 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
     },
     weaver: {
       name: "기억 직조기 · 백면",
-      hp: 48,
+      hp: 36,
       size: [66, 88],
       accent: "#d7a0ff",
       patterns: ["공간 전이", "칠성 마법진", "비전 돌진", "기억성 운행"],
     },
     censor: {
       name: "중앙국 검열기 · 무명",
-      hp: 64,
+      hp: 48,
       size: [68, 94],
       accent: "#ff496c",
       patterns: ["금서 탄막", "그림자 이동", "사역마 소환", "월식 도약", "검은 격자"],
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 68,
+      hp: 51,
       size: [34, 56],
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "이중 도약 추격", "잔상 반격", "기억 반전"],
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
-      hp: 32,
+      hp: 24,
       size: [64, 74],
       accent: "#ffcd70",
       archetype: "warden",
@@ -283,7 +282,7 @@
     },
     hunter: {
       name: "반사 사냥꾼 · 적린",
-      hp: 40,
+      hp: 30,
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
@@ -291,7 +290,7 @@
     },
     oracle: {
       name: "전위 심문관 · 육화",
-      hp: 48,
+      hp: 36,
       size: [56, 78],
       accent: "#bfa4ff",
       archetype: "weaver",
@@ -299,7 +298,7 @@
     },
     revenant: {
       name: "검기 집행관 · 공문",
-      hp: 60,
+      hp: 45,
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
@@ -307,13 +306,16 @@
     },
     proxy: {
       name: "광기 연구체 · 대역-13",
-      hp: 72,
+      hp: 54,
       size: [58, 78],
       accent: "#78ff8b",
       archetype: "echo",
       patterns: ["맹독 플라스크", "변이 포션", "독무 살포", "실험체 돌진", "연쇄 폭약"],
     },
   };
+
+  const STAGE_COMBAT_PRESSURE = [0.82, 0.94, 1.06, 1.18, 1.32];
+  const STAGE_BULLET_PRESSURE = [0.88, 0.96, 1.03, 1.10, 1.16];
 
   function getBossArchetype(kind) {
     return BOSS_DEFINITIONS[kind]?.archetype || kind || "warden";
@@ -4375,7 +4377,6 @@
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
     player.attackCooldown = player.attackDuration + (player.grounded ? 0.015 : 0.055);
-    resolveInputPerfectParry();
     player.afterimageTimer = 0;
     game.shake = Math.max(game.shake, 4);
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 6, 220, 0.3, 100);
@@ -4442,14 +4443,6 @@
     return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
   }
 
-  function isFrontFacingParrySlash() {
-    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
-    const aimX = player.parryDirX / aimLength;
-    const aimY = player.parryDirY / aimLength;
-    const facing = player.parryFacing < 0 ? -1 : 1;
-    return Math.abs(aimY) <= 0.28 && aimX * facing >= 0.96;
-  }
-
   function bulletIntersectsSlashParryZone(bullet) {
     if (!bullet?.enemy) return false;
     const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
@@ -4486,60 +4479,6 @@
       && Number.isFinite(bullet.vy)
       && Math.hypot(bullet.vx, bullet.vy) > 1,
     );
-  }
-
-  function bulletApproachesParryAnchor(bullet) {
-    const centerX = bullet.x + bullet.w / 2;
-    const centerY = bullet.y + bullet.h / 2;
-    const toAnchorX = player.parryAnchorX - centerX;
-    const toAnchorY = player.parryAnchorY - centerY;
-    const distance = Math.max(1, Math.hypot(toAnchorX, toAnchorY));
-    const closingSpeed = (bullet.vx * toAnchorX + bullet.vy * toAnchorY) / distance;
-    return closingSpeed > 80;
-  }
-
-  function bulletIntersectsExactParryContact(bullet) {
-    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
-    const dirX = player.parryDirX / aimLength;
-    const dirY = player.parryDirY / aimLength;
-    const bulletRadius = Math.min(10, Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5));
-    const touchesBladeAt = (timeOffset) => {
-      const bulletCenterX = bullet.x + bullet.w / 2 + bullet.vx * timeOffset;
-      const bulletCenterY = bullet.y + bullet.h / 2 + bullet.vy * timeOffset;
-      const relativeX = bulletCenterX - player.parryAnchorX;
-      const relativeY = bulletCenterY - player.parryAnchorY;
-      const alongBlade = relativeX * dirX + relativeY * dirY;
-      const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
-      return (
-        alongBlade >= 24 - bulletRadius
-        && alongBlade <= 142 + bulletRadius
-        && acrossBlade <= 14 + bulletRadius
-      );
-    };
-    return touchesBladeAt(0) || touchesBladeAt(PERFECT_PARRY_WINDOW);
-  }
-
-  function resolveInputPerfectParry() {
-    if (!isFrontFacingParrySlash()) return false;
-    let candidate = null;
-    let closestDistance = Infinity;
-    for (const bullet of bullets) {
-      if (
-        !canPerfectParryBullet(bullet)
-        || !bulletApproachesParryAnchor(bullet)
-        || !bulletIntersectsExactParryContact(bullet)
-      ) continue;
-      const distance = Math.hypot(
-        bullet.x + bullet.w / 2 - player.parryAnchorX,
-        bullet.y + bullet.h / 2 - player.parryAnchorY,
-      );
-      if (distance >= closestDistance) continue;
-      candidate = bullet;
-      closestDistance = distance;
-    }
-    if (!candidate) return false;
-    reflectPerfectParryBullet(candidate);
-    return true;
   }
 
   function reflectPerfectParryBullet(bullet) {
@@ -5007,7 +4946,7 @@
     const targetX = lockedTarget?.x ?? player.x + player.w / 2;
     const targetY = lockedTarget?.y ?? player.y + player.h / 2;
     const angle = Math.atan2(targetY - sourceY, targetX - sourceX) + spread;
-    const bulletScale = difficultySettings[game.difficulty].bulletSpeed;
+    const bulletScale = difficultySettings[game.difficulty].bulletSpeed * (STAGE_BULLET_PRESSURE[enemy.stageIndex] || 1);
     const phaseShot = kind === "phase";
     const spellShot = kind === "spell";
     bullets.push({
@@ -6009,11 +5948,18 @@
         }
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
-        if (bullets[i].enemy && bulletIntersectsSlashParryZone(bullets[i])) {
-          // 정확 반사는 발도 입력 순간에만 resolveInputPerfectParry에서 처리한다.
-          // 이후 공격 모션에 닿은 탄환은 방향과 관계없이 기존처럼 삭제만 한다.
-          spawnParticles(bullets[i].x, bullets[i].y, palette.cyan, 5, 180, 0.25, 0);
-          bullets.splice(i, 1);
+        const bullet = bullets[i];
+        if (bullet.enemy && bulletIntersectsSlashParryZone(bullet)) {
+          const firstBladeContact = bullet.bladeContactAttackId !== player.attackId;
+          if (firstBladeContact) bullet.bladeContactAttackId = player.attackId;
+
+          // 발도 방향이나 겹친 시간과 관계없이 각 탄환이 칼날에 처음 닿은 순간 한 번만 판정한다.
+          if (firstBladeContact && canPerfectParryBullet(bullet)) {
+            reflectPerfectParryBullet(bullet);
+          } else {
+            spawnParticles(bullet.x, bullet.y, palette.cyan, 5, 180, 0.25, 0);
+            bullets.splice(i, 1);
+          }
           player.shotgunCharge = Math.min(3, player.shotgunCharge + 0.42);
           if (!player.grounded) player.airJumpAvailable = true;
         }
@@ -6244,7 +6190,7 @@
     const dx = player.x + player.w / 2 - (enemy.x + enemy.w / 2);
     const dy = player.y + player.h / 2 - (enemy.y + enemy.h / 2);
     const distance = Math.hypot(dx, dy);
-    const stagePressure = 1 + enemy.stageIndex * 0.08;
+    const stagePressure = STAGE_COMBAT_PRESSURE[enemy.stageIndex] || 1;
     const formation = getEnemyFormation(enemy);
     const formationCooldown = formation?.id === "spotter" && enemy.type !== "drone" ? 0.72 : 1;
     const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed * stagePressure;
@@ -6266,7 +6212,7 @@
       constrainEnemyToLockdown(enemy);
       if (distance < 560 && enemy.cooldown <= 0) {
         fireBullet(enemy, 410, 0, formation?.id === "relay" ? "phase" : "standard");
-        enemy.cooldown = 1.75 + hash(enemy.anim) * 0.45;
+        enemy.cooldown = (1.75 + hash(enemy.anim) * 0.45) / stagePressure;
       }
       if (distance < 42) damagePlayer(1, enemy.x);
       return;
@@ -6346,7 +6292,7 @@
 
     if (Math.abs(dx) < (enemy.type === "shield" ? 76 : 70) && Math.abs(dy) < 62 && enemy.cooldown <= 0) {
       enemy.windup = enemy.type === "shield" ? 0.68 : 0.3;
-      enemy.cooldown = enemy.type === "shield" ? 2.15 : 1.05;
+      enemy.cooldown = (enemy.type === "shield" ? 2.15 : 1.05) / stagePressure;
     }
 
     if (enemy.windup > 0) {
@@ -11422,10 +11368,10 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.4.2",
+    version: "2.4.3",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
-    terrainGeneration: "authored-stage-progression-v2.4.2",
+    terrainGeneration: "authored-stage-progression-v2.4.3",
     randomSignatureTerrain: false,
     earlyStageTerrainPreserved: true,
     platformComplexityBudgetByStage: [[0, 0, 1, 1], [0, 1, 1, 2], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
@@ -11444,8 +11390,11 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "authored-progressive-v2.4.2",
+    enemyPlacementDensity: "authored-progressive-v2.4.3",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
+    stageCombatPressure: [...STAGE_COMBAT_PRESSURE],
+    stageBulletPressure: [...STAGE_BULLET_PRESSURE],
+    progressiveCombatDifficulty: true,
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -11463,6 +11412,7 @@
     enemyWorldCullIntervalSeconds: 0.5,
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
     bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
+    bossHpScale: 0.75,
     bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
     bossRewardsEnabled: false,
@@ -11475,19 +11425,19 @@
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
     slashBulletDeflect: true,
     perfectParryReflect: true,
-    perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
-    perfectParryTimingMode: "input-contact-only",
+    perfectParryWindowSeconds: 0,
+    perfectParryTimingMode: "first-blade-contact",
     perfectParryActionDurationIndependent: true,
     perfectParryFrameRateIndependent: true,
-    perfectParryRequiresIncomingBullet: true,
-    perfectParryCandidateLimit: 1,
+    perfectParryRequiresIncomingBullet: false,
+    perfectParryCandidateLimit: "per-bullet-first-contact",
     perfectParryAnimationPhaseWindow: false,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
-    directionNeutralParry: false,
-    frontOnlyParry: true,
+    directionNeutralParry: true,
+    frontOnlyParry: false,
     allDirectionBulletDeflect: true,
-    nonFrontBulletOutcome: "destroy",
-    parryForwardAngleDegrees: 16,
+    nonFrontBulletOutcome: "reflect-on-first-contact",
+    parryForwardAngleDegrees: 360,
     parryUsesFrozenAttackAnchor: true,
     parryBladeHalfWidth: 34,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
@@ -11536,10 +11486,10 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.4.2",
+    gameVersion: "2.4.3",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
-    terrainGeneration: "authored-stage-progression-v2.4.2",
+    terrainGeneration: "authored-stage-progression-v2.4.3",
     randomSignatureTerrain: "false",
     earlyStageTerrainPreserved: "true",
     platformComplexityBudgetByStage: "0-0-1-1|0-1-1-2|1-1-2-2|1-2-2-3|2-2-3-4",
@@ -11566,8 +11516,11 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "authored-progressive-v2.4.2",
+    enemyPlacementDensity: "authored-progressive-v2.4.3",
     enemyBaseCountByStage: "8,10,12,14,16",
+    stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
+    stageBulletPressure: STAGE_BULLET_PRESSURE.join(","),
+    progressiveCombatDifficulty: "true",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
@@ -11576,6 +11529,7 @@
     platformCount: String(platforms.length),
     midBossHp: stages.map((stage) => `${stage.midBossKind}:${BOSS_DEFINITIONS[stage.midBossKind].hp}`).join(","),
     bossHp: stages.map((stage) => `${stage.bossKind}:${BOSS_DEFINITIONS[stage.bossKind].hp}`).join(","),
+    bossHpScale: "0.75",
     bossDeathPickupSuppressed: "true",
     shieldBaseHp: String(SHIELD_BASE_HP),
     shieldGuardMax: "2",
@@ -11600,19 +11554,19 @@
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
     slashBulletDeflect: "true",
     perfectParryReflect: "true",
-    perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
-    perfectParryTimingMode: "input-contact-only",
+    perfectParryWindowSeconds: "0",
+    perfectParryTimingMode: "first-blade-contact",
     perfectParryActionDurationIndependent: "true",
     perfectParryFrameRateIndependent: "true",
-    perfectParryRequiresIncomingBullet: "true",
-    perfectParryCandidateLimit: "1",
+    perfectParryRequiresIncomingBullet: "false",
+    perfectParryCandidateLimit: "per-bullet-first-contact",
     perfectParryAnimationPhaseWindow: "false",
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
-    directionNeutralParry: "false",
-    frontOnlyParry: "true",
+    directionNeutralParry: "true",
+    frontOnlyParry: "false",
     allDirectionBulletDeflect: "true",
-    nonFrontBulletOutcome: "destroy",
-    parryForwardAngleDegrees: "16",
+    nonFrontBulletOutcome: "reflect-on-first-contact",
+    parryForwardAngleDegrees: "360",
     parryUsesFrozenAttackAnchor: "true",
     parryBladeHalfWidth: "34",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
