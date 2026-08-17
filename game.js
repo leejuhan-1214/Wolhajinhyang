@@ -2764,6 +2764,8 @@
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, x < 2000 ? "glass" : "mirror"));
         addBoostNode(origin + 1880, floorY - 78, 140, -570);
         addBoostNode(origin + 2080, floorY - 78, -140, -570);
+        addHazard(origin + 1930, floorY - 420, 24, 420, "laser", 0.4);
+        addHazard(origin + 2046, floorY - 420, 24, 420, "laser", 1.45);
       }
     }
 
