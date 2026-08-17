@@ -2521,53 +2521,85 @@
     ];
 
     function addZoneEnemies(zone, floorY, spawnPoints) {
-      const pool = enemyPools[zone.stageIndex];
       const localZoneIndex = zone.localIndex;
-      const depthTier = Math.floor(localZoneIndex / 6);
+      const section = Math.min(3, Math.floor(localZoneIndex / 6));
       const points = [...spawnPoints];
       const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
-      const targetCount = 8 + localZoneIndex + zone.stageIndex * 2 + combatBonus;
-      const reinforcementPatterns = [
-        ["runner", "gunner", "runner", "drone", "shield"],
-        ["gunner", "runner", "shield", "drone", "mortar", "piercer"],
-        ["piercer", "gunner", "shield", "drone", "mortar", "runner"],
-        ["piercer", "mortar", "gunner", "drone", "shield", "runner"],
-        ["piercer", "mortar", "drone", "shield", "gunner", "mortar", "runner"],
+      const stageBaseCounts = [8, 10, 12, 14, 16];
+      const targetCount = stageBaseCounts[zone.stageIndex]
+        + section * 2
+        + (localZoneIndex % 3 === 2 ? 1 : 0)
+        + combatBonus;
+      const progressionPatterns = [
+        [
+          ["runner", "runner", "gunner"],
+          ["runner", "gunner", "runner", "drone"],
+          ["runner", "gunner", "shield", "drone"],
+          ["gunner", "shield", "drone", "piercer"],
+        ],
+        [
+          ["runner", "gunner", "runner", "shield"],
+          ["gunner", "runner", "shield", "drone"],
+          ["gunner", "shield", "drone", "piercer"],
+          ["shield", "drone", "piercer", "mortar", "gunner"],
+        ],
+        [
+          ["gunner", "shield", "drone", "runner"],
+          ["shield", "drone", "piercer", "gunner"],
+          ["shield", "piercer", "drone", "mortar"],
+          ["piercer", "mortar", "shield", "drone", "gunner"],
+        ],
+        [
+          ["piercer", "gunner", "drone", "shield"],
+          ["piercer", "mortar", "shield", "drone"],
+          ["mortar", "piercer", "drone", "shield", "gunner"],
+          ["piercer", "mortar", "drone", "shield", "gunner", "runner"],
+        ],
+        [
+          ["shield", "piercer", "drone", "gunner"],
+          ["piercer", "mortar", "drone", "shield"],
+          ["mortar", "piercer", "drone", "shield", "gunner"],
+          ["piercer", "mortar", "drone", "shield", "gunner", "mortar", "runner"],
+        ],
       ];
-      const pattern = reinforcementPatterns[zone.stageIndex];
+      const pattern = progressionPatterns[zone.stageIndex][section];
       const anchors = spawnPoints.length
         ? spawnPoints
         : [[560, floorY], [1450, floorY], [2450, floorY], [3440, floorY]];
-      const offsets = [-58, 58, -82, 82, -36, 36, -104, 104];
+      const offsets = [-54, 54, -78, 78, -34, 34];
 
       while (points.length < targetCount) {
         const reinforcement = points.length - spawnPoints.length;
-        const anchorIndex = (reinforcement * 3 + zone.globalIndex) % anchors.length;
+        const anchorIndex = (reinforcement + localZoneIndex + section) % anchors.length;
         const [anchorX, anchorY] = anchors[anchorIndex];
         const localX = clamp(
-          anchorX + offsets[(reinforcement + zone.globalIndex) % offsets.length],
+          anchorX + offsets[(reinforcement + section) % offsets.length],
           210,
           zone.width - 210,
         );
-        const type = pattern[(zone.globalIndex * 2 + reinforcement * 3 + depthTier) % pattern.length];
+        const type = pattern[(reinforcement + localZoneIndex) % pattern.length];
         points.push([localX, anchorY, type]);
       }
 
       points.forEach(([localX, surfaceY, forcedType], index) => {
-        const type = forcedType || pool[(zone.globalIndex * 3 + index * 2) % pool.length];
+        const type = forcedType || pattern[(index + localZoneIndex) % pattern.length];
         const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
         const enemy = addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
         enemy.placementWave = index >= spawnPoints.length ? "reinforcement" : "original";
         enemy.zonePlacementSignature = zone.code + ":" + index + ":" + type;
       });
       zone.targetEnemyCount = targetCount;
+      zone.enemyComplexityTier = zone.stageIndex * 4 + section;
     }
 
     function addUniqueZoneVariation(zone, floorY, kind, spawnPoints) {
       const globalIndex = zone.globalIndex;
+      const localZoneIndex = zone.localIndex;
+      const stageIndex = zone.stageIndex;
+      const section = Math.min(3, Math.floor(localZoneIndex / 6));
       const extension = zone.width - ZONE_W;
       const isArena = zone.template === "boss" || zone.template === "midboss";
-      const isHongryeonArena = zone.template === "boss" && zone.stageIndex === 1;
+      const isHongryeonArena = zone.template === "boss" && stageIndex === 1;
 
       // 뒤 구역일수록 실제 지면이 조금씩 길어진다. 기존 4,000px 설계 뒤에 확장 구간을 잇는다.
       if (extension > 0) {
@@ -2575,69 +2607,116 @@
       }
 
       if (zone.template === "tutorial") {
-        zone.layoutSeed = "tutorial-0";
+        zone.layoutSeed = "tutorial-authored-0";
+        zone.terrainComplexityTier = 0;
         return;
       }
 
-      // 모든 일반 구역은 구역 번호에서 만든 서로 다른 높이·간격·폭의 서명 발판을 갖는다.
+      // 무작위 좌표 대신 막별 설계표를 사용한다. 1막 전반은 원래 지형 그대로 두고,
+      // 뒤 막과 뒤 구역으로 갈수록 보조 발판·함정 예산을 계획적으로 늘린다.
+      const platformBudgets = [
+        [0, 0, 1, 1],
+        [0, 1, 1, 2],
+        [1, 1, 2, 2],
+        [1, 2, 2, 3],
+        [2, 2, 3, 4],
+      ];
+      const hazardBudgets = [
+        [0, 0, 0, 1],
+        [0, 1, 1, 1],
+        [1, 1, 2, 2],
+        [1, 2, 2, 3],
+        [2, 2, 3, 4],
+      ];
+      const stageRoutePlans = [
+        {
+          platforms: [[760, -120, 320], [1980, -165, 300], [3170, -130, 280]],
+          hazards: [[1280, "spike"], [2760, "spike"], [3520, "steam"]],
+        },
+        {
+          platforms: [[520, -115, 310], [1450, -205, 290], [2440, -135, 340], [3330, -235, 270]],
+          hazards: [[930, "steam"], [1880, "spike"], [2860, "steam"], [3600, "laser"]],
+        },
+        {
+          platforms: [[500, -175, 290], [1190, -315, 270], [2020, -445, 290], [2850, -300, 300], [3460, -185, 260]],
+          hazards: [[820, "laser"], [1630, "steam"], [2530, "spike"], [3260, "laser"]],
+        },
+        {
+          platforms: [[430, -210, 250], [1050, -390, 230], [1740, -255, 260], [2470, -470, 230], [3230, -330, 250]],
+          hazards: [[760, "laser"], [1420, "steam"], [2130, "laser"], [2880, "spike"], [3560, "laser"]],
+        },
+        {
+          platforms: [[390, -245, 230], [980, -455, 220], [1630, -190, 250], [2310, -515, 220], [2980, -325, 240], [3520, -470, 210]],
+          hazards: [[690, "laser"], [1260, "spike"], [1960, "steam"], [2670, "laser"], [3290, "spike"], [3740, "laser"]],
+        },
+      ];
+
       if (!isArena) {
-        const signaturePlatformCount = 1 + (globalIndex % 3) + Math.floor(globalIndex / 48);
-        for (let slot = 0; slot < signaturePlatformCount; slot += 1) {
-          const localX = 250 + ((globalIndex * 613 + slot * 977) % 3170);
-          const rise = 125 + ((globalIndex * 71 + slot * 97) % 390);
-          const width = 150 + ((globalIndex * 43 + slot * 59) % 190);
-          addPlatform(zone.x + localX, floorY - rise, width, 22 + ((globalIndex + slot) % 2) * 4, kind);
+        const routePlan = stageRoutePlans[stageIndex];
+        const platformCount = platformBudgets[stageIndex][section];
+        const hazardCount = hazardBudgets[stageIndex][section];
+        const mirrorRoute = localZoneIndex % 2 === 1;
+        const laneShift = ((localZoneIndex % 3) - 1) * 45;
+
+        for (let slot = 0; slot < platformCount; slot += 1) {
+          const planIndex = (slot + localZoneIndex) % routePlan.platforms.length;
+          const [plannedX, plannedRise, plannedWidth] = routePlan.platforms[planIndex];
+          const width = plannedWidth - section * 8;
+          const mirroredX = mirrorRoute ? ZONE_W - plannedX - width : plannedX;
+          const localX = clamp(mirroredX + laneShift, 220, ZONE_W - width - 220);
+          const rise = Math.abs(plannedRise) + section * 18;
+          addPlatform(zone.x + localX, floorY - rise, width, 24, kind);
         }
 
-        const hazardCount = 1 + ((globalIndex + zone.stageIndex) % 3) + Math.floor(globalIndex / 60);
-        const stageHazardTypes = [
-          ["spike", "steam"],
-          ["steam", "spike", "laser"],
-          ["laser", "steam", "spike"],
-          ["laser", "spike", "steam"],
-          ["laser", "steam", "spike"],
-        ][zone.stageIndex];
         for (let slot = 0; slot < hazardCount; slot += 1) {
-          const hazardType = stageHazardTypes[(globalIndex + slot * 2) % stageHazardTypes.length];
-          const localX = 430 + ((globalIndex * 397 + slot * 743) % 3050);
-          const width = hazardType === "steam" ? 28 : 92 + ((globalIndex * 17 + slot * 31) % 86);
-          const height = hazardType === "steam" || hazardType === "laser"
-            ? 220 + ((globalIndex * 29 + slot * 47) % 190)
-            : 22;
+          const planIndex = (slot + section + localZoneIndex) % routePlan.hazards.length;
+          const [plannedX, hazardType] = routePlan.hazards[planIndex];
+          const mirroredX = mirrorRoute ? ZONE_W - plannedX : plannedX;
+          const localX = clamp(mirroredX + laneShift, 360, ZONE_W - 360);
+          const width = hazardType === "steam" ? 28 : hazardType === "laser" ? 26 : 105 + section * 10;
+          const height = hazardType === "steam"
+            ? 235 + stageIndex * 22
+            : hazardType === "laser"
+              ? 245 + stageIndex * 30
+              : 22;
           addHazard(
             zone.x + localX,
             floorY - height,
             width,
             height,
             hazardType,
-            globalIndex * 0.071 + slot * 0.43,
+            stageIndex * 0.37 + section * 0.51 + slot * 0.64,
           );
         }
       }
 
-      // 늘어난 꼬리 구간에도 후반으로 갈수록 발판·함정·적 거점을 추가한다.
+      // 확장 꼬리 구간도 막 진행도에 맞춘 고정 규칙으로 구성한다.
       if (extension >= 160 && !isHongryeonArena) {
-        const tailRise = 120 + (globalIndex % 5) * 42;
+        const tailRise = 125 + stageIndex * 28 + section * 24;
         const tailWidth = Math.min(Math.max(120, extension * 0.55), 330);
         const tailX = ZONE_W + Math.max(20, extension * 0.18);
         addPlatform(zone.x + tailX, floorY - tailRise, tailWidth, 24, kind);
         if (!isArena) spawnPoints.push([tailX + tailWidth * 0.5, floorY - tailRise]);
       }
       if (extension >= 360 && !isArena) {
-        const tailHazardType = zone.stageIndex % 2 ? "steam" : "spike";
-        const tailHazardHeight = tailHazardType === "steam" ? 260 : 22;
+        const tailHazardTypes = ["spike", "steam", "laser", "laser", "spike"];
+        const tailHazardType = tailHazardTypes[stageIndex];
+        const tailHazardHeight = tailHazardType === "spike" ? 22 : 240 + stageIndex * 20;
         addHazard(
           zone.x + ZONE_W + extension * 0.68,
           floorY - tailHazardHeight,
-          tailHazardType === "steam" ? 30 : Math.min(150, extension * 0.22),
+          tailHazardType === "steam" || tailHazardType === "laser" ? 28 : Math.min(150, extension * 0.22),
           tailHazardHeight,
           tailHazardType,
-          globalIndex * 0.19,
+          stageIndex * 0.4 + section * 0.7,
         );
       }
 
-      zone.layoutSeed = "zone-" + (globalIndex + 1) + "-p" + ((globalIndex * 613) % 3170)
-        + "-h" + ((globalIndex * 397) % 3050);
+      zone.terrainComplexityTier = stageIndex * 4 + section;
+      zone.layoutSeed = "authored-stage-" + (stageIndex + 1)
+        + "-section-" + (section + 1)
+        + "-route-" + ((localZoneIndex % 6) + 1)
+        + "-width-" + zone.width;
     }
 
     function addBossArena(stageIndex, origin, floorY, kind) {
@@ -11264,9 +11343,14 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.4.0",
+    version: "2.4.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
+    terrainGeneration: "authored-stage-progression-v2.4.1",
+    randomSignatureTerrain: false,
+    earlyStageTerrainPreserved: true,
+    platformComplexityBudgetByStage: [[0, 0, 1, 1], [0, 1, 1, 2], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
+    hazardComplexityBudgetByStage: [[0, 0, 0, 1], [0, 1, 1, 1], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
     zoneWidthStep: ZONE_WIDTH_STEP,
     zoneWidthRange: [zoneDiversityMetrics.minWidth, zoneDiversityMetrics.maxWidth],
     uniqueZoneLayoutSignatures: zoneDiversityMetrics.layoutSignatureCount,
@@ -11281,8 +11365,8 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "zone-seeded-v2.4.0",
-    reinforcementBaseByStage: [2, 3, 3, 4, 4],
+    enemyPlacementDensity: "authored-progressive-v2.4.1",
+    enemyBaseCountByStage: [8, 10, 12, 14, 16],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -11365,9 +11449,14 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.4.0",
+    gameVersion: "2.4.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
+    terrainGeneration: "authored-stage-progression-v2.4.1",
+    randomSignatureTerrain: "false",
+    earlyStageTerrainPreserved: "true",
+    platformComplexityBudgetByStage: "0-0-1-1|0-1-1-2|1-1-2-2|1-2-2-3|2-2-3-4",
+    hazardComplexityBudgetByStage: "0-0-0-1|0-1-1-1|1-1-2-2|1-2-2-3|2-2-3-4",
     zoneWidthStep: String(ZONE_WIDTH_STEP),
     zoneWidthRange: zoneDiversityMetrics.minWidth + "," + zoneDiversityMetrics.maxWidth,
     uniqueZoneLayoutSignatures: String(zoneDiversityMetrics.layoutSignatureCount),
@@ -11390,8 +11479,8 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "zone-seeded-v2.4.0",
-    reinforcementBaseByStage: "2,3,3,4,4",
+    enemyPlacementDensity: "authored-progressive-v2.4.1",
+    enemyBaseCountByStage: "8,10,12,14,16",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
