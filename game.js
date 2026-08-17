@@ -4464,6 +4464,28 @@
     );
   }
 
+  function bulletIntersectsPerfectParrySweetSpot(bullet) {
+    if (!bullet?.enemy) return false;
+    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
+    const dirX = player.parryDirX / aimLength;
+    const dirY = player.parryDirY / aimLength;
+    const bulletCenterX = bullet.x + bullet.w / 2;
+    const bulletCenterY = bullet.y + bullet.h / 2;
+    const relativeX = bulletCenterX - player.parryAnchorX;
+    const relativeY = bulletCenterY - player.parryAnchorY;
+    const alongBlade = relativeX * dirX + relativeY * dirY;
+    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
+    const bulletRadius = Math.min(6, Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5));
+    const sweetStart = player.chargedAttack ? 106 : 98;
+    const sweetEnd = player.chargedAttack ? 150 : 142;
+    const sweetHalfWidth = player.chargedAttack ? 10 : 8;
+    return (
+      alongBlade >= sweetStart - bulletRadius
+      && alongBlade <= sweetEnd + bulletRadius
+      && acrossBlade <= sweetHalfWidth + bulletRadius
+    );
+  }
+
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
     const elapsed = player.attackDuration - player.attackTimer;
@@ -5953,8 +5975,14 @@
           const firstBladeContact = bullet.bladeContactAttackId !== player.attackId;
           if (firstBladeContact) bullet.bladeContactAttackId = player.attackId;
 
-          // 발도 방향이나 겹친 시간과 관계없이 각 탄환이 칼날에 처음 닿은 순간 한 번만 판정한다.
-          if (firstBladeContact && canPerfectParryBullet(bullet)) {
+          // 탄환이 칼날에 처음 닿는 순간, 끝부분의 좁은 정확 지점에서만 한 발까지 반사한다.
+          const exactParry = (
+            firstBladeContact
+            && player.perfectParryAttackId !== player.attackId
+            && canPerfectParryBullet(bullet)
+            && bulletIntersectsPerfectParrySweetSpot(bullet)
+          );
+          if (exactParry) {
             reflectPerfectParryBullet(bullet);
           } else {
             spawnParticles(bullet.x, bullet.y, palette.cyan, 5, 180, 0.25, 0);
@@ -11368,10 +11396,10 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.4.3",
+    version: "2.4.4",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
-    terrainGeneration: "authored-stage-progression-v2.4.3",
+    terrainGeneration: "authored-stage-progression-v2.4.4",
     randomSignatureTerrain: false,
     earlyStageTerrainPreserved: true,
     platformComplexityBudgetByStage: [[0, 0, 1, 1], [0, 1, 1, 2], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
@@ -11390,7 +11418,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "authored-progressive-v2.4.3",
+    enemyPlacementDensity: "authored-progressive-v2.4.4",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
     stageCombatPressure: [...STAGE_COMBAT_PRESSURE],
     stageBulletPressure: [...STAGE_BULLET_PRESSURE],
@@ -11430,13 +11458,17 @@
     perfectParryActionDurationIndependent: true,
     perfectParryFrameRateIndependent: true,
     perfectParryRequiresIncomingBullet: false,
-    perfectParryCandidateLimit: "per-bullet-first-contact",
+    perfectParryCandidateLimit: 1,
+    perfectParrySweetSpot: true,
+    perfectParrySweetSpotAlongBlade: [98, 142],
+    perfectParrySweetSpotHalfWidth: 8,
+    perfectParryFullBladeReflect: false,
     perfectParryAnimationPhaseWindow: false,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
     directionNeutralParry: true,
     frontOnlyParry: false,
     allDirectionBulletDeflect: true,
-    nonFrontBulletOutcome: "reflect-on-first-contact",
+    nonFrontBulletOutcome: "sweet-spot-reflect-otherwise-destroy",
     parryForwardAngleDegrees: 360,
     parryUsesFrozenAttackAnchor: true,
     parryBladeHalfWidth: 34,
@@ -11486,10 +11518,10 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.4.3",
+    gameVersion: "2.4.4",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
-    terrainGeneration: "authored-stage-progression-v2.4.3",
+    terrainGeneration: "authored-stage-progression-v2.4.4",
     randomSignatureTerrain: "false",
     earlyStageTerrainPreserved: "true",
     platformComplexityBudgetByStage: "0-0-1-1|0-1-1-2|1-1-2-2|1-2-2-3|2-2-3-4",
@@ -11516,7 +11548,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "authored-progressive-v2.4.3",
+    enemyPlacementDensity: "authored-progressive-v2.4.4",
     enemyBaseCountByStage: "8,10,12,14,16",
     stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
     stageBulletPressure: STAGE_BULLET_PRESSURE.join(","),
@@ -11559,13 +11591,17 @@
     perfectParryActionDurationIndependent: "true",
     perfectParryFrameRateIndependent: "true",
     perfectParryRequiresIncomingBullet: "false",
-    perfectParryCandidateLimit: "per-bullet-first-contact",
+    perfectParryCandidateLimit: "1",
+    perfectParrySweetSpot: "true",
+    perfectParrySweetSpotAlongBlade: "98,142",
+    perfectParrySweetSpotHalfWidth: "8",
+    perfectParryFullBladeReflect: "false",
     perfectParryAnimationPhaseWindow: "false",
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
     directionNeutralParry: "true",
     frontOnlyParry: "false",
     allDirectionBulletDeflect: "true",
-    nonFrontBulletOutcome: "reflect-on-first-contact",
+    nonFrontBulletOutcome: "sweet-spot-reflect-otherwise-destroy",
     parryForwardAngleDegrees: "360",
     parryUsesFrozenAttackAnchor: "true",
     parryBladeHalfWidth: "34",
