@@ -4173,28 +4173,32 @@
     return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
   }
 
-  function bulletIntersectsSlashParryZone(bullet) {
-    if (!bullet?.enemy) return false;
+  function isFrontFacingParrySlash() {
     const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
     const aimX = player.parryDirX / aimLength;
     const aimY = player.parryDirY / aimLength;
     const facing = player.parryFacing < 0 ? -1 : 1;
+    return Math.abs(aimY) <= 0.28 && aimX * facing >= 0.96;
+  }
 
-    // 정면에서 약 16도 이내로 휘두른 발도만 탄환을 패링할 수 있다.
-    // 위·아래·대각선 발도는 적 공격 판정만 유지하고 탄환에는 영향을 주지 않는다.
-    if (Math.abs(aimY) > 0.28 || aimX * facing < 0.96) return false;
-
+  function bulletIntersectsSlashParryZone(bullet) {
+    if (!bullet?.enemy) return false;
+    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
+    const dirX = player.parryDirX / aimLength;
+    const dirY = player.parryDirY / aimLength;
     const bulletCenterX = bullet.x + bullet.w / 2;
     const bulletCenterY = bullet.y + bullet.h / 2;
-    const relativeX = (bulletCenterX - player.parryAnchorX) * facing;
+    const relativeX = bulletCenterX - player.parryAnchorX;
     const relativeY = bulletCenterY - player.parryAnchorY;
+    const alongBlade = relativeX * dirX + relativeY * dirY;
+    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
     const bulletRadius = Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5);
     const reachEnd = player.chargedAttack ? 156 : 146;
     const halfWidth = player.chargedAttack ? 40 : 34;
     return (
-      relativeX >= 20 - bulletRadius
-      && relativeX <= reachEnd + bulletRadius
-      && Math.abs(relativeY) <= halfWidth + bulletRadius
+      alongBlade >= 20 - bulletRadius
+      && alongBlade <= reachEnd + bulletRadius
+      && acrossBlade <= halfWidth + bulletRadius
     );
   }
 
@@ -5689,7 +5693,7 @@
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
         if (bullets[i].enemy && bulletIntersectsSlashParryZone(bullets[i])) {
-          const perfectParry = isPerfectParryWindow() && canPerfectParryBullet(bullets[i]);
+          const perfectParry = isFrontFacingParrySlash() && isPerfectParryWindow() && canPerfectParryBullet(bullets[i]);
           if (perfectParry) {
             reflectPerfectParryBullet(bullets[i]);
           } else {
@@ -11070,7 +11074,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.3.2",
+    version: "2.3.3",
     worldWidth: WORLD_W,
     stages: stages.length,
     zones: zones.length,
@@ -11078,7 +11082,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "reinforced-v2.3.2",
+    enemyPlacementDensity: "reinforced-v2.3.3",
     reinforcementBaseByStage: [2, 3, 3, 4, 4],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
@@ -11113,6 +11117,8 @@
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
     directionNeutralParry: false,
     frontOnlyParry: true,
+    allDirectionBulletDeflect: true,
+    nonFrontBulletOutcome: "destroy",
     parryForwardAngleDegrees: 16,
     parryUsesFrozenAttackAnchor: true,
     parryBladeHalfWidth: 34,
@@ -11160,7 +11166,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.3.2",
+    gameVersion: "2.3.3",
     worldWidth: String(WORLD_W),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
@@ -11176,7 +11182,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "reinforced-v2.3.2",
+    enemyPlacementDensity: "reinforced-v2.3.3",
     reinforcementBaseByStage: "2,3,3,4,4",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
@@ -11214,6 +11220,8 @@
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
     directionNeutralParry: "false",
     frontOnlyParry: "true",
+    allDirectionBulletDeflect: "true",
+    nonFrontBulletOutcome: "destroy",
     parryForwardAngleDegrees: "16",
     parryUsesFrozenAttackAnchor: "true",
     parryBladeHalfWidth: "34",
