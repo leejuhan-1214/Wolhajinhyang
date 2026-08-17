@@ -4375,6 +4375,7 @@
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
     player.attackCooldown = player.attackDuration + (player.grounded ? 0.015 : 0.055);
+    resolveInputPerfectParry();
     player.afterimageTimer = 0;
     game.shake = Math.max(game.shake, 4);
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 6, 220, 0.3, 100);
@@ -4476,21 +4477,69 @@
     return elapsed > player.attackDuration * 0.14 && elapsed < player.attackDuration * 0.8;
   }
 
-  function isPerfectParryWindow() {
-    if (!isAttackActive()) return false;
-    const elapsed = player.attackDuration - player.attackTimer;
-    const activeStart = player.attackDuration * 0.14;
-    return elapsed <= activeStart + PERFECT_PARRY_WINDOW;
-  }
-
   function canPerfectParryBullet(bullet) {
     return Boolean(
       bullet?.enemy
       && !bullet.harmless
+      && !bullet.perfectParry
       && Number.isFinite(bullet.vx)
       && Number.isFinite(bullet.vy)
       && Math.hypot(bullet.vx, bullet.vy) > 1,
     );
+  }
+
+  function bulletApproachesParryAnchor(bullet) {
+    const centerX = bullet.x + bullet.w / 2;
+    const centerY = bullet.y + bullet.h / 2;
+    const toAnchorX = player.parryAnchorX - centerX;
+    const toAnchorY = player.parryAnchorY - centerY;
+    const distance = Math.max(1, Math.hypot(toAnchorX, toAnchorY));
+    const closingSpeed = (bullet.vx * toAnchorX + bullet.vy * toAnchorY) / distance;
+    return closingSpeed > 80;
+  }
+
+  function bulletIntersectsExactParryContact(bullet) {
+    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
+    const dirX = player.parryDirX / aimLength;
+    const dirY = player.parryDirY / aimLength;
+    const bulletRadius = Math.min(10, Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5));
+    const touchesBladeAt = (timeOffset) => {
+      const bulletCenterX = bullet.x + bullet.w / 2 + bullet.vx * timeOffset;
+      const bulletCenterY = bullet.y + bullet.h / 2 + bullet.vy * timeOffset;
+      const relativeX = bulletCenterX - player.parryAnchorX;
+      const relativeY = bulletCenterY - player.parryAnchorY;
+      const alongBlade = relativeX * dirX + relativeY * dirY;
+      const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
+      return (
+        alongBlade >= 24 - bulletRadius
+        && alongBlade <= 142 + bulletRadius
+        && acrossBlade <= 14 + bulletRadius
+      );
+    };
+    return touchesBladeAt(0) || touchesBladeAt(PERFECT_PARRY_WINDOW);
+  }
+
+  function resolveInputPerfectParry() {
+    if (!isFrontFacingParrySlash()) return false;
+    let candidate = null;
+    let closestDistance = Infinity;
+    for (const bullet of bullets) {
+      if (
+        !canPerfectParryBullet(bullet)
+        || !bulletApproachesParryAnchor(bullet)
+        || !bulletIntersectsExactParryContact(bullet)
+      ) continue;
+      const distance = Math.hypot(
+        bullet.x + bullet.w / 2 - player.parryAnchorX,
+        bullet.y + bullet.h / 2 - player.parryAnchorY,
+      );
+      if (distance >= closestDistance) continue;
+      candidate = bullet;
+      closestDistance = distance;
+    }
+    if (!candidate) return false;
+    reflectPerfectParryBullet(candidate);
+    return true;
   }
 
   function reflectPerfectParryBullet(bullet) {
@@ -5961,13 +6010,10 @@
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
         if (bullets[i].enemy && bulletIntersectsSlashParryZone(bullets[i])) {
-          const perfectParry = isFrontFacingParrySlash() && isPerfectParryWindow() && canPerfectParryBullet(bullets[i]);
-          if (perfectParry) {
-            reflectPerfectParryBullet(bullets[i]);
-          } else {
-            spawnParticles(bullets[i].x, bullets[i].y, palette.cyan, 5, 180, 0.25, 0);
-            bullets.splice(i, 1);
-          }
+          // 정확 반사는 발도 입력 순간에만 resolveInputPerfectParry에서 처리한다.
+          // 이후 공격 모션에 닿은 탄환은 방향과 관계없이 기존처럼 삭제만 한다.
+          spawnParticles(bullets[i].x, bullets[i].y, palette.cyan, 5, 180, 0.25, 0);
+          bullets.splice(i, 1);
           player.shotgunCharge = Math.min(3, player.shotgunCharge + 0.42);
           if (!player.grounded) player.airJumpAvailable = true;
         }
@@ -7582,19 +7628,51 @@
     ctx.restore();
   }
 
+  function getReadableSignY(sign, width, height) {
+    let readableY = sign.y;
+    const signLeft = sign.x - 12;
+    const signRight = signLeft + width;
+    const nearby = getNearbyPlatforms({ x: signLeft, w: width }, 80);
+
+    // 발판이 표지판 사각형과 겹치면 원본 좌표는 보존하고 화면에 그릴 때만 위로 올린다.
+    // 여러 층의 발판이 겹치는 경우를 위해 최대 세 번 안전 위치를 다시 계산한다.
+    for (let pass = 0; pass < 3; pass += 1) {
+      const signTop = readableY - height + 14;
+      const signBottom = readableY + 14;
+      let nextY = readableY;
+      for (const platform of nearby) {
+        if (
+          platform.hidden
+          || platform.x >= signRight
+          || platform.x + platform.w <= signLeft
+          || platform.y >= signBottom
+          || platform.y + platform.h <= signTop
+        ) continue;
+        nextY = Math.min(nextY, platform.y - 18);
+      }
+      if (nextY === readableY) break;
+      readableY = nextY;
+    }
+    return readableY;
+  }
+
   function drawSign(sign) {
     const width = sign.w || 174;
     const height = sign.h || 60;
-    ctx.fillStyle = "rgba(6, 12, 22, 0.88)";
-    ctx.fillRect(sign.x - 12, sign.y - height + 14, width, height);
-    ctx.strokeStyle = "rgba(101, 245, 234, 0.35)";
-    ctx.strokeRect(sign.x - 12, sign.y - height + 14, width, height);
+    const readableY = getReadableSignY(sign, width, height);
+    ctx.save();
+    ctx.fillStyle = "rgba(6, 12, 22, 0.92)";
+    ctx.fillRect(sign.x - 12, readableY - height + 14, width, height);
+    ctx.strokeStyle = "rgba(101, 245, 234, 0.58)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sign.x - 12, readableY - height + 14, width, height);
     ctx.fillStyle = "#e7ffff";
     ctx.font = "900 21px 'Malgun Gothic', sans-serif";
-    ctx.fillText(sign.text, sign.x, sign.y - 18);
-    ctx.fillStyle = "#6f97a4";
+    ctx.fillText(sign.text, sign.x, readableY - 18);
+    ctx.fillStyle = "#8db9c3";
     ctx.font = "10px monospace";
-    ctx.fillText(sign.sub, sign.x, sign.y);
+    ctx.fillText(sign.sub, sign.x, readableY);
+    ctx.restore();
   }
 
   function drawAdminBackdrop(backdrop) {
@@ -10105,9 +10183,10 @@
     drawBossArenaBackdrop(left, right);
     drawTutorialStageScenery(left, right);
     for (const backdrop of adminBackdrops) if (!backdrop.hidden && backdrop.x + backdrop.w > left && backdrop.x < right) drawAdminBackdrop(backdrop);
-    for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
     for (const platform of getNearbyPlatforms({ x: left, w: right - left }, 0)) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
     for (const hazard of hazards) if (!hazard.hidden && hazard.x + hazard.w > left && hazard.x < right) drawHazard(hazard);
+    // 표지판은 지형보다 뒤에 그려 발판에 가려지지 않게 한다.
+    for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
     for (const checkpoint of checkpoints) if (checkpoint.x > left && checkpoint.x < right) drawCheckpoint(checkpoint);
     for (const pickup of pickups) if (pickup.x > left && pickup.x < right) drawPickup(pickup);
     for (const node of boostNodes) if (node.x > left && node.x < right) drawBoostNode(node);
@@ -11343,10 +11422,10 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.4.1",
+    version: "2.4.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
-    terrainGeneration: "authored-stage-progression-v2.4.1",
+    terrainGeneration: "authored-stage-progression-v2.4.2",
     randomSignatureTerrain: false,
     earlyStageTerrainPreserved: true,
     platformComplexityBudgetByStage: [[0, 0, 1, 1], [0, 1, 1, 2], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
@@ -11365,7 +11444,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "authored-progressive-v2.4.1",
+    enemyPlacementDensity: "authored-progressive-v2.4.2",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
@@ -11397,6 +11476,12 @@
     slashBulletDeflect: true,
     perfectParryReflect: true,
     perfectParryWindowSeconds: PERFECT_PARRY_WINDOW,
+    perfectParryTimingMode: "input-contact-only",
+    perfectParryActionDurationIndependent: true,
+    perfectParryFrameRateIndependent: true,
+    perfectParryRequiresIncomingBullet: true,
+    perfectParryCandidateLimit: 1,
+    perfectParryAnimationPhaseWindow: false,
     perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
     directionNeutralParry: false,
     frontOnlyParry: true,
@@ -11435,6 +11520,8 @@
     shieldGuardHits: SHIELD_GUARD_HITS,
     shieldAirGuard: true,
     zoneSigns: zones.length,
+    signAutoRaiseAbovePlatforms: true,
+    signRenderLayer: "foreground",
     hunterRangedAttacks: true,
     oracleShotgunSwapDelay: 0.12,
     oracleReturnImpactDelay: 0.24,
@@ -11449,10 +11536,10 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.4.1",
+    gameVersion: "2.4.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
-    terrainGeneration: "authored-stage-progression-v2.4.1",
+    terrainGeneration: "authored-stage-progression-v2.4.2",
     randomSignatureTerrain: "false",
     earlyStageTerrainPreserved: "true",
     platformComplexityBudgetByStage: "0-0-1-1|0-1-1-2|1-1-2-2|1-2-2-3|2-2-3-4",
@@ -11479,7 +11566,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "authored-progressive-v2.4.1",
+    enemyPlacementDensity: "authored-progressive-v2.4.2",
     enemyBaseCountByStage: "8,10,12,14,16",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
@@ -11514,6 +11601,12 @@
     slashBulletDeflect: "true",
     perfectParryReflect: "true",
     perfectParryWindowSeconds: String(PERFECT_PARRY_WINDOW),
+    perfectParryTimingMode: "input-contact-only",
+    perfectParryActionDurationIndependent: "true",
+    perfectParryFrameRateIndependent: "true",
+    perfectParryRequiresIncomingBullet: "true",
+    perfectParryCandidateLimit: "1",
+    perfectParryAnimationPhaseWindow: "false",
     perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
     directionNeutralParry: "false",
     frontOnlyParry: "true",
@@ -11545,6 +11638,8 @@
     shieldGuardHits: String(SHIELD_GUARD_HITS),
     shieldAirGuard: "true",
     zoneSignCount: String(zones.length),
+    signAutoRaiseAbovePlatforms: "true",
+    signRenderLayer: "foreground",
     hunterRangedAttacks: "true",
     oracleShotgunSwapDelay: "0.12",
     oracleReturnImpactDelay: "0.24",
