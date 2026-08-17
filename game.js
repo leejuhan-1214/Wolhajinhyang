@@ -69,8 +69,13 @@
   const ZONES_PER_STAGE = 24;
   const MID_BOSS_ZONE_INDEX = 11;
   const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
-  const STAGE_W = ZONE_W * ZONES_PER_STAGE;
-  const WORLD_W = STAGE_W * 5;
+  const STAGE_COUNT = 5;
+  const TOTAL_ZONE_COUNT = ZONES_PER_STAGE * STAGE_COUNT;
+  const ZONE_WIDTH_STEP = 8;
+  const ZONE_WIDTHS = Array.from({ length: TOTAL_ZONE_COUNT }, (_, index) => ZONE_W + index * ZONE_WIDTH_STEP);
+  const ZONE_STARTS = [0];
+  for (const width of ZONE_WIDTHS) ZONE_STARTS.push(ZONE_STARTS[ZONE_STARTS.length - 1] + width);
+  const WORLD_W = ZONE_STARTS[TOTAL_ZONE_COUNT];
   const WORLD_H = 1450;
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
@@ -163,14 +168,30 @@
   let platformSpatialBuckets = [];
   let platformSpatialDirty = true;
   let enemyWorldCullAccumulator = 0;
+  let zoneDiversityMetrics = { layoutSignatureCount: 0, enemySignatureCount: 0, minWidth: ZONE_W, maxWidth: ZONE_W, minEnemyCount: 0, maxEnemyCount: 0 };
 
-  const stages = [
-    { x: 0, end: STAGE_W, midBossX: ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W - 1450, gateX: STAGE_W - 180, name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 390 },
-    { x: STAGE_W, end: STAGE_W * 2, midBossX: STAGE_W + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 2 - 1450, gateX: STAGE_W * 2 - 180, name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", midBossKind: "hunter", bossKind: "furnace", targetMinutes: 440 },
-    { x: STAGE_W * 2, end: STAGE_W * 3, midBossX: STAGE_W * 2 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 3 - 1450, gateX: STAGE_W * 3 - 180, name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", midBossKind: "oracle", bossKind: "weaver", targetMinutes: 480 },
-    { x: STAGE_W * 3, end: STAGE_W * 4, midBossX: STAGE_W * 3 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: STAGE_W * 4 - 1450, gateX: STAGE_W * 4 - 180, name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", midBossKind: "revenant", bossKind: "censor", targetMinutes: 530 },
-    { x: STAGE_W * 4, end: WORLD_W, midBossX: STAGE_W * 4 + ZONE_W * MID_BOSS_ZONE_INDEX + 2520, bossX: WORLD_W - 1450, gateX: WORLD_W - 180, name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", midBossKind: "proxy", bossKind: "echo", targetMinutes: 600 },
+  const stageSpecs = [
+    { name: "작전 4호 · 백야 폐기장", code: "STAGE 01 · SCRAP RAIN", color: "#65f5ea", kind: "scrap", midBossKind: "breaker", bossKind: "warden", targetMinutes: 390 },
+    { name: "검은 공장 · 타오르는 심장", code: "STAGE 02 · RED FURNACE", color: "#ff7b62", kind: "foundry", midBossKind: "hunter", bossKind: "furnace", targetMinutes: 440 },
+    { name: "기억 성당 · 거짓된 합창", code: "STAGE 03 · PALE CHOIR", color: "#d7a0ff", kind: "archive", midBossKind: "oracle", bossKind: "weaver", targetMinutes: 480 },
+    { name: "새벽 송신탑 · 마지막 증언", code: "STAGE 04 · LAST BROADCAST", color: "#ff5e87", kind: "tower", midBossKind: "revenant", bossKind: "censor", targetMinutes: 530 },
+    { name: "원형 보관소 · 거울의 뿌리", code: "STAGE 05 · MIRROR ROOT", color: "#63ffc6", kind: "mirror", midBossKind: "proxy", bossKind: "echo", targetMinutes: 600 },
   ];
+  const stages = stageSpecs.map((spec, stageIndex) => {
+    const firstZoneIndex = stageIndex * ZONES_PER_STAGE;
+    const endZoneIndex = firstZoneIndex + ZONES_PER_STAGE;
+    const midBossZoneIndex = firstZoneIndex + MID_BOSS_ZONE_INDEX;
+    const x = ZONE_STARTS[firstZoneIndex];
+    const end = ZONE_STARTS[endZoneIndex];
+    return {
+      ...spec,
+      x,
+      end,
+      midBossX: ZONE_STARTS[midBossZoneIndex] + Math.min(2520, ZONE_WIDTHS[midBossZoneIndex] - 900),
+      bossX: end - 1450,
+      gateX: end - 180,
+    };
+  });
 
   const stageZoneNames = [
     ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐철 사냥터", "폐기물 심층", "노동자 숙소 잔해", "폭우 운송교", "기억 매립 구덩이", "감독 기록고", "감독관 격납고"],
@@ -194,17 +215,24 @@
     ["antennaShaft", "towerClimb", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "towerClimb", "fork", "antennaShaft", "spiral", "towerClimb", "midboss", "antennaShaft", "towerClimb", "chasm", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "fork", "spiral", "towerClimb", "antennaShaft", "boss"],
     ["memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "cavern", "mirrorMaze", "memoryLabyrinth", "mirrorMaze", "fork", "memoryLabyrinth", "spiral", "mirrorMaze", "midboss", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "vertical", "mirrorMaze", "memoryLabyrinth", "fork", "chasm", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "boss"],
   ];
-  const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => ({
-    x: stage.x + zoneIndex * ZONE_W,
-    name: zoneIndex < stageZoneNames[stageIndex].length
-      ? stageZoneNames[stageIndex][zoneIndex]
-      : `${stageZoneNames[stageIndex][zoneIndex % stageZoneNames[stageIndex].length]} · 심층`,
-    code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
-    color: stage.color,
-    kind: stage.kind,
-    template: zoneTemplateRows[stageIndex][zoneIndex],
-    stageIndex,
-  })));
+  const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => {
+    const globalIndex = stageIndex * ZONES_PER_STAGE + zoneIndex;
+    return {
+      x: ZONE_STARTS[globalIndex],
+      width: ZONE_WIDTHS[globalIndex],
+      end: ZONE_STARTS[globalIndex + 1],
+      globalIndex,
+      localIndex: zoneIndex,
+      name: zoneIndex < stageZoneNames[stageIndex].length
+        ? stageZoneNames[stageIndex][zoneIndex]
+        : `${stageZoneNames[stageIndex][zoneIndex % stageZoneNames[stageIndex].length]} · 심층`,
+      code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
+      color: stage.color,
+      kind: stage.kind,
+      template: zoneTemplateRows[stageIndex][zoneIndex],
+      stageIndex,
+    };
+  }));
   zones[0].template = "tutorial";
   zones[0].name = "초승 훈련장";
   zones[0].code = "TRAINING-00 · MOONLIT";
@@ -680,20 +708,27 @@
     ],
   ];
 
+  function getStageZonePosition(stageIndex, localZoneIndex, progress = 0, offset = 0) {
+    const safeStageIndex = Math.max(0, Math.min(STAGE_COUNT - 1, stageIndex));
+    const safeLocalIndex = Math.max(0, Math.min(ZONES_PER_STAGE - 1, localZoneIndex));
+    const globalIndex = safeStageIndex * ZONES_PER_STAGE + safeLocalIndex;
+    return ZONE_STARTS[globalIndex] + ZONE_WIDTHS[globalIndex] * progress + offset;
+  }
+
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
     stageIndex,
-    x: stages[stageIndex].x + (eventIndex + 1) * ZONE_W * 2 - 620,
+    x: getStageZonePosition(stageIndex, Math.min(ZONES_PER_STAGE - 1, (eventIndex + 1) * 2), 0, -620),
     lines,
   }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
     stageIndex,
-    x: stages[stageIndex].x + (eventIndex + 13) * ZONE_W - 620,
+    x: getStageZonePosition(stageIndex, Math.min(ZONES_PER_STAGE - 1, eventIndex + 13), 0, -620),
     lines,
   })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
     stageIndex,
-    x: stages[stageIndex].x + (eventIndex === 0 ? MID_BOSS_ZONE_INDEX - 0.58 : MID_BOSS_ZONE_INDEX + 1.55) * ZONE_W,
+    x: eventIndex === 0 ? getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX - 1, 0.42) : getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX + 1, 0.55),
     lines,
   }))));
 
@@ -796,7 +831,7 @@
     },
     {
       id: "cutscene-original",
-      x: stages[4].x + ZONE_W * 4 + 620,
+      x: getStageZonePosition(4, 4, 0, 620),
       title: "장면 08 · 비어 있는 원본",
       location: "원본 생명유지실",
       visual: "capsule",
@@ -874,7 +909,7 @@
 
   CUTSCENE_EVENTS.push(...MIDBOSS_CUTSCENE_DATA.map((scene, stageIndex) => ({
     id: `cutscene-midboss-${stageIndex + 1}`,
-    x: stages[stageIndex].x + MID_BOSS_ZONE_INDEX * ZONE_W + 460,
+    x: getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX, 0, 460),
     title: scene.title,
     location: `${stages[stageIndex].name} / ${stageZoneNames[stageIndex][MID_BOSS_ZONE_INDEX]}`,
     visual: scene.visual,
@@ -884,7 +919,7 @@
   CUTSCENE_EVENTS.push(
     {
       id: "cutscene-workers-names",
-      x: stages[0].x + ZONE_W * 18 + 420,
+      x: getStageZonePosition(0, 18, 0, 420),
       title: "추가 장면 · 이름이 묻힌 곳",
       location: "백야 폐기장 / 기억 매립 구덩이",
       visual: "rain",
@@ -896,7 +931,7 @@
     },
     {
       id: "cutscene-fuel-testimony",
-      x: stages[1].x + ZONE_W * 18 + 420,
+      x: getStageZonePosition(1, 18, 0, 420),
       title: "추가 장면 · 공포의 사용 설명서",
       location: "검은 공장 / 노심 제어 회랑",
       visual: "furnace",
@@ -908,7 +943,7 @@
     },
     {
       id: "cutscene-nineteen-voices",
-      x: stages[2].x + ZONE_W * 18 + 420,
+      x: getStageZonePosition(2, 18, 0, 420),
       title: "추가 장면 · 열아홉 개의 답",
       location: "기억 성당 / 증언 봉인실",
       visual: "choir",
@@ -920,7 +955,7 @@
     },
     {
       id: "cutscene-public-broadcast",
-      x: stages[3].x + ZONE_W * 18 + 420,
+      x: getStageZonePosition(3, 18, 0, 420),
       title: "추가 장면 · 편집되지 않은 증인",
       location: "새벽 송신탑 / 최후 중계실",
       visual: "broadcast",
@@ -932,7 +967,7 @@
     },
     {
       id: "cutscene-two-seats",
-      x: stages[4].x + ZONE_W * 18 + 420,
+      x: getStageZonePosition(4, 18, 0, 420),
       title: "추가 장면 · 두 개의 빈자리",
       location: "원형 보관소 / 두 사람의 회랑",
       visual: "duel",
@@ -1220,13 +1255,22 @@
   }
 
   function getZoneIndexAt(x) {
-    return clamp(zones.findLastIndex((zone) => x >= zone.x), 0, zones.length - 1);
+    let low = 0;
+    let high = zones.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const zone = zones[middle];
+      if (x < zone.x) high = middle - 1;
+      else if (x >= zone.end) low = middle + 1;
+      else return middle;
+    }
+    return clamp(low, 0, zones.length - 1);
   }
 
   function getZoneEnemies(zoneIndex) {
     const zone = zones[zoneIndex];
     if (!zone) return [];
-    return enemies.filter((enemy) => enemy.originX >= zone.x && enemy.originX < zone.x + ZONE_W);
+    return enemies.filter((enemy) => enemy.originX >= zone.x && enemy.originX < zone.end);
   }
 
   function getZoneRemaining(zoneIndex) {
@@ -1239,10 +1283,11 @@
     const homeZoneIndex = Number.isInteger(enemy?.homeZoneIndex)
       ? enemy.homeZoneIndex
       : enemy?.stageIndex * ZONES_PER_STAGE + fallbackZoneIndex;
-    const zone = zones[homeZoneIndex] || { x: stage.x + fallbackZoneIndex * ZONE_W };
+    const fallbackStageIndex = Number.isInteger(enemy?.stageIndex) ? enemy.stageIndex : 0;
+    const zone = zones[homeZoneIndex] || zones[fallbackStageIndex * ZONES_PER_STAGE + fallbackZoneIndex];
     return {
       left: zone.x + inset,
-      right: Math.min(zone.x + ZONE_W - inset, stage.gateX - 70),
+      right: Math.min(zone.end - inset, stage.gateX - 70),
     };
   }
 
@@ -1252,7 +1297,7 @@
       : getZoneIndexAt(enemy.originX);
     const zone = zones[homeZoneIndex];
     let left = zone.x + 48;
-    let right = zone.x + ZONE_W - 48;
+    let right = zone.end - 48;
     const room = combatRooms.find((candidate) => enemy.originX > candidate.left && enemy.originX < candidate.right);
     if (room) {
       left = Math.max(left, room.left + 24);
@@ -1312,7 +1357,7 @@
     const maxZone = Math.min(zones.length - 1, game.zone + 1);
     return enemies.filter((enemy) => {
       if (!enemy.alive) return false;
-      if (Math.abs(enemy.x + enemy.w / 2 - (player.x + player.w / 2)) < ZONE_W * 1.2) return true;
+      if (Math.abs(enemy.x + enemy.w / 2 - (player.x + player.w / 2)) < (zones[game.zone]?.width || ZONE_W) * 1.2) return true;
       return Number.isInteger(enemy.homeZoneIndex)
         && enemy.homeZoneIndex >= minZone
         && enemy.homeZoneIndex <= maxZone;
@@ -1373,8 +1418,8 @@
   function rebuildPlatformSpatialIndex() {
     platformSpatialBuckets = Array.from({ length: zones.length }, () => []);
     for (const platform of platforms) {
-      const firstBucket = clamp(Math.floor(platform.x / ZONE_W), 0, zones.length - 1);
-      const lastBucket = clamp(Math.floor((platform.x + Math.max(1, platform.w) - 1) / ZONE_W), 0, zones.length - 1);
+      const firstBucket = getZoneIndexAt(platform.x);
+      const lastBucket = getZoneIndexAt(platform.x + Math.max(1, platform.w) - 1);
       for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) platformSpatialBuckets[bucket].push(platform);
     }
     platformSpatialDirty = false;
@@ -1384,8 +1429,8 @@
     if (platformSpatialDirty || platformSpatialBuckets.length !== zones.length) rebuildPlatformSpatialIndex();
     const left = clamp(entity.x - padding, 0, WORLD_W - 1);
     const right = clamp(entity.x + entity.w + padding, 0, WORLD_W - 1);
-    const firstBucket = clamp(Math.floor(left / ZONE_W), 0, zones.length - 1);
-    const lastBucket = clamp(Math.floor(right / ZONE_W), 0, zones.length - 1);
+    const firstBucket = getZoneIndexAt(left);
+    const lastBucket = getZoneIndexAt(right);
     if (firstBucket === lastBucket) return platformSpatialBuckets[firstBucket];
     const nearby = [];
     const seen = new Set();
@@ -2477,44 +2522,122 @@
 
     function addZoneEnemies(zone, floorY, spawnPoints) {
       const pool = enemyPools[zone.stageIndex];
-      const localZoneIndex = Math.round((zone.x - stages[zone.stageIndex].x) / ZONE_W);
+      const localZoneIndex = zone.localIndex;
       const depthTier = Math.floor(localZoneIndex / 6);
       const points = [...spawnPoints];
-      const legacyExtraCount = zone.stageIndex;
-      for (let extra = 0; extra < legacyExtraCount; extra += 1) {
-        points.push([3250 + extra * 230, floorY]);
-      }
-
-      // 각 막의 일반 구역을 비어 보이지 않게 보강하되, 초반보다 후반의 밀도를 높인다.
-      // 기존 지형 위의 안전한 생성점을 재사용해 낭떠러지나 구조물 내부에 생기는 일을 막는다.
-      const reinforcementBases = [2, 3, 3, 4, 4];
       const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
-      const reinforcementCount = reinforcementBases[zone.stageIndex] + Math.floor(depthTier / 2) + combatBonus;
+      const targetCount = 8 + localZoneIndex + zone.stageIndex * 2 + combatBonus;
       const reinforcementPatterns = [
-        ["runner", "gunner", "runner", "drone"],
-        ["gunner", "runner", "shield", "drone", "mortar"],
+        ["runner", "gunner", "runner", "drone", "shield"],
+        ["gunner", "runner", "shield", "drone", "mortar", "piercer"],
         ["piercer", "gunner", "shield", "drone", "mortar", "runner"],
         ["piercer", "mortar", "gunner", "drone", "shield", "runner"],
         ["piercer", "mortar", "drone", "shield", "gunner", "mortar", "runner"],
       ];
       const pattern = reinforcementPatterns[zone.stageIndex];
-      const anchors = spawnPoints.length ? spawnPoints : [[560, floorY], [1450, floorY], [2450, floorY], [3440, floorY]];
-      const offsets = [-58, 58, -82, 82, -36, 36];
+      const anchors = spawnPoints.length
+        ? spawnPoints
+        : [[560, floorY], [1450, floorY], [2450, floorY], [3440, floorY]];
+      const offsets = [-58, 58, -82, 82, -36, 36, -104, 104];
 
-      for (let reinforcement = 0; reinforcement < reinforcementCount; reinforcement += 1) {
-        const anchorIndex = (reinforcement * 3 + localZoneIndex + zone.stageIndex) % anchors.length;
+      while (points.length < targetCount) {
+        const reinforcement = points.length - spawnPoints.length;
+        const anchorIndex = (reinforcement * 3 + zone.globalIndex) % anchors.length;
         const [anchorX, anchorY] = anchors[anchorIndex];
-        const localX = clamp(anchorX + offsets[(reinforcement + localZoneIndex) % offsets.length], 210, ZONE_W - 210);
-        const type = pattern[(localZoneIndex * 2 + reinforcement * 3 + depthTier) % pattern.length];
+        const localX = clamp(
+          anchorX + offsets[(reinforcement + zone.globalIndex) % offsets.length],
+          210,
+          zone.width - 210,
+        );
+        const type = pattern[(zone.globalIndex * 2 + reinforcement * 3 + depthTier) % pattern.length];
         points.push([localX, anchorY, type]);
       }
 
       points.forEach(([localX, surfaceY, forcedType], index) => {
-        const type = forcedType || pool[(zone.x / ZONE_W + index * 2) % pool.length];
+        const type = forcedType || pool[(zone.globalIndex * 3 + index * 2) % pool.length];
         const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
         const enemy = addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
-        enemy.placementWave = index >= spawnPoints.length + legacyExtraCount ? "reinforcement" : "original";
+        enemy.placementWave = index >= spawnPoints.length ? "reinforcement" : "original";
+        enemy.zonePlacementSignature = zone.code + ":" + index + ":" + type;
       });
+      zone.targetEnemyCount = targetCount;
+    }
+
+    function addUniqueZoneVariation(zone, floorY, kind, spawnPoints) {
+      const globalIndex = zone.globalIndex;
+      const extension = zone.width - ZONE_W;
+      const isArena = zone.template === "boss" || zone.template === "midboss";
+      const isHongryeonArena = zone.template === "boss" && zone.stageIndex === 1;
+
+      // 뒤 구역일수록 실제 지면이 조금씩 길어진다. 기존 4,000px 설계 뒤에 확장 구간을 잇는다.
+      if (extension > 0) {
+        addPlatform(zone.x + ZONE_W, floorY, extension, WORLD_H - floorY, kind);
+      }
+
+      if (zone.template === "tutorial") {
+        zone.layoutSeed = "tutorial-0";
+        return;
+      }
+
+      // 모든 일반 구역은 구역 번호에서 만든 서로 다른 높이·간격·폭의 서명 발판을 갖는다.
+      if (!isArena) {
+        const signaturePlatformCount = 1 + (globalIndex % 3) + Math.floor(globalIndex / 48);
+        for (let slot = 0; slot < signaturePlatformCount; slot += 1) {
+          const localX = 250 + ((globalIndex * 613 + slot * 977) % 3170);
+          const rise = 125 + ((globalIndex * 71 + slot * 97) % 390);
+          const width = 150 + ((globalIndex * 43 + slot * 59) % 190);
+          addPlatform(zone.x + localX, floorY - rise, width, 22 + ((globalIndex + slot) % 2) * 4, kind);
+        }
+
+        const hazardCount = 1 + ((globalIndex + zone.stageIndex) % 3) + Math.floor(globalIndex / 60);
+        const stageHazardTypes = [
+          ["spike", "steam"],
+          ["steam", "spike", "laser"],
+          ["laser", "steam", "spike"],
+          ["laser", "spike", "steam"],
+          ["laser", "steam", "spike"],
+        ][zone.stageIndex];
+        for (let slot = 0; slot < hazardCount; slot += 1) {
+          const hazardType = stageHazardTypes[(globalIndex + slot * 2) % stageHazardTypes.length];
+          const localX = 430 + ((globalIndex * 397 + slot * 743) % 3050);
+          const width = hazardType === "steam" ? 28 : 92 + ((globalIndex * 17 + slot * 31) % 86);
+          const height = hazardType === "steam" || hazardType === "laser"
+            ? 220 + ((globalIndex * 29 + slot * 47) % 190)
+            : 22;
+          addHazard(
+            zone.x + localX,
+            floorY - height,
+            width,
+            height,
+            hazardType,
+            globalIndex * 0.071 + slot * 0.43,
+          );
+        }
+      }
+
+      // 늘어난 꼬리 구간에도 후반으로 갈수록 발판·함정·적 거점을 추가한다.
+      if (extension >= 160 && !isHongryeonArena) {
+        const tailRise = 120 + (globalIndex % 5) * 42;
+        const tailWidth = Math.min(Math.max(120, extension * 0.55), 330);
+        const tailX = ZONE_W + Math.max(20, extension * 0.18);
+        addPlatform(zone.x + tailX, floorY - tailRise, tailWidth, 24, kind);
+        if (!isArena) spawnPoints.push([tailX + tailWidth * 0.5, floorY - tailRise]);
+      }
+      if (extension >= 360 && !isArena) {
+        const tailHazardType = zone.stageIndex % 2 ? "steam" : "spike";
+        const tailHazardHeight = tailHazardType === "steam" ? 260 : 22;
+        addHazard(
+          zone.x + ZONE_W + extension * 0.68,
+          floorY - tailHazardHeight,
+          tailHazardType === "steam" ? 30 : Math.min(150, extension * 0.22),
+          tailHazardHeight,
+          tailHazardType,
+          globalIndex * 0.19,
+        );
+      }
+
+      zone.layoutSeed = "zone-" + (globalIndex + 1) + "-p" + ((globalIndex * 613) % 3170)
+        + "-h" + ((globalIndex * 397) % 3050);
     }
 
     function addBossArena(stageIndex, origin, floorY, kind) {
@@ -2598,7 +2721,7 @@
     }
 
     for (const zone of zones) {
-      const localZoneIndex = Math.round((zone.x - stages[zone.stageIndex].x) / ZONE_W);
+      const localZoneIndex = zone.localIndex;
       const floorY = floorHeights[zone.stageIndex][localZoneIndex];
       const kind = platformKinds[zone.kind][localZoneIndex];
       const origin = zone.x;
@@ -2833,6 +2956,8 @@
         addSign(origin + 2140, floorY - 100, definition.name);
       }
 
+      addUniqueZoneVariation(zone, floorY, kind, spawns);
+
       if (zone.stageIndex === 4 && zone.template !== "boss" && zone.template !== "midboss") {
         const mirrorKind = localZoneIndex % 2 ? "mirror" : "glass";
         const ridge = floorY - 520 - (localZoneIndex % 3) * 55;
@@ -2889,9 +3014,73 @@
     rebuildPlatformSpatialIndex();
     configureCombatRooms();
     applyAdminRemovedEnemyData();
+    zoneDiversityMetrics = calculateZoneDiversityMetrics();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     rebuildAdminZoneGrid();
     initRain();
+  }
+
+  function calculateZoneDiversityMetrics() {
+    const layoutSignatures = new Set();
+    const enemySignatures = new Set();
+    const enemyCounts = [];
+
+    for (const zone of zones) {
+      const zonePlatforms = platforms
+        .filter((platform) => platform.x + platform.w / 2 >= zone.x && platform.x + platform.w / 2 < zone.end)
+        .map((platform) => [
+          Math.round(platform.x - zone.x),
+          Math.round(platform.y),
+          Math.round(platform.w),
+          Math.round(platform.h),
+          platform.kind || "",
+        ].join(":"))
+        .sort();
+      const zoneHazards = hazards
+        .filter((hazard) => hazard.x + hazard.w / 2 >= zone.x && hazard.x + hazard.w / 2 < zone.end)
+        .map((hazard) => [
+          Math.round(hazard.x - zone.x),
+          Math.round(hazard.y),
+          Math.round(hazard.w),
+          Math.round(hazard.h),
+          hazard.type || hazard.kind || "",
+          Number(hazard.phase || 0).toFixed(2),
+        ].join(":"))
+        .sort();
+      const zoneEnemies = enemies
+        .filter((enemy) => {
+          const originX = Number.isFinite(enemy.originX) ? enemy.originX : enemy.x;
+          return originX >= zone.x && originX < zone.end;
+        })
+        .map((enemy) => {
+          const originX = Number.isFinite(enemy.originX) ? enemy.originX : enemy.x;
+          return [
+            enemy.type,
+            enemy.bossKind || "",
+            Math.round(originX - zone.x),
+            Math.round(enemy.spawnY ?? enemy.y),
+          ].join(":");
+        })
+        .sort();
+
+      layoutSignatures.add([
+        zone.width,
+        zone.layoutSeed || "",
+        zonePlatforms.join(","),
+        zoneHazards.join(","),
+      ].join("|"));
+      enemySignatures.add([zoneEnemies.length, zoneEnemies.join(",")].join("|"));
+      enemyCounts.push(zoneEnemies.length);
+    }
+
+    return {
+      layoutSignatureCount: layoutSignatures.size,
+      enemySignatureCount: enemySignatures.size,
+      minWidth: Math.min(...ZONE_WIDTHS),
+      maxWidth: Math.max(...ZONE_WIDTHS),
+      minEnemyCount: Math.min(...enemyCounts),
+      maxEnemyCount: Math.max(...enemyCounts),
+    };
   }
 
   function initRain() {
@@ -4821,7 +5010,7 @@
     const stage = stages[controller.ownerStage] || stages[1];
     const zone = zones[controller.ownerZone] || zones[controller.ownerStage * ZONES_PER_STAGE + BOSS_ZONE_INDEX];
     const arenaLeft = zone.x + 170;
-    const arenaRight = Math.min(zone.x + ZONE_W - 110, stage.gateX - 110);
+    const arenaRight = Math.min(zone.end - 110, stage.gateX - 110);
     const serial = controller.spawnSerial++;
     const randomX = hash(serial * 17.31 + game.time * 7.17);
     const randomSize = hash(serial * 31.73 + 4.9);
@@ -5735,7 +5924,7 @@
       const firstCheckedZone = game.adminCadetMode ? game.adminCadetStartZone : 0;
       for (let zoneIndex = firstCheckedZone; zoneIndex < zones.length; zoneIndex += 1) {
         const lockedZone = zones[zoneIndex];
-        const zoneBoundary = lockedZone.x + ZONE_W - 48;
+        const zoneBoundary = lockedZone.end - 48;
         if (player.x + player.w <= zoneBoundary) break;
         const zoneRemaining = getZoneRemaining(zoneIndex);
         if (zoneRemaining === 0) continue;
@@ -9665,8 +9854,9 @@
     const floorByStage = [650, 680, 670, 660, 670];
     for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
       const stage = stages[stageIndex];
-      const origin = stage.x + ZONE_W * BOSS_ZONE_INDEX;
-      if (origin > right || origin + ZONE_W < left) continue;
+      const bossZone = zones[stageIndex * ZONES_PER_STAGE + BOSS_ZONE_INDEX];
+      const origin = bossZone.x;
+      if (origin > right || bossZone.end < left) continue;
       const floorY = floorByStage[stageIndex];
       const accent = stage.color;
       ctx.save();
@@ -9852,7 +10042,7 @@
       for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
         const zone = zones[zoneIndex];
         if (zone.template === "boss") continue;
-        const boundary = zone.x + ZONE_W - 48;
+        const boundary = zone.end - 48;
         if (boundary <= left - 40 || boundary >= right + 40) continue;
         if (getZoneRemaining(zoneIndex) > 0) drawCombatSeal(boundary);
       }
@@ -11074,15 +11264,24 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.3.3",
+    version: "2.4.0",
     worldWidth: WORLD_W,
+    progressiveZoneWidths: true,
+    zoneWidthStep: ZONE_WIDTH_STEP,
+    zoneWidthRange: [zoneDiversityMetrics.minWidth, zoneDiversityMetrics.maxWidth],
+    uniqueZoneLayoutSignatures: zoneDiversityMetrics.layoutSignatureCount,
+    uniqueZoneEnemySignatures: zoneDiversityMetrics.enemySignatureCount,
+    zoneEnemyCountRange: [zoneDiversityMetrics.minEnemyCount, zoneDiversityMetrics.maxEnemyCount],
+    uniqueZonePlatforms: true,
+    uniqueZoneHazards: true,
+    uniqueZoneEnemyCompositions: true,
     stages: stages.length,
     zones: zones.length,
     zonesPerStage: ZONES_PER_STAGE,
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "reinforced-v2.3.3",
+    enemyPlacementDensity: "zone-seeded-v2.4.0",
     reinforcementBaseByStage: [2, 3, 3, 4, 4],
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
@@ -11095,7 +11294,7 @@
     progressiveTerrainDifficulty: true,
     terrainDifficultyTiers: [1, 2, 3, 4, 5],
     platformSpatialIndex: true,
-    platformSpatialBucketWidth: ZONE_W,
+    platformSpatialBucketWidth: "variable-zone-index",
     activeEnemyBulletCollisionOnly: true,
     combatTerrainActiveEnemyOnly: true,
     enemyWorldCullIntervalSeconds: 0.5,
@@ -11166,8 +11365,17 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.3.3",
+    gameVersion: "2.4.0",
     worldWidth: String(WORLD_W),
+    progressiveZoneWidths: "true",
+    zoneWidthStep: String(ZONE_WIDTH_STEP),
+    zoneWidthRange: zoneDiversityMetrics.minWidth + "," + zoneDiversityMetrics.maxWidth,
+    uniqueZoneLayoutSignatures: String(zoneDiversityMetrics.layoutSignatureCount),
+    uniqueZoneEnemySignatures: String(zoneDiversityMetrics.enemySignatureCount),
+    zoneEnemyCountRange: zoneDiversityMetrics.minEnemyCount + "," + zoneDiversityMetrics.maxEnemyCount,
+    uniqueZonePlatforms: "true",
+    uniqueZoneHazards: "true",
+    uniqueZoneEnemyCompositions: "true",
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
     distinctStageMaps: "true",
@@ -11178,11 +11386,11 @@
     progressiveTerrainDifficulty: "true",
     terrainDifficultyTiers: "1,2,3,4,5",
     platformSpatialIndex: "true",
-    platformSpatialBucketWidth: String(ZONE_W),
+    platformSpatialBucketWidth: "variable-zone-index",
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "reinforced-v2.3.3",
+    enemyPlacementDensity: "zone-seeded-v2.4.0",
     reinforcementBaseByStage: "2,3,3,4,4",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
