@@ -68,11 +68,20 @@ global.cancelAnimationFrame = () => {};
 vm.runInThisContext(fs.readFileSync("game.js", "utf8"), { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "2.6.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "2.7.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
   throw new Error("v2.6.0 feature diagnostics missing");
+}
+if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 100 || diagnostics.routeProfileCount < 40) {
+  throw new Error(`layered route generation missing: ${diagnostics.layeredRouteZoneCount}/${diagnostics.routeProfileCount}`);
+}
+if (diagnostics.machinegunBurstRounds !== 4 || diagnostics.machinegunCount < 1) {
+  throw new Error(`machinegun sentry invalid: ${diagnostics.machinegunBurstRounds}/${diagnostics.machinegunCount}`);
+}
+if (diagnostics.slashBulletDestroy || !diagnostics.burstOnlyBulletRemoval || diagnostics.slashAffectsBullets) {
+  throw new Error("bullets must be removable by burst only");
 }
 document.getElementById("continue-button").click();
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
@@ -85,4 +94,9 @@ console.log(JSON.stringify({
   continueText,
   activeCheckpointKey: restored.activeCheckpointKey,
   migratedSaveVersion: migrated.version,
+  routeProfileCount: diagnostics.routeProfileCount,
+  layeredRouteZoneCount: diagnostics.layeredRouteZoneCount,
+  routeTransitionRange: diagnostics.routeTransitionRange,
+  machinegunCount: diagnostics.machinegunCount,
+  burstOnlyBulletRemoval: diagnostics.burstOnlyBulletRemoval,
 }));

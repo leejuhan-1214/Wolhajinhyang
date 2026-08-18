@@ -1009,7 +1009,7 @@ button:focus-visible {
 
 .admin-enemy-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -1212,6 +1212,9 @@ button:focus-visible {
 
 .enemy-token.gunner::after,
 .enemy-token.piercer::after { width: 20px; right: -19px; }
+.enemy-token.machinegun { width: 29px; border-color: #ff8066; background: linear-gradient(90deg, #342b35 0 31%, #9aa6ad 31% 43%, #3c4652 43% 74%, #201a24 74%); }
+.enemy-token.machinegun::before { border-color: #ff9a82; box-shadow: inset 7px 2px 0 #ff496c; }
+.enemy-token.machinegun::after { right: -25px; top: 7px; width: 27px; height: 8px; background: repeating-linear-gradient(0deg, #e7edef 0 2px, #38434c 2px 3px); box-shadow: -9px 9px 0 #28313a, 4px 0 0 #ff8066; }
 .enemy-token.mortar { width: 31px; background-color: #452f35; }
 .enemy-token.mortar::after { top: -5px; right: -10px; width: 18px; transform: rotate(-28deg); }
 .enemy-token.drone { width: 38px; height: 18px; margin-top: 10px; border-radius: 45%; }
