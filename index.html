@@ -11,7 +11,7 @@
       content="샷건 반동과 발도술을 결합한 5막 한국형 사이버펑크 횡스크롤 액션 캠페인"
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
-    <link rel="stylesheet" href="styles.css?v=2.5.2" />
+    <link rel="stylesheet" href="styles.css?v=2.6.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -19,7 +19,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 2.5.2</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 2.6.0</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">병아리</button>
@@ -122,21 +122,23 @@
             <div><small>WORLD OBJECT EDITOR</small><strong id="admin-world-selected">선택된 요소 없음</strong></div>
             <button id="admin-world-editor-close" type="button" aria-label="맵 편집기 닫기">×</button>
           </header>
+          <div class="admin-world-transform-guide">
+            <span class="admin-world-transform-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <div><b>캔버스에서 직접 편집</b><span>테두리 안쪽 드래그: 이동 · 모서리/변 핸들 드래그: 크기 조절 · 자동 저장</span></div>
+            <output id="admin-world-transform-status">선택 대기</output>
+          </div>
           <div class="admin-world-fields">
-            <label>X<input id="admin-world-x" type="number" step="1"></label>
-            <label>Y<input id="admin-world-y" type="number" step="1"></label>
-            <label>너비<input id="admin-world-w" type="number" min="12" max="1800" step="1"></label>
-            <label>높이<input id="admin-world-h" type="number" min="8" max="900" step="1"></label>
             <label>종류<input id="admin-world-kind" type="text" maxlength="30" placeholder="factory / spike / panel"></label>
             <label>큰 글씨<input id="admin-world-text" type="text" maxlength="80" placeholder="표지판 문구"></label>
             <label class="admin-world-wide">작은 글씨<input id="admin-world-sub" type="text" maxlength="120" placeholder="보조 문구"></label>
           </div>
           <div class="admin-world-actions">
-            <button id="admin-world-save" type="button">변경 저장</button>
+            <button id="admin-world-undo" type="button" disabled>마지막 변형 취소</button>
+            <button id="admin-world-save" type="button">문구·종류 저장</button>
             <button id="admin-world-reset" type="button">기본값 복원</button>
             <button id="admin-world-delete" type="button">숨김 / 삭제</button>
           </div>
-          <p>종류 예시: 발판 <kbd>factory</kbd> · 함정 <kbd>spike</kbd>, <kbd>laser</kbd>, <kbd>steam</kbd> · 배경 <kbd>panel</kbd>, <kbd>warning</kbd>, <kbd>scaffold</kbd></p>
+          <p>요소를 선택한 동안 캔버스 공격은 잠깁니다. 종류 예시: 발판 <kbd>factory</kbd> · 함정 <kbd>spike</kbd>, <kbd>laser</kbd>, <kbd>steam</kbd> · 배경 <kbd>panel</kbd>, <kbd>warning</kbd>, <kbd>scaffold</kbd></p>
         </section>
         <p><kbd>X</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 생성 위치가 저장되며 관리자 <kbd>Z</kbd>로 영구 삭제합니다.</p>
       </section>
@@ -148,14 +150,17 @@
         </div>
         <div class="touch-actions" aria-label="점프 및 보조 행동">
           <button type="button" class="touch-jump" data-touch-action="jump"><b>점프</b><small>2단</small></button>
+          <button type="button" class="touch-slash" data-touch-action="slash"><b>발도</b><small>근접 자동조준</small></button>
+          <button type="button" class="touch-shotgun" data-touch-action="shotgun"><b>산탄</b><small>원거리 자동조준</small></button>
           <button type="button" class="touch-burst" data-touch-action="burst"><b>버스트</b><small>E</small></button>
         </div>
+        <span class="touch-attack-hint">화면 탭 · 상황 공격</span>
         <button type="button" class="touch-pause" data-touch-action="pause" aria-label="일시정지">Ⅱ</button>
         <button type="button" class="touch-fullscreen" data-touch-action="fullscreen" aria-label="전체화면 전환" aria-pressed="false" hidden>⛶</button>
       </section>
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=2.5.2"></script>
+  <script src="game.js?v=2.6.0"></script>
   </body>
 </html>

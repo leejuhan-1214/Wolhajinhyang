@@ -44,12 +44,10 @@
   const adminWorldSave = document.getElementById("admin-world-save");
   const adminWorldDelete = document.getElementById("admin-world-delete");
   const adminWorldReset = document.getElementById("admin-world-reset");
+  const adminWorldUndo = document.getElementById("admin-world-undo");
   const adminWorldSelected = document.getElementById("admin-world-selected");
+  const adminWorldTransformStatus = document.getElementById("admin-world-transform-status");
   const adminWorldInputs = {
-    x: document.getElementById("admin-world-x"),
-    y: document.getElementById("admin-world-y"),
-    w: document.getElementById("admin-world-w"),
-    h: document.getElementById("admin-world-h"),
     kind: document.getElementById("admin-world-kind"),
     text: document.getElementById("admin-world-text"),
     sub: document.getElementById("admin-world-sub"),
@@ -160,6 +158,8 @@
   let pickupSerial = 0;
   let boostSerial = 0;
   let selectedAdminWorldObject = null;
+  let adminWorldTransform = null;
+  let adminWorldUndoSnapshot = null;
   let levelReady = false;
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
@@ -301,7 +301,7 @@
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
-      patterns: ["삼연 검기", "집행 접근", "교차 검기", "왕실 검술 콤보", "추적 참파"],
+      patterns: ["방패 산탄", "중갑 돌진", "회전 봉인탄", "방패 포격", "추적 방벽탄"],
     },
     proxy: {
       name: "금단 외과의 · 의사",
@@ -711,7 +711,7 @@
       { speaker: "서린-12", text: "우리가 서로 모순되는 건 가짜라서가 아니야. 중앙국이 각자에게 다른 장면만 보여 줬다는 증거야.", tone: "archive", duration: 6.1 },
     ],
     [
-      { speaker: "검기 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
+      { speaker: "방패 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
       { speaker: "도담", text: "내 소각 서명도 숨기지 않고 함께 올렸어. 잘못을 고백하는 것만으로 끝내지 않고 송신탑을 끝까지 열겠다.", tone: "control", duration: 6.1 },
     ],
     [
@@ -1086,6 +1086,7 @@
     respawnStage: 0,
     respawnZone: 0,
     respawnCheckpointIndex: -1,
+    respawnCheckpointKey: "0:0",
     trail: [],
     afterimageTimer: 0,
     combo: 0,
@@ -1498,23 +1499,66 @@
     return hazard;
   }
 
-  function addCheckpoint(x, y, label) {
-    checkpoints.push({ x, y, w: 32, h: 88, label, active: false });
+  function addCheckpoint(x, y, label, checkpointKey = null) {
+    checkpoints.push({ x, y, w: 32, h: 88, label, checkpointKey, active: false });
+  }
+
+  function checkpointSpawnIsSafe(x, y) {
+    const body = { x, y, w: player.w, h: player.h };
+    const clearance = { x: x - 18, y: y - 10, w: player.w + 36, h: player.h + 18 };
+    const blocked = platforms.some((platform) => !platform.hidden && overlaps(body, platform));
+    const hazardous = hazards.some((hazard) => !hazard.hidden && hazard.active !== false && overlaps(clearance, hazard));
+    return !blocked && !hazardous;
   }
 
   function getCheckpointRespawnPosition(checkpoint) {
     const centerX = checkpoint.x + checkpoint.w / 2;
     const expectedFloorY = checkpoint.y + checkpoint.h;
-    const support = platforms
-      .filter((platform) => !platform.hidden && centerX >= platform.x && centerX <= platform.x + platform.w)
-      .sort((first, second) => (
-        Math.abs(first.originalY - expectedFloorY) - Math.abs(second.originalY - expectedFloorY)
-      ))[0];
-    const floorY = support?.y ?? expectedFloorY;
+    const zoneIndex = clamp(getZoneIndexAt(centerX), 0, zones.length - 1);
+    const zone = zones[zoneIndex];
+    const candidates = [];
+    for (const platform of platforms) {
+      if (platform.hidden || platform.w < player.w + 42) continue;
+      if (zone && (platform.x + platform.w < zone.x || platform.x > zone.end)) continue;
+      const inset = Math.min(34, Math.max(18, platform.w * 0.12));
+      const minCenter = platform.x + inset;
+      const maxCenter = platform.x + platform.w - inset;
+      if (maxCenter <= minCenter) continue;
+      const sampleCenters = [
+        clamp(centerX, minCenter, maxCenter),
+        clamp(platform.x + platform.w / 2, minCenter, maxCenter),
+        clamp(centerX - 72, minCenter, maxCenter),
+        clamp(centerX + 72, minCenter, maxCenter),
+      ];
+      for (const sampleCenter of sampleCenters) {
+        const spawnX = clamp(sampleCenter - player.w / 2, 0, WORLD_W - player.w);
+        const spawnY = platform.y - player.h - 1;
+        if (!checkpointSpawnIsSafe(spawnX, spawnY)) continue;
+        const score = Math.abs(sampleCenter - centerX) + Math.abs(platform.y - expectedFloorY) * 1.45;
+        candidates.push({ x: spawnX, y: spawnY, floorY: platform.y, score });
+      }
+    }
+    candidates.sort((first, second) => first.score - second.score);
+    if (candidates[0]) return { x: candidates[0].x, y: candidates[0].y };
     return {
       x: clamp(centerX - player.w / 2, 0, WORLD_W - player.w),
-      y: floorY - player.h - 1,
+      y: expectedFloorY - player.h - 1,
     };
+  }
+
+  function normalizeCheckpointPlacements() {
+    for (const checkpoint of checkpoints) {
+      const position = getCheckpointRespawnPosition(checkpoint);
+      const floorY = position.y + player.h + 1;
+      checkpoint.x = clamp(position.x + player.w / 2 - checkpoint.w / 2, 0, WORLD_W - checkpoint.w);
+      checkpoint.y = floorY - checkpoint.h;
+    }
+    const activeCheckpoint = checkpoints.find((checkpoint) => checkpoint.active);
+    if (activeCheckpoint) {
+      const position = getCheckpointRespawnPosition(activeCheckpoint);
+      player.respawnX = position.x;
+      player.respawnY = position.y;
+    }
   }
 
   function setRespawnCheckpoint(checkpoint, checkpointIndex = checkpoints.indexOf(checkpoint)) {
@@ -1526,6 +1570,7 @@
     player.respawnStage = getStageIndexAt(checkpoint.x);
     player.respawnZone = getZoneIndexAt(checkpoint.x);
     player.respawnCheckpointIndex = checkpointIndex;
+    player.respawnCheckpointKey = checkpoint.checkpointKey || `${player.respawnStage}:${checkpointIndex % ZONES_PER_STAGE}`;
     return position;
   }
 
@@ -2779,7 +2824,7 @@
         addBoostNode(origin + 1880, floorY - 76, 0, -700);
         addBoostNode(origin + 3240, floorY - 76, -180, -620);
       } else if (stageIndex === 3) {
-        // 공문: 피해 발판 없이 높낮이만으로 검기와 마구찌르기를 피하는 결투장.
+        // 공문: 피해 발판 없이 높낮이만으로 방패 포격과 중갑 돌진을 피하는 결투장.
         [[280, -190, 320], [880, -360, 300], [1510, -220, 330], [2180, -430, 320], [2860, -240, 350], [3440, -380, 290]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "firewall"));
       } else {
@@ -2809,7 +2854,8 @@
       boss.iceStormTimer = 0;
       boss.iceSpawnTimer = 0;
       boss.iceStormSerial = 0;
-      boss.duelistPhase = false;
+      boss.shieldOverdrive = false;
+      boss.shieldMuzzleFlash = 0;
       boss.mutated = false;
       boss.comboHitsRemaining = 0;
       boss.comboHitTimer = 0;
@@ -3099,11 +3145,12 @@
       // 화면 상단 안내 대신 월드 안에 직접 배치된 표지판으로 구역 구조를 안내한다.
       // addSign으로 만든 표지판은 관리자 월드 편집에서도 문구·위치·크기 수정이 가능하다.
       addSign(origin + 310, floorY - 112, zone.name, getZoneSignSub(zone, localZoneIndex));
-      addCheckpoint(origin + 120, floorY - 88, zone.name);
+      addCheckpoint(origin + 120, floorY - 88, zone.name, `${zone.stageIndex}:${zone.localIndex}`);
     }
 
     initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies();
     applyAdminWorldEdits();
+    normalizeCheckpointPlacements();
     removeEmbeddedRepairPickups();
     restoreAdminPlacedObjects();
     restoreAdminSpawnedEnemies();
@@ -3312,10 +3359,40 @@
       const raw = window.localStorage?.getItem(SAVE_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      return data?.version === 1 ? data : null;
+      return data?.version === 1 || data?.version === 2 ? data : null;
     } catch {
       return null;
     }
+  }
+
+  function resolveCampaignCheckpointIndex(saved) {
+    if (!saved || checkpoints.length === 0) return 0;
+    const savedStageIndex = clamp(Number(saved.respawnStage) || 0, 0, stages.length - 1);
+    if (typeof saved.checkpointKey === "string") {
+      const keyedIndex = checkpoints.findIndex((checkpoint) => checkpoint.checkpointKey === saved.checkpointKey);
+      if (keyedIndex >= 0) return keyedIndex;
+    }
+    if (Number.isInteger(saved.respawnZone)) {
+      const zoneIndex = clamp(saved.respawnZone, 0, checkpoints.length - 1);
+      if (zones[zoneIndex]?.stageIndex === savedStageIndex) return zoneIndex;
+    }
+    const legacyZonesPerStage = Number.isInteger(saved.zonesPerStage) ? Math.max(1, saved.zonesPerStage) : 7;
+    if (Number.isInteger(saved.respawnCheckpointIndex)) {
+      const legacyLocalIndex = clamp(saved.respawnCheckpointIndex - savedStageIndex * legacyZonesPerStage, 0, legacyZonesPerStage - 1);
+      const currentLocalIndex = legacyZonesPerStage === ZONES_PER_STAGE
+        ? legacyLocalIndex
+        : Math.round((legacyLocalIndex / Math.max(1, legacyZonesPerStage - 1)) * (ZONES_PER_STAGE - 1));
+      const migratedIndex = clamp(savedStageIndex * ZONES_PER_STAGE + currentLocalIndex, 0, checkpoints.length - 1);
+      if (zones[migratedIndex]?.stageIndex === savedStageIndex) return migratedIndex;
+    }
+    const stageStart = savedStageIndex * ZONES_PER_STAGE;
+    const stageEnd = Math.min(checkpoints.length, stageStart + ZONES_PER_STAGE);
+    const savedX = Number.isFinite(Number(saved.respawnX)) ? Number(saved.respawnX) : checkpoints[stageStart]?.x || 150;
+    let closestIndex = clamp(stageStart, 0, checkpoints.length - 1);
+    for (let index = stageStart; index < stageEnd; index += 1) {
+      if (Math.abs(checkpoints[index].x - savedX) < Math.abs(checkpoints[closestIndex].x - savedX)) closestIndex = index;
+    }
+    return closestIndex;
   }
 
   function updateContinueButton() {
@@ -3324,17 +3401,31 @@
     continueButton.hidden = false;
     continueButton.disabled = !saved;
     const editData = normalizeStartScreenEdits(startScreenEditData) || START_SCREEN_DEFAULTS;
-    const savedStage = saved ? clamp((Number(saved.respawnStage) || 0) + 1, 1, stages.length) : 1;
+    const savedCheckpointIndex = saved && checkpoints.length ? resolveCampaignCheckpointIndex(saved) : -1;
+    const savedStage = saved
+      ? clamp((savedCheckpointIndex >= 0 ? zones[savedCheckpointIndex]?.stageIndex : Number(saved.respawnStage) || 0) + 1, 1, stages.length)
+      : 1;
+    const savedLocalZone = savedCheckpointIndex >= 0
+      ? (zones[savedCheckpointIndex]?.localIndex || 0) + 1
+      : 1;
     continueButton.textContent = saved
-      ? `${editData.continueButton} · STAGE ${String(savedStage).padStart(2, "0")}`
+      ? `${editData.continueButton} · ${String(savedStage).padStart(2, "0")}-${String(savedLocalZone).padStart(2, "0")}`
       : editData.continueButton;
   }
 
   function saveCampaign() {
     if (game.mode !== "playing") return;
     try {
+      const checkpointZone = clamp(Number(player.respawnZone) || 0, 0, zones.length - 1);
+      const defeatedBeforeCheckpoint = enemies.filter((enemy) => (
+        !enemy.alive && getZoneIndexAt(enemy.originX) < checkpointZone
+      ));
+      const persistedBosses = [...game.defeatedBosses].filter((bossKind) => {
+        const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.bossKind === bossKind);
+        return boss && getZoneIndexAt(boss.originX) < checkpointZone;
+      });
       const data = {
-        version: 1,
+        version: 2,
         zonesPerStage: ZONES_PER_STAGE,
         difficulty: game.difficulty,
         runTime: game.runTime,
@@ -3347,13 +3438,17 @@
         respawnStage: player.respawnStage,
         respawnZone: player.respawnZone,
         respawnCheckpointIndex: player.respawnCheckpointIndex,
-        defeatedBosses: [...game.defeatedBosses],
+        checkpointKey: player.respawnCheckpointKey,
+        defeatedBosses: persistedBosses,
         stageClearTimes: [...game.stageClearTimes],
         storySeen: [...game.storySeen],
         cutsceneSeen: [...game.cutsceneSeen],
-        defeatedEnemyIds: enemies.filter((enemy) => !enemy.alive).map((enemy) => enemy.id),
-        countedKillEnemyIds: enemies.filter((enemy) => enemy.countedKill).map((enemy) => enemy.id),
-        roomStates: combatRooms.map((room) => ({ left: room.left, triggered: room.triggered, cleared: room.cleared })),
+        defeatedEnemyIds: defeatedBeforeCheckpoint.map((enemy) => enemy.id),
+        countedKillEnemyIds: defeatedBeforeCheckpoint.filter((enemy) => enemy.countedKill).map((enemy) => enemy.id),
+        roomStates: combatRooms.map((room) => {
+          const beforeCheckpoint = getZoneIndexAt(room.left) < checkpointZone;
+          return { left: room.left, triggered: beforeCheckpoint && room.triggered, cleared: beforeCheckpoint && room.cleared };
+        }),
       };
       window.localStorage?.setItem(SAVE_KEY, JSON.stringify(data));
       updateContinueButton();
@@ -3363,6 +3458,8 @@
   }
 
   function restoreCampaign(saved) {
+    const savedCheckpointIndex = resolveCampaignCheckpointIndex(saved);
+    const restartZoneIndex = getZoneIndexAt(checkpoints[savedCheckpointIndex]?.x || 0);
     const deadIds = new Set(saved.defeatedEnemyIds || []);
     const legacyTutorialCompleted = (saved.respawnZone || 0) > 0
       || (saved.respawnX || 0) >= ZONE_W
@@ -3382,6 +3479,8 @@
     let legacyCountedKills = Math.min(Math.max(0, saved.kills || 0), deadIds.size);
     for (const enemy of enemies) {
       if (!deadIds.has(enemy.id)) continue;
+      // 이어하기는 언제나 마지막 체크포인트부터 다시 시작한다. 그 구역 이후의 전투 기록은 롤백한다.
+      if (getZoneIndexAt(enemy.originX) >= restartZoneIndex) continue;
       // v1.6.5 and older could cull the final boss during its cutscene.
       if (legacySave && !enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
       if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo" && adminRemovedEnemyIds.has(enemy.id)) continue;
@@ -3392,32 +3491,10 @@
     for (const state of saved.roomStates || []) {
       const room = combatRooms.find((candidate) => candidate.left === state.left);
       if (!room) continue;
-      room.triggered = Boolean(state.triggered);
-      room.cleared = Boolean(state.cleared);
+      const beforeCheckpoint = getZoneIndexAt(room.left) < restartZoneIndex;
+      room.triggered = beforeCheckpoint && Boolean(state.triggered);
+      room.cleared = beforeCheckpoint && Boolean(state.cleared);
     }
-    const legacyZonesPerStage = Number.isInteger(saved.zonesPerStage) ? saved.zonesPerStage : 7;
-    const savedStageIndex = clamp(saved.respawnStage || 0, 0, stages.length - 1);
-    const legacyLocalCheckpoint = Number.isInteger(saved.respawnCheckpointIndex)
-      ? clamp(saved.respawnCheckpointIndex - savedStageIndex * legacyZonesPerStage, 0, legacyZonesPerStage - 1)
-      : 0;
-    const migratedLocalCheckpoint = legacyZonesPerStage === ZONES_PER_STAGE
-      ? legacyLocalCheckpoint
-      : Math.round((legacyLocalCheckpoint / Math.max(1, legacyZonesPerStage - 1)) * (ZONES_PER_STAGE - 1));
-    const migratedCheckpointIndex = Number.isInteger(saved.respawnCheckpointIndex)
-      ? clamp(
-        savedStageIndex * ZONES_PER_STAGE + migratedLocalCheckpoint,
-        0,
-        checkpoints.length - 1,
-      )
-      : null;
-    const savedCheckpointIndex = migratedCheckpointIndex !== null
-      ? migratedCheckpointIndex
-      : checkpoints.reduce((closestIndex, checkpoint, index) => (
-        Math.abs(checkpoint.x - (saved.respawnX ?? 150))
-          < Math.abs(checkpoints[closestIndex].x - (saved.respawnX ?? 150))
-          ? index
-          : closestIndex
-      ), 0);
     setRespawnCheckpoint(checkpoints[savedCheckpointIndex], savedCheckpointIndex);
     player.x = player.respawnX;
     player.y = player.respawnY;
@@ -3425,7 +3502,10 @@
     game.runTime = Math.max(0, saved.runTime || 0);
     game.deaths = Math.max(0, saved.deaths || 0);
     game.kills = enemies.reduce((count, enemy) => count + (enemy.countedKill ? 1 : 0), 0);
-    game.defeatedBosses = new Set(saved.defeatedBosses || []);
+    game.defeatedBosses = new Set((saved.defeatedBosses || []).filter((bossKind) => {
+      const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.bossKind === bossKind);
+      return boss && getZoneIndexAt(boss.originX) < restartZoneIndex;
+    }));
     if (legacySave) game.defeatedBosses.delete("echo");
     applyBossRewards({ refill: true });
     game.stageClearTimes = Array.isArray(saved.stageClearTimes) ? saved.stageClearTimes.slice(0, stages.length) : Array(stages.length).fill(0);
@@ -3439,8 +3519,8 @@
     game.cutsceneTimer = 0;
     game.cutsceneShotIndex = 0;
     game.cutsceneShotElapsed = 0;
-    game.stage = getStageIndexAt(player.x);
-    game.zone = clamp(zones.findLastIndex((zone) => player.x >= zone.x), 0, zones.length - 1);
+    game.stage = player.respawnStage;
+    game.zone = player.respawnZone;
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
     game.burstUnlocked = game.tutorialCompleted || game.tutorialActive || player.x > 5200;
@@ -3448,6 +3528,7 @@
     camera.y = clamp(player.y - 420, 0, WORLD_H - H);
     game.hint = `자동 저장 불러오기 · STAGE 0${game.stage + 1}`;
     game.hintTimer = 4;
+    saveCampaign();
   }
 
   function resetGame(resume = false) {
@@ -3489,6 +3570,7 @@
       respawnStage: 0,
       respawnZone: 0,
       respawnCheckpointIndex: -1,
+      respawnCheckpointKey: "0:0",
       trail: [],
       afterimageTimer: 0,
       combo: 0,
@@ -3793,19 +3875,20 @@
     const shouldOpen = Boolean(open && object && game.adminMode && game.mode === "playing");
     selectedAdminWorldObject = shouldOpen ? object : null;
     adminWorldEditor.hidden = !shouldOpen;
-    if (!shouldOpen) return false;
+    if (!shouldOpen) {
+      adminWorldTransform = null;
+      return false;
+    }
     const typeNames = { platform: "발판/구조물", hazard: "위험 구조물", sign: "배경 표지판", backdrop: "배경 장식" };
     if (adminWorldSelected) adminWorldSelected.textContent = `${typeNames[object.adminWorldType] || object.adminWorldType} · ${object.id}`;
-    adminWorldInputs.x.value = Math.round(object.x);
-    adminWorldInputs.y.value = Math.round(object.y);
-    adminWorldInputs.w.value = Math.round(object.w || 24);
-    adminWorldInputs.h.value = Math.round(object.h || 24);
     adminWorldInputs.kind.value = object.kind || "";
     adminWorldInputs.text.value = object.text || "";
     adminWorldInputs.sub.value = object.sub || "";
     const supportsText = object.adminWorldType === "sign" || object.adminWorldType === "backdrop";
     adminWorldInputs.text.disabled = !supportsText;
     adminWorldInputs.sub.disabled = !supportsText;
+    updateAdminWorldTransformStatus(object);
+    if (adminWorldUndo) adminWorldUndo.disabled = adminWorldUndoSnapshot?.id !== object.id;
     return true;
   }
 
@@ -3815,6 +3898,180 @@
       return { x: object.x - 12, y: object.y - height + 14, w: object.w || 174, h: height };
     }
     return { x: object.x, y: object.y, w: object.w || 24, h: object.h || 24 };
+  }
+
+  function updateAdminWorldTransformStatus(object = selectedAdminWorldObject) {
+    if (!adminWorldTransformStatus || !object) return;
+    const bounds = getAdminWorldBounds(object);
+    adminWorldTransformStatus.textContent = `X ${Math.round(bounds.x)} · Y ${Math.round(bounds.y)} · ${Math.round(bounds.w)} × ${Math.round(bounds.h)}`;
+  }
+
+  function setAdminWorldBounds(object, nextBounds) {
+    const minW = object.adminWorldType === "sign" || object.adminWorldType === "backdrop" ? 40 : 12;
+    const minH = object.adminWorldType === "sign" || object.adminWorldType === "backdrop" ? 28 : 8;
+    const w = clamp(nextBounds.w, minW, 1800);
+    const h = clamp(nextBounds.h, minH, 900);
+    const x = clamp(nextBounds.x, 0, WORLD_W - w);
+    const y = clamp(nextBounds.y, -600, WORLD_H - h);
+    if (object.adminWorldType === "sign") {
+      object.x = x + 12;
+      object.y = y + h - 14;
+      object.w = w;
+      object.h = h;
+    } else {
+      object.x = x;
+      object.y = y;
+      object.w = w;
+      object.h = h;
+    }
+    if (object.adminWorldType === "platform") object.originalY = object.y;
+  }
+
+  function getAdminWorldHandlePoints(bounds) {
+    const centerX = bounds.x + bounds.w / 2;
+    const centerY = bounds.y + bounds.h / 2;
+    return [
+      { name: "nw", x: bounds.x, y: bounds.y },
+      { name: "n", x: centerX, y: bounds.y },
+      { name: "ne", x: bounds.x + bounds.w, y: bounds.y },
+      { name: "e", x: bounds.x + bounds.w, y: centerY },
+      { name: "se", x: bounds.x + bounds.w, y: bounds.y + bounds.h },
+      { name: "s", x: centerX, y: bounds.y + bounds.h },
+      { name: "sw", x: bounds.x, y: bounds.y + bounds.h },
+      { name: "w", x: bounds.x, y: centerY },
+    ];
+  }
+
+  function findAdminWorldObjectAt(worldX, worldY) {
+    const candidates = [...signs, ...hazards, ...adminBackdrops, ...platforms]
+      .filter((object) => {
+        if (object.hidden) return false;
+        const bounds = getAdminWorldBounds(object);
+        return worldX >= bounds.x - 12 && worldX <= bounds.x + bounds.w + 12
+          && worldY >= bounds.y - 12 && worldY <= bounds.y + bounds.h + 12;
+      })
+      .sort((first, second) => {
+        const firstBounds = getAdminWorldBounds(first);
+        const secondBounds = getAdminWorldBounds(second);
+        return firstBounds.w * firstBounds.h - secondBounds.w * secondBounds.h;
+      });
+    return candidates[0] || null;
+  }
+
+  function getAdminWorldTransformMode(object, worldX, worldY, pointerType = "mouse") {
+    const bounds = getAdminWorldBounds(object);
+    const radius = pointerType === "touch" ? 38 : 20;
+    let closestHandle = null;
+    let closestDistance = Infinity;
+    for (const handle of getAdminWorldHandlePoints(bounds)) {
+      const distance = Math.hypot(worldX - handle.x, worldY - handle.y);
+      if (distance <= radius && distance < closestDistance) {
+        closestHandle = handle.name;
+        closestDistance = distance;
+      }
+    }
+    if (closestHandle) return closestHandle;
+    if (worldX >= bounds.x && worldX <= bounds.x + bounds.w && worldY >= bounds.y && worldY <= bounds.y + bounds.h) return "move";
+    return null;
+  }
+
+  function beginAdminWorldTransform(event) {
+    if (!game.adminMode || game.mode !== "playing" || adminWorldEditor?.hidden !== false) return false;
+    updatePointer(event);
+    const worldX = pointer.screenX + camera.x;
+    const worldY = pointer.screenY + camera.y;
+    let object = selectedAdminWorldObject;
+    let mode = object ? getAdminWorldTransformMode(object, worldX, worldY, event.pointerType) : null;
+    if (!mode) {
+      object = findAdminWorldObjectAt(worldX, worldY);
+      if (!object) return false;
+      setAdminWorldEditor(true, object);
+      mode = getAdminWorldTransformMode(object, worldX, worldY, event.pointerType) || "move";
+    }
+    const bounds = getAdminWorldBounds(object);
+    adminWorldUndoSnapshot = { id: object.id, type: object.adminWorldType, record: serializeAdminWorldObject(object) };
+    if (adminWorldUndo) adminWorldUndo.disabled = true;
+    adminWorldTransform = {
+      pointerId: event.pointerId,
+      object,
+      mode,
+      startX: worldX,
+      startY: worldY,
+      startBounds: { ...bounds },
+      aspect: Math.max(0.01, bounds.w / Math.max(1, bounds.h)),
+      changed: false,
+    };
+    canvas.setPointerCapture?.(event.pointerId);
+    return true;
+  }
+
+  function updateAdminWorldTransform(event) {
+    const transform = adminWorldTransform;
+    if (!transform || transform.pointerId !== event.pointerId) return false;
+    updatePointer(event);
+    const worldX = pointer.screenX + camera.x;
+    const worldY = pointer.screenY + camera.y;
+    const deltaX = worldX - transform.startX;
+    const deltaY = worldY - transform.startY;
+    const mode = transform.mode;
+    const next = { ...transform.startBounds };
+    if (mode === "move") {
+      next.x += deltaX;
+      next.y += deltaY;
+    } else {
+      if (mode.includes("e")) next.w += deltaX;
+      if (mode.includes("s")) next.h += deltaY;
+      if (mode.includes("w")) { next.x += deltaX; next.w -= deltaX; }
+      if (mode.includes("n")) { next.y += deltaY; next.h -= deltaY; }
+      if (event.shiftKey && mode.length === 2) {
+        const targetW = Math.max(12, next.w);
+        const targetH = targetW / transform.aspect;
+        if (mode.includes("n")) next.y = transform.startBounds.y + transform.startBounds.h - targetH;
+        next.h = targetH;
+      }
+    }
+    setAdminWorldBounds(transform.object, next);
+    transform.changed = transform.changed || Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5;
+    updateAdminWorldTransformStatus(transform.object);
+    markPlatformSpatialIndexDirty();
+    return true;
+  }
+
+  function finishAdminWorldTransform(event = null) {
+    const transform = adminWorldTransform;
+    if (!transform || (event && transform.pointerId !== event.pointerId)) return false;
+    adminWorldTransform = null;
+    if (!transform.changed) {
+      adminWorldUndoSnapshot = null;
+      if (adminWorldUndo) adminWorldUndo.disabled = true;
+      return true;
+    }
+    transform.object.hidden = false;
+    recordAdminWorldObject(transform.object);
+    if (transform.object.adminWorldType === "platform" || transform.object.adminWorldType === "hazard") normalizeCheckpointPlacements();
+    if (adminWorldUndo) adminWorldUndo.disabled = false;
+    updateAdminWorldTransformStatus(transform.object);
+    game.hint = `관리자 직접 편집 · ${transform.mode === "move" ? "이동" : "크기"} 자동 저장`;
+    game.hintTimer = 1.8;
+    sound.tone(640, 0.08, "sine", 0.018, 1.15);
+    return true;
+  }
+
+  function undoAdminWorldTransform() {
+    const snapshot = adminWorldUndoSnapshot;
+    const object = selectedAdminWorldObject;
+    if (!snapshot || !object || snapshot.id !== object.id) return false;
+    Object.assign(object, snapshot.record);
+    if (object.adminWorldType === "platform") object.originalY = object.y;
+    recordAdminWorldObject(object);
+    normalizeCheckpointPlacements();
+    markPlatformSpatialIndexDirty();
+    adminWorldUndoSnapshot = null;
+    if (adminWorldUndo) adminWorldUndo.disabled = true;
+    setAdminWorldEditor(true, object);
+    game.hint = "관리자 직접 편집 · 마지막 이동/크기 조절 취소";
+    game.hintTimer = 2;
+    return true;
   }
 
   function findNearestAdminWorldObject() {
@@ -3872,10 +4129,6 @@
   function saveAdminWorldSelection() {
     const object = selectedAdminWorldObject;
     if (!object || !game.adminMode) return false;
-    object.x = clamp(Number(adminWorldInputs.x.value) || 0, 0, WORLD_W - 12);
-    object.y = clamp(Number(adminWorldInputs.y.value) || 0, -600, WORLD_H - 8);
-    object.w = clamp(Number(adminWorldInputs.w.value) || object.w || 24, 12, 1800);
-    object.h = clamp(Number(adminWorldInputs.h.value) || object.h || 24, 8, 900);
     object.kind = String(adminWorldInputs.kind.value || object.kind || "roof").trim().slice(0, 30);
     if (object.adminWorldType === "sign" || object.adminWorldType === "backdrop") {
       object.text = String(adminWorldInputs.text.value || "").trim().slice(0, 80);
@@ -3884,10 +4137,11 @@
     object.hidden = false;
     if (object.adminWorldType === "platform") object.originalY = object.y;
     recordAdminWorldObject(object);
-    game.hint = "관리자 편집 · 위치·크기·문구 저장 완료";
+    game.hint = "관리자 편집 · 문구·종류 저장 완료";
     game.hintTimer = 2.6;
     setAdminWorldEditor(true, object);
     sound.tone(690, 0.12, "sine", 0.025, 1.25);
+    normalizeCheckpointPlacements();
     markPlatformSpatialIndexDirty();
     return true;
   }
@@ -3913,6 +4167,7 @@
     game.hint = "관리자 편집 · 배경 요소 숨김/삭제 완료";
     game.hintTimer = 2.6;
     setAdminWorldEditor(false);
+    normalizeCheckpointPlacements();
     markPlatformSpatialIndexDirty();
     return true;
   }
@@ -3923,6 +4178,7 @@
     if (object.adminWorldCustom) return deleteAdminWorldSelection();
     Object.assign(object, object.adminWorldBase || {});
     removeAdminWorldObjectData(object.id);
+    normalizeCheckpointPlacements();
     setAdminWorldEditor(true, object);
     game.hint = "관리자 편집 · 기본 맵 상태로 복원";
     game.hintTimer = 2.6;
@@ -4842,7 +5098,8 @@
       enemy.iceStormTimer = 0;
       enemy.iceSpawnTimer = 0;
       enemy.iceStormSerial = 0;
-      enemy.duelistPhase = false;
+      enemy.shieldOverdrive = false;
+      enemy.shieldMuzzleFlash = 0;
       enemy.mutated = false;
       enemy.comboHitsRemaining = 0;
       enemy.comboHitTimer = 0;
@@ -5467,30 +5724,41 @@
     sound.tone(480, 0.2, "square", 0.04, 0.48);
   }
 
-  function fireSwordWave(enemy, target, spread = 0, speed = 520) {
-    const x = enemy.x + enemy.w / 2 + enemy.facing * 26;
-    const y = enemy.y + enemy.h * 0.43;
-    const angle = Math.atan2(target.y - y, target.x - x) + spread;
-    const scaledSpeed = speed * difficultySettings[game.difficulty].bulletSpeed;
-    bullets.push({
-      x: x - 21,
-      y: y - 8,
-      w: 42,
-      h: 16,
-      vx: Math.cos(angle) * scaledSpeed,
-      vy: Math.sin(angle) * scaledSpeed,
-      life: 3.6,
-      maxLife: 3.6,
-      enemy: true,
-      kind: "sword-wave",
-      gravity: 0,
-      color: "#ff6b9c",
-      damage: 1,
-    });
-    enemy.swordSwingDuration = 0.26;
-    enemy.swordSwingTimer = enemy.swordSwingDuration;
-    enemy.swordMotionKind = enemy.bossAction === "rapidThrust" ? "thrust" : "swing";
-    enemy.swordSwingSerial = (enemy.swordSwingSerial || 0) + 1;
+  function fireRevenantShieldBullet(enemy, target, spread = 0, speed = 510) {
+    const x = enemy.x + enemy.w / 2 - enemy.facing * 38;
+    const y = enemy.y + enemy.h * 0.48;
+    firePointBullet(x, y, target, speed, spread, "revenant-shield-shot", "#ff8bad");
+    const bullet = bullets[bullets.length - 1];
+    if (bullet) {
+      bullet.w = 14;
+      bullet.h = 8;
+      bullet.x -= 1;
+      bullet.y += 2;
+    }
+    enemy.shieldMuzzleFlash = 0.16;
+  }
+
+  function fireRevenantShieldBurst(enemy, target, count = 5, spreadStep = 0.105, speed = 510) {
+    const middle = (count - 1) / 2;
+    for (let index = 0; index < count; index += 1) {
+      fireRevenantShieldBullet(enemy, target, (index - middle) * spreadStep, speed + (index % 2) * 30);
+    }
+    spawnParticles(enemy.x + enemy.w / 2 - enemy.facing * 41, enemy.y + enemy.h * 0.48, "#ffb1c4", 16, 320, 0.3, 0);
+    sound.tone(126, 0.13, "square", 0.045, 0.52);
+  }
+
+  function fireRevenantShieldRing(enemy, count = 10, speed = 390) {
+    const x = enemy.x + enemy.w / 2 - enemy.facing * 38;
+    const y = enemy.y + enemy.h * 0.48;
+    for (let index = 0; index < count; index += 1) {
+      const angle = index * TAU / count;
+      fireRevenantShieldBullet(enemy, { x: x + Math.cos(angle) * 600, y: y + Math.sin(angle) * 600 }, 0, speed + (index % 2) * 45);
+    }
+  }
+
+  function fireRevenantPhaseTwoSupport(enemy, target) {
+    if (!enemy.shieldOverdrive) return;
+    [-0.11, 0, 0.11].forEach((spread) => fireRevenantShieldBullet(enemy, target, spread, 545));
   }
 
   function throwPotion(enemy, targetX, variant = 0, offset = 0) {
@@ -5696,14 +5964,21 @@
         }
         [-330, -110, 110, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
-      case "revenant-triple":
-        [-0.16, 0, 0.16].forEach((spread) => fireSwordWave(enemy, target, spread));
+      case "revenant-shield-burst":
+        fireRevenantShieldBurst(enemy, target, 5, 0.11, 500);
+        fireRevenantPhaseTwoSupport(enemy, target);
         break;
-      case "revenant-cross":
-        [-0.28, -0.14, 0, 0.14, 0.28].forEach((spread) => fireSwordWave(enemy, target, spread, 560));
+      case "revenant-shield-ring":
+        fireRevenantShieldRing(enemy, enemy.shieldOverdrive ? 14 : 10, 375);
+        fireRevenantPhaseTwoSupport(enemy, target);
         break;
-      case "revenant-rain":
-        [-360, -180, 0, 180, 360].forEach((offset) => fireSwordWave(enemy, { x: enemy.targetX + offset, y: enemy.targetY }, 0, 590));
+      case "revenant-shield-lance":
+        fireRevenantShieldBurst(enemy, target, enemy.shieldOverdrive ? 7 : 5, 0.045, 620);
+        fireRevenantPhaseTwoSupport(enemy, target);
+        break;
+      case "revenant-overdrive":
+        fireRevenantShieldRing(enemy, 16, 430);
+        fireRevenantShieldBurst(enemy, target, 7, 0.075, 600);
         break;
       case "proxy-potion":
         [-160, 0, 160].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index, offset));
@@ -6047,9 +6322,10 @@
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
         const bullet = bullets[i];
         if (bullet.enemy && bulletIntersectsSlashBlade(bullet)) {
-          spawnParticles(bullet.x, bullet.y, palette.cyan, 5, 180, 0.25, 0);
+          const shieldRound = bullet.kind === "revenant-shield-shot";
+          spawnParticles(bullet.x, bullet.y, shieldRound ? "#ffcd70" : palette.cyan, shieldRound ? 9 : 5, 210, 0.28, 0);
           bullets.splice(i, 1);
-          player.shotgunCharge = Math.min(3, player.shotgunCharge + 0.42);
+          player.shotgunCharge = Math.min(3, player.shotgunCharge + (shieldRound ? 0.8 : 0.42));
           if (!player.grounded) player.airJumpAvailable = true;
         }
       }
@@ -6405,7 +6681,7 @@
     const echoSpeedFactor = bossKind === "echo" ? 1.12 : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
-    enemy.swordSwingTimer = Math.max(0, (enemy.swordSwingTimer || 0) - dt);
+    enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
       enemy.halfPhaseTriggered = true;
@@ -6443,10 +6719,11 @@
         game.hintTimer = 3.6;
         sound.tone(620, 0.65, "triangle", 0.05, 0.42);
       } else if (bossKind === "revenant") {
-        enemy.duelistPhase = true;
-        enemy.cooldown = 1.55 * bossCurve.cooldown;
+        enemy.shieldOverdrive = true;
+        startBossChargedShot(enemy, "revenant-overdrive", dx, 1.08);
+        enemy.cooldown = 2.5 * bossCurve.cooldown;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.4, "#ffd4df", 34, 460, 0.7, 0);
-        game.hint = "공문 · 왕실 검술 해방 · 접근 콤보 개시";
+        game.hint = "공문 · 방패 포대 2페이즈 · 모든 패턴에 보조 사격 추가";
         game.hintTimer = 3;
         sound.tone(520, 0.28, "triangle", 0.045, 1.8);
       } else if (bossKind === "proxy") {
@@ -6596,7 +6873,7 @@
     }
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
-    const approachAction = ["duelistApproach", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
+    const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
     if (chargingShot) {
       const beamRetreatBoost = bossKind === "warden" && enemy.bossShotPattern === "warden-core"
         ? 2.25
@@ -6710,38 +6987,24 @@
           enemy.cooldown = 2.15 * recovery;
         }
       } else if (bossKind === "revenant") {
-        const comboPhase = enemy.duelistPhase && (enemy.bossPhase === 1 || enemy.bossPhase === 3);
-        if (comboPhase) {
-          enemy.windup = 0.66;
-          enemy.bossAction = "duelistApproach";
-          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
-          enemy.dashRange = Math.min(720, Math.max(220, Math.abs(dx) - 82));
-          enemy.comboHitsRemaining = enemy.bossPhase === 3 ? 6 : 4;
-          enemy.comboHitTimer = 0;
-          enemy.cooldown = 2.25 * recovery;
-        } else if (enemy.bossPhase === 0) {
-          startBossChargedShot(enemy, "revenant-triple", dx, 0.56);
-          enemy.cooldown = 1.55 * recovery;
-        } else if (enemy.bossPhase === 1) {
-          enemy.windup = 0.48;
-          enemy.bossAction = "swordDash";
-          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
-          enemy.dashRange = 610;
-          enemy.cooldown = 1.7 * recovery;
-        } else if (enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "revenant-cross", dx, 0.76);
-          enemy.cooldown = 1.9 * recovery;
-        } else if (enemy.bossPhase === 3) {
-          enemy.windup = 1.05;
-          enemy.bossAction = "rapidThrust";
-          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
-          enemy.dashRange = 660;
-          enemy.thrustTimer = 0.02;
-          enemy.thrustsRemaining = 7;
-          enemy.cooldown = 2.35 * recovery;
-        } else {
-          startBossChargedShot(enemy, "revenant-cross", dx, 0.64);
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.56);
           enemy.cooldown = 1.65 * recovery;
+        } else if (enemy.bossPhase === 1) {
+          enemy.windup = 0.62;
+          enemy.bossAction = "shieldRush";
+          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+          enemy.dashRange = 560;
+          enemy.cooldown = 1.9 * recovery;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "revenant-shield-ring", dx, 0.74);
+          enemy.cooldown = 2.05 * recovery;
+        } else if (enemy.bossPhase === 3) {
+          startBossChargedShot(enemy, "revenant-shield-lance", dx, 0.88);
+          enemy.cooldown = 2.15 * recovery;
+        } else {
+          startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.62);
+          enemy.cooldown = 1.75 * recovery;
         }
       } else if (bossKind === "proxy") {
         if (enemy.mutated) {
@@ -6897,29 +7160,6 @@
       if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup *= bossCurve.windup;
     }
 
-    if (enemy.bossAction === "duelistCombo" && enemy.comboHitsRemaining > 0) {
-      enemy.comboHitTimer -= dt;
-      if (enemy.comboHitTimer <= 0) {
-        const finisher = enemy.comboHitsRemaining === 1;
-        enemy.facing = Math.sign(dx || enemy.facing || 1);
-        enemy.vx = enemy.facing * (finisher ? 760 : 420);
-        enemy.swordSwingDuration = finisher ? 0.34 : 0.22;
-        enemy.swordSwingTimer = enemy.swordSwingDuration;
-        enemy.swordMotionKind = finisher ? "finisher" : "swing";
-        const slashX = enemy.x + enemy.w / 2 + enemy.facing * 54;
-        const slashY = enemy.y + enemy.h * 0.43;
-        if (Math.abs(dx) < (finisher ? 205 : 150) && Math.abs(player.y - enemy.y) < 115) damagePlayer(finisher && rank >= 3 ? 2 : 1, enemy.x);
-        spawnParticles(slashX, slashY, finisher ? "#fff0a8" : "#ffd4df", finisher ? 24 : 12, finisher ? 520 : 330, 0.34, 0);
-        sound.tone(finisher ? 210 : 360, finisher ? 0.18 : 0.09, "sawtooth", 0.035, finisher ? 2.4 : 1.7);
-        enemy.comboHitsRemaining -= 1;
-        enemy.comboHitTimer = finisher ? 0.32 : 0.13;
-        if (enemy.comboHitsRemaining <= 0) {
-          enemy.bossAction = null;
-          enemy.vx *= 0.35;
-        }
-      }
-    }
-
     if (enemy.bossAction === "mutantCombo" && enemy.comboHitsRemaining > 0) {
       enemy.comboHitTimer -= dt;
       if (enemy.comboHitTimer <= 0) {
@@ -6938,25 +7178,6 @@
           enemy.bossAction = null;
           enemy.vx *= 0.3;
         }
-      }
-    }
-
-    if (enemy.bossAction === "rapidThrust" && enemy.windup > 0 && enemy.thrustsRemaining > 0) {
-      enemy.thrustTimer -= dt;
-      if (enemy.thrustTimer <= 0) {
-        const thrustIndex = enemy.thrustsRemaining;
-        enemy.vx = Math.sign(dx || 1) * (520 + rank * 32);
-        fireSwordWave(
-          enemy,
-          { x: player.x + player.w / 2, y: player.y + player.h / 2 },
-          (thrustIndex % 3 - 1) * 0.045,
-          650,
-        );
-        if (Math.abs(dx) < 155 && Math.abs(player.y - enemy.y) < 96) damagePlayer(1, enemy.x);
-        enemy.thrustsRemaining -= 1;
-        enemy.thrustTimer = 0.105;
-        spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 42, enemy.y + enemy.h * 0.42, "#ffd0dd", 8, 260, 0.25, 0);
-        if (enemy.thrustsRemaining <= 0) enemy.bossAction = null;
       }
     }
 
@@ -6998,18 +7219,15 @@
           enemy.vx = -Math.sign(dx || 1) * 560;
           enemy.vy = enemy.grounded ? -420 : enemy.vy;
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#6fddeb", 16, 330, 0.38, 0);
-        } else if (enemy.bossAction === "swordDash") {
-          enemy.vx = Math.sign(dx || 1) * 720;
-          fireSwordWave(enemy, { x: player.x + player.w / 2, y: player.y + player.h / 2 }, 0, 620);
-          if (Math.abs(dx) < 180 && Math.abs(player.y - enemy.y) < 105) damagePlayer(1, enemy.x);
+        } else if (enemy.bossAction === "shieldRush") {
+          enemy.vx = (enemy.dashDirection || Math.sign(dx || 1)) * 660;
+          if (Math.abs(dx) < 185 && Math.abs(player.y - enemy.y) < 110) damagePlayer(1, enemy.x);
+          fireRevenantShieldBurst(enemy, { x: player.x + player.w / 2, y: player.y + player.h / 2 }, enemy.shieldOverdrive ? 5 : 3, 0.085, 520);
+          enemy.bossAction = null;
         } else if (enemy.bossAction === "madDash") {
           enemy.vx = Math.sign(dx || 1) * 500;
           throwPotion(enemy, player.x + player.w / 2, 1, -110);
           throwPotion(enemy, player.x + player.w / 2, 0, 110);
-        } else if (enemy.bossAction === "duelistApproach") {
-          enemy.bossAction = "duelistCombo";
-          enemy.comboHitTimer = 0;
-          enemy.vx = Math.sign(dx || enemy.dashDirection || 1) * 430;
         } else if (enemy.bossAction === "selfInject") {
           enemy.mutated = true;
           enemy.bossAction = null;
@@ -7997,7 +8215,14 @@
     ctx.setLineDash([]);
     ctx.fillStyle = "rgba(255, 205, 112, 0.92)";
     ctx.font = "900 11px monospace";
-    ctx.fillText("ADMIN EDIT", bounds.x, bounds.y - 14);
+    ctx.fillText(`ADMIN EDIT · ${Math.round(bounds.w)} × ${Math.round(bounds.h)}`, bounds.x, bounds.y - 14);
+    for (const handle of getAdminWorldHandlePoints(bounds)) {
+      ctx.fillStyle = handle.name.length === 2 ? "#fff1bd" : "#65f5ea";
+      ctx.strokeStyle = "#07131a";
+      ctx.lineWidth = 2;
+      ctx.fillRect(handle.x - 7, handle.y - 7, 14, 14);
+      ctx.strokeRect(handle.x - 7, handle.y - 7, 14, 14);
+    }
     ctx.restore();
   }
 
@@ -8505,7 +8730,7 @@
       ctx.restore();
     } else if (
       enemy.type === "boss"
-      && ["dash", "reflectRush", "swordDash", "madDash", "echoSlash", "echoCounter", "echoDash", "duelistApproach", "mutantApproach", "mutantLeap", "mutantSmash", "rapidThrust"].includes(enemy.bossAction)
+      && ["dash", "reflectRush", "shieldRush", "madDash", "echoSlash", "echoCounter", "echoDash", "mutantApproach", "mutantLeap", "mutantSmash"].includes(enemy.bossAction)
     ) {
       const direction = enemy.dashDirection || Math.sign(player.x - enemy.x) || enemy.facing || 1;
       const startX = enemy.x + enemy.w / 2;
@@ -8521,7 +8746,7 @@
       ctx.fillRect(left, laneY - 35, width, 70);
       ctx.strokeStyle = accent;
       ctx.globalAlpha = 0.58 + pulse * 0.35;
-      ctx.lineWidth = enemy.bossAction === "rapidThrust" ? 4 : 3;
+      ctx.lineWidth = 3;
       ctx.setLineDash([18, 10]);
       ctx.strokeRect(left, laneY - 35, width, 70);
       ctx.setLineDash([]);
@@ -8864,39 +9089,28 @@
       for (let seal = 0; seal < 8; seal += 1) { const a = seal * TAU / 8; ctx.fillStyle = seal % 2 ? "#ff8bad" : "#ffe59a"; ctx.beginPath(); ctx.arc(Math.cos(a) * 23, Math.sin(a) * 23, 2.8, 0, TAU); ctx.fill(); }
       ctx.fillStyle = "#ff537d"; ctx.beginPath(); ctx.arc(0, 0, 5 + pulse * 1.5, 0, TAU); ctx.fill();
       ctx.restore();
-      // 오른팔의 장창형 집행검은 휘두를 때 검기를 방출한다.
-      const preparingSwordWave = enemy.bossAction === "chargeShot"
-        && String(enemy.bossShotPattern || "").startsWith("revenant-");
-      const swordSwingDuration = Math.max(0.01, enemy.swordSwingDuration || 0.26);
-      const swordSwingProgress = enemy.swordSwingTimer > 0
-        ? clamp(1 - enemy.swordSwingTimer / swordSwingDuration, 0, 1)
-        : 0;
-      const swordEase = 1 - Math.pow(1 - swordSwingProgress, 3);
-      const thrusting = enemy.swordMotionKind === "thrust" && enemy.swordSwingTimer > 0;
-      let swordAngle = -0.48 + motion * 0.04;
-      if (preparingSwordWave) swordAngle = -1.48 + chargeProgress * 0.36;
-      if (enemy.bossAction === "rapidThrust") swordAngle = -0.08 + Math.sin(enemy.anim * 28) * 0.08;
-      if (enemy.swordSwingTimer > 0 && !thrusting) swordAngle = -1.14 + swordEase * 1.82;
-      const thrustOffset = thrusting ? Math.sin(swordSwingProgress * Math.PI) * 22 : 0;
-      const swordHandX = 18 + Math.cos(swordAngle) * (11 + thrustOffset);
-      const swordHandY = 36 + Math.sin(swordAngle) * (11 + thrustOffset);
-      limb(15, 28, swordHandX, swordHandY, 8, flash ? "#fff" : "#3a2b56");
-      ctx.save(); ctx.translate(swordHandX, swordHandY); ctx.rotate(swordAngle);
-      ctx.fillStyle = "#21192d"; ctx.fillRect(-8, -6, 21, 12);
-      ctx.fillStyle = "#e8c56f"; ctx.fillRect(8, -10, 6, 20);
-      ctx.fillStyle = "#f4f0ff"; ctx.beginPath(); ctx.moveTo(12, -5); ctx.lineTo(99, -3); ctx.lineTo(116, 0); ctx.lineTo(99, 4); ctx.lineTo(12, 6); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#6b4a91"; ctx.beginPath(); ctx.moveTo(22, -2); ctx.lineTo(102, -1); ctx.lineTo(111, 0); ctx.lineTo(102, 2); ctx.lineTo(22, 2); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#ff6e9c"; ctx.fillRect(18, -1.5, 88, 3);
-      ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.35 + pulse * 0.18; ctx.fillStyle = "#e1c8ff"; ctx.fillRect(28, -0.7, 78, 1.4); ctx.restore();
-      if (enemy.swordSwingTimer > 0 && !thrusting) {
+      // 검 대신 방패 자체에 포구를 내장했다. 2페이즈에는 포구가 연속 점등된다.
+      limb(-13, 30, -31, 42, 9, flash ? "#fff" : "#3a2b56");
+      limb(14, 29, 30, 47, 9, flash ? "#fff" : "#3a2b56");
+      ctx.fillStyle = "#251b39";
+      ctx.beginPath(); ctx.arc(31, 49, 10, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 2; ctx.stroke();
+      for (let barrel = -1; barrel <= 1; barrel += 1) {
+        ctx.fillStyle = barrel === 0 ? "#e8c56f" : "#7d5c9d";
+        ctx.fillRect(-92, 38 + barrel * 8, 28, 5);
+        ctx.fillStyle = "#17101f";
+        ctx.fillRect(-95, 39 + barrel * 8, 7, 3);
+      }
+      if (enemy.shieldOverdrive) {
+        ctx.strokeStyle = `rgba(255,139,173,${0.5 + pulse * 0.35})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(-38, 41, 39 + pulse * 3, 0, TAU); ctx.stroke();
+      }
+      if ((enemy.shieldMuzzleFlash || 0) > 0) {
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = 0.7 * (1 - swordSwingProgress);
-        ctx.strokeStyle = "#ffd4df";
-        ctx.lineWidth = 7;
-        ctx.beginPath();
-        ctx.arc(14, 34, 82, -1.18, -1.18 + swordEase * 1.9);
-        ctx.stroke();
+        ctx.fillStyle = "#fff0b7";
+        ctx.beginPath(); ctx.moveTo(-98, 41); ctx.lineTo(-120, 33); ctx.lineTo(-113, 41); ctx.lineTo(-120, 50); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
     } else if (rawBossKind === "proxy") {
@@ -10128,24 +10342,6 @@
       ctx.fill();
       ctx.strokeStyle = "#f3ffff";
       ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-    if (bullet.kind === "sword-wave") {
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
-      ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = "rgba(255, 107, 156, 0.32)";
-      ctx.lineWidth = 13;
-      ctx.beginPath();
-      ctx.arc(-7, 0, 31, -0.72, 0.72);
-      ctx.stroke();
-      ctx.strokeStyle = "#fff0f7";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(-7, 0, 31, -0.72, 0.72);
       ctx.stroke();
       ctx.restore();
       return;
@@ -11497,6 +11693,7 @@
       || game.tutorialOpen
       || adminSpawnPanel?.hidden === false
       || adminZonePanel?.hidden === false
+      || adminWorldEditor?.hidden === false
     ) return;
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
@@ -11506,6 +11703,40 @@
       return;
     }
     startShotgun(aimAtWorldPoint(worldX, worldY));
+  }
+
+  function findMobileAimTarget(maxDistance, minimumDot = -0.2) {
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    const stickAim = getMoveStickAim();
+    let best = null;
+    let bestScore = Infinity;
+    for (const enemy of getActiveEnemies()) {
+      if (!enemy.alive || enemy.hidden) continue;
+      const dx = enemy.x + enemy.w / 2 - playerCenterX;
+      const dy = enemy.y + enemy.h / 2 - playerCenterY;
+      const distance = Math.hypot(dx, dy);
+      if (distance > maxDistance || distance < 1) continue;
+      const dot = dx / distance * stickAim.x + dy / distance * stickAim.y;
+      if (moveStick.magnitude > 0.18 && dot < minimumDot) continue;
+      const score = distance * (moveStick.magnitude > 0.18 ? 1.4 - clamp(dot, -1, 1) * 0.4 : 1);
+      if (score < bestScore) {
+        best = enemy;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  function startTouchDirectAttack(type) {
+    if (game.mode !== "playing" || game.cutscene || game.tutorialOpen || adminWorldEditor?.hidden === false) return;
+    const target = findMobileAimTarget(type === "slash" ? 260 : 1080, type === "slash" ? -0.45 : -0.05);
+    const aim = target
+      ? aimAtWorldPoint(target.x + target.w / 2, target.y + target.h / 2)
+      : getMoveStickAim();
+    if (type === "slash") startAttack(aim);
+    else startShotgun(aim);
+    navigator.vibrate?.(type === "slash" ? 9 : 14);
   }
 
   function setVirtualKey(code, active) {
@@ -11685,6 +11916,8 @@
     if (action === "move") updateMoveJoystick(entry, event.clientX, event.clientY);
     else if (action === "jump") setVirtualKey("Space", true);
     else if (action === "burst") startBurst();
+    else if (action === "slash") startTouchDirectAttack("slash");
+    else if (action === "shotgun") startTouchDirectAttack("shotgun");
     else if (action === "pause") togglePause();
     else if (action === "fullscreen") toggleMobileFullscreen();
   }
@@ -11704,6 +11937,13 @@
 
   canvas.addEventListener("mousemove", updatePointer);
   canvas.addEventListener("pointerdown", (event) => {
+    if (game.adminMode && adminWorldEditor?.hidden === false) {
+      event.preventDefault();
+      event.stopPropagation();
+      updatePointer(event);
+      beginAdminWorldTransform(event);
+      return;
+    }
     if (event.pointerType !== "touch") return;
     event.preventDefault();
     updatePointer(event);
@@ -11715,10 +11955,23 @@
     startTouchContextAttack();
   });
   canvas.addEventListener("pointermove", (event) => {
+    if (adminWorldTransform && adminWorldTransform.pointerId === event.pointerId) {
+      event.preventDefault();
+      updatePointer(event);
+      updateAdminWorldTransform(event);
+      return;
+    }
     if (event.pointerType !== "touch") return;
     event.preventDefault();
     updatePointer(event);
   });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(type, (event) => {
+      if (!adminWorldTransform || adminWorldTransform.pointerId !== event.pointerId) return;
+      event.preventDefault();
+      finishAdminWorldTransform(event);
+    });
+  }
   canvas.addEventListener("mousedown", (event) => {
     updatePointer(event);
     event.preventDefault();
@@ -11727,7 +11980,7 @@
       requestCutsceneAdvance();
       return;
     }
-    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false) return;
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || adminWorldEditor?.hidden === false) return;
     if (event.button === 0) startAttack();
     if (event.button === 2) startShotgun();
   });
@@ -11846,6 +12099,7 @@
   adminWorldEditNearest?.addEventListener("click", findNearestAdminWorldObject);
   adminWorldEditorClose?.addEventListener("click", () => setAdminWorldEditor(false));
   adminWorldSave?.addEventListener("click", saveAdminWorldSelection);
+  adminWorldUndo?.addEventListener("click", undoAdminWorldTransform);
   adminWorldDelete?.addEventListener("click", deleteAdminWorldSelection);
   adminWorldReset?.addEventListener("click", resetAdminWorldSelection);
   for (const button of difficultyButtons) {
@@ -11865,7 +12119,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.5.2",
+    version: "2.6.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -11924,7 +12178,10 @@
     oracleScreenFlipHpRatio: 0.25,
     weaverIceStorm: true,
     weaverSnowSpeedMultiplier: 0.58,
-    revenantMeleeCombo: true,
+    revenantMeleeCombo: false,
+    revenantShieldArtillery: true,
+    revenantPhaseTwoSupportFire: true,
+    revenantShieldRoundsGrantCharge: 0.8,
     censorArenaLaserCount: 0,
     proxyName: "의사",
     proxySelfInjection: true,
@@ -11936,7 +12193,20 @@
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
     bossRewardsEnabled: false,
     midBossHealReward: false,
-    gongmunSwordMotion: true,
+    gongmunSwordMotion: false,
+    adminDirectCanvasTransform: true,
+    adminTransformHandles: 8,
+    adminTransformAutoSave: true,
+    mobileDedicatedAttackButtons: true,
+    mobileAttackAimAssist: true,
+    campaignSaveVersion: 2,
+    continueUsesCheckpointKey: true,
+    continueRollsBackCurrentZone: true,
+    activeCheckpointKey: player.respawnCheckpointKey,
+    checkpointSafetyPass: checkpoints.every((checkpoint) => {
+      const position = getCheckpointRespawnPosition(checkpoint);
+      return checkpointSpawnIsSafe(position.x, position.y);
+    }),
     cheolgakFunnelFormation: "single-side",
     cheolgakFunnelShots: 5,
     empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
@@ -11995,7 +12265,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.5.2",
+    gameVersion: "2.6.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -12053,7 +12323,10 @@
     oracleScreenFlipHpRatio: "0.25",
     weaverIceStorm: "true",
     weaverSnowSpeedMultiplier: "0.58",
-    revenantMeleeCombo: "true",
+    revenantMeleeCombo: "false",
+    revenantShieldArtillery: "true",
+    revenantPhaseTwoSupportFire: "true",
+    revenantShieldRoundsGrantCharge: "0.8",
     censorArenaLaserCount: "0",
     proxyName: "의사",
     proxySelfInjection: "true",
@@ -12075,7 +12348,19 @@
     bossRewardsEnabled: "false",
     midBossHealReward: "false",
     bossRewardDamagePerLevel: "0",
-    gongmunSwordMotion: "true",
+    gongmunSwordMotion: "false",
+    adminDirectCanvasTransform: "true",
+    adminTransformHandles: "8",
+    adminTransformAutoSave: "true",
+    mobileDedicatedAttackButtons: "true",
+    mobileAttackAimAssist: "true",
+    campaignSaveVersion: "2",
+    continueUsesCheckpointKey: "true",
+    continueRollsBackCurrentZone: "true",
+    checkpointSafetyPass: String(checkpoints.every((checkpoint) => {
+      const position = getCheckpointRespawnPosition(checkpoint);
+      return checkpointSpawnIsSafe(position.x, position.y);
+    })),
     cheolgakFunnelFormation: "single-side",
     cheolgakFunnelShots: "5",
     cheolgakFunnelShotInterval: "0.36",

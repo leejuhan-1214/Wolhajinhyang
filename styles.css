@@ -749,8 +749,8 @@ button:focus-visible {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));
   bottom: max(10px, env(safe-area-inset-bottom));
-  width: calc(var(--touch-unit) * 2.4);
-  height: calc(var(--touch-unit) * 2.2);
+  width: calc(var(--touch-unit) * 2.85);
+  height: calc(var(--touch-unit) * 2.72);
   pointer-events: none;
 }
 
@@ -774,7 +774,7 @@ button:focus-visible {
 
 .touch-actions .touch-burst {
   position: absolute;
-  left: 0;
+  right: calc(var(--touch-unit) * 1.48);
   width: calc(var(--touch-unit) * 0.86);
   height: calc(var(--touch-unit) * 0.76);
   border-radius: 11px;
@@ -782,9 +782,49 @@ button:focus-visible {
 }
 
 .touch-actions .touch-burst {
-  bottom: 0;
+  bottom: calc(var(--touch-unit) * 1.35);
   border-color: rgba(101, 245, 234, 0.58);
   background: rgba(10, 48, 62, 0.84);
+}
+
+.touch-actions .touch-slash,
+.touch-actions .touch-shotgun {
+  position: absolute;
+  width: calc(var(--touch-unit) * 1.02);
+  height: calc(var(--touch-unit) * 0.92);
+  border-radius: 50%;
+  font-size: clamp(10px, 1.85vmin, 15px);
+}
+
+.touch-actions .touch-slash {
+  right: calc(var(--touch-unit) * 1.47);
+  bottom: 0.08rem;
+  border-color: rgba(255, 229, 154, 0.84);
+  background: radial-gradient(circle at 36% 28%, rgba(255, 236, 169, 0.82), rgba(118, 61, 67, 0.92) 52%, rgba(29, 13, 23, 0.94));
+}
+
+.touch-actions .touch-shotgun {
+  right: 0.08rem;
+  bottom: calc(var(--touch-unit) * 1.52);
+  border-color: rgba(255, 122, 146, 0.88);
+  background: radial-gradient(circle at 36% 28%, rgba(255, 139, 173, 0.86), rgba(111, 36, 61, 0.92) 52%, rgba(29, 13, 23, 0.94));
+}
+
+.touch-actions .touch-slash small,
+.touch-actions .touch-shotgun small { font-size: clamp(6px, 1.05vmin, 8px); }
+
+.touch-attack-hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(7px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border: 1px solid rgba(101, 245, 234, 0.18);
+  border-radius: 999px;
+  background: rgba(2, 10, 17, 0.48);
+  color: rgba(222, 255, 252, 0.62);
+  font: 800 clamp(7px, 1.3vmin, 10px)/1 monospace;
+  pointer-events: none;
 }
 
 .touch-pause {
@@ -1035,6 +1075,41 @@ button:focus-visible {
 .admin-world-editor[hidden] { display: none; }
 .admin-world-editor header { margin-bottom: 7px; }
 
+.admin-world-transform-guide {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 205, 112, 0.4);
+  background: linear-gradient(90deg, rgba(57, 42, 20, 0.78), rgba(10, 31, 40, 0.84));
+}
+
+.admin-world-transform-guide > div { display: grid; gap: 3px; }
+.admin-world-transform-guide b { color: #fff1bd; font-size: 10px; }
+.admin-world-transform-guide span { color: #91aab2; font: 700 8px/1.25 "Malgun Gothic", sans-serif; }
+.admin-world-transform-guide output { color: #65f5ea; font: 800 9px/1.15 monospace; white-space: nowrap; }
+
+.admin-world-transform-icon {
+  position: relative;
+  width: 34px;
+  height: 25px;
+  border: 2px dashed #ffcd70;
+}
+
+.admin-world-transform-icon i {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #17202a;
+  background: #fff1bd;
+}
+.admin-world-transform-icon i:nth-child(1) { left: -5px; top: -5px; }
+.admin-world-transform-icon i:nth-child(2) { right: -5px; top: -5px; }
+.admin-world-transform-icon i:nth-child(3) { right: -5px; bottom: -5px; }
+.admin-world-transform-icon i:nth-child(4) { left: -5px; bottom: -5px; }
+
 #admin-world-editor-close {
   min-width: 32px;
   width: 32px;
@@ -1049,7 +1124,7 @@ button:focus-visible {
 
 .admin-world-fields {
   display: grid;
-  grid-template-columns: repeat(4, minmax(72px, 0.7fr)) 1.1fr 1.4fr;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(160px, 1.15fr) minmax(210px, 1.6fr);
   gap: 7px;
 }
 
@@ -1098,6 +1173,8 @@ button:focus-visible {
 
 #admin-world-delete { border-color: rgba(255, 73, 108, 0.55); background: #351c28; color: #ffd5dc; }
 #admin-world-reset { border-color: rgba(255, 205, 112, 0.48); background: #332b1d; color: #ffe9b5; }
+#admin-world-undo { border-color: rgba(184, 140, 255, 0.48); background: #29213c; color: #eadcff; }
+#admin-world-undo:disabled { opacity: 0.35; cursor: default; }
 .admin-world-editor > p { margin: 7px 0 0; color: #708993; font-size: 8px; text-align: left; }
 
 .enemy-token {
@@ -1193,10 +1270,11 @@ button:focus-visible {
   .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
   .admin-world-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-world-tools button { min-height: 38px; padding: 4px; }
-  .admin-world-fields { grid-template-columns: repeat(4, minmax(58px, 1fr)); }
-  .admin-world-fields label:nth-child(n+5) { grid-column: span 2; }
-  .admin-world-actions { justify-content: stretch; }
-  .admin-world-actions button { flex: 1; min-width: 0; padding-inline: 4px; }
+  .admin-world-transform-guide { grid-template-columns: 36px minmax(0, 1fr); padding: 6px; }
+  .admin-world-transform-guide output { grid-column: 1 / -1; text-align: right; }
+  .admin-world-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-world-actions { justify-content: stretch; flex-wrap: wrap; }
+  .admin-world-actions button { flex: 1 1 42%; min-width: 0; padding-inline: 4px; }
   .enemy-token { transform: scale(0.78); margin-block: -3px; }
   .enemy-token.boss { transform: scale(0.82); }
   .admin-spawn-panel > p { display: none; }
