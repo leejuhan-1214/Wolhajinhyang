@@ -103,8 +103,6 @@
   const SHIELD_BASE_HP = 6;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
-  const PARRY_REFLECT_SPEED_MULTIPLIER = 1.25;
-  const PARRY_REFLECT_MIN_SPEED = 560;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
   const HUNTER_REFLECT_BREAK_SECONDS = 2.2;
   const HUNTER_DASH_RANGE = 360;
@@ -271,7 +269,7 @@
       hp: 51,
       size: [34, 56],
       accent: "#a879ff",
-      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "정확 패링", "잔상 반격", "기억 반전"],
+      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "잔상 반격", "기억 반전"],
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
@@ -1075,16 +1073,11 @@
     attackCooldown: 0,
     attackId: 0,
     adminEraseAttackId: -1,
-    perfectParryAttackId: -1,
-    perfectParryFlash: 0,
-    perfectParryCount: 0,
-    perfectParryFrameArmed: false,
     attackDir: { x: 1, y: -0.2 },
-    parryAnchorX: 0,
-    parryAnchorY: 0,
-    parryDirX: 1,
-    parryDirY: 0,
-    parryFacing: 1,
+    slashAnchorX: 0,
+    slashAnchorY: 0,
+    slashDirX: 1,
+    slashDirY: 0,
     invincible: 0,
     hp: 5,
     maxHp: 5,
@@ -2821,8 +2814,6 @@
       boss.comboHitsRemaining = 0;
       boss.comboHitTimer = 0;
       boss.adaptivePhase = false;
-      boss.echoParryTimer = 0;
-      boss.echoParryCooldown = 0;
       boss.echoAnalysis = null;
       boss.echoDecisionSerial = 0;
       boss.echoMimicJumpCooldown = 0;
@@ -3490,10 +3481,6 @@
       attackCooldown: 0,
       attackId: 0,
       adminEraseAttackId: -1,
-      perfectParryAttackId: -1,
-      perfectParryFlash: 0,
-      perfectParryCount: 0,
-      perfectParryFrameArmed: false,
       invincible: 0,
       hp: difficulty.hp,
       maxHp: difficulty.hp,
@@ -4389,13 +4376,12 @@
       player.attackDir.x = dirX / directionLength;
       player.attackDir.y = dirY / directionLength;
     }
-    // 탄환 패링 판정은 발도를 시작한 순간의 위치와 방향에 고정한다.
-    // 공격 중 낙하·상승·대시로 큰 사각형을 쓸어 담던 방향별 확률 차이를 제거한다.
-    player.parryAnchorX = player.x + player.w / 2;
-    player.parryAnchorY = player.y + player.h / 2;
-    player.parryDirX = player.attackDir.x;
-    player.parryDirY = player.attackDir.y;
-    player.parryFacing = player.facing;
+    // 탄환 베기 판정은 발도를 시작한 순간의 위치와 방향에 고정한다.
+    // 공격 중 낙하·상승·대시로 큰 사각형을 쓸어 담지 않도록 한다.
+    player.slashAnchorX = player.x + player.w / 2;
+    player.slashAnchorY = player.y + player.h / 2;
+    player.slashDirX = player.attackDir.x;
+    player.slashDirY = player.attackDir.y;
     player.chargedAttack = false;
 
     if (player.grounded) {
@@ -4409,7 +4395,6 @@
     player.attackDuration = player.grounded ? chainDuration : 0.23;
 
     player.attackId += 1;
-    player.perfectParryFrameArmed = true;
     player.attackTimer = player.attackDuration;
     player.attackCooldown = player.attackDuration + (player.grounded ? 0.015 : 0.055);
     player.afterimageTimer = 0;
@@ -4478,15 +4463,15 @@
     return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
   }
 
-  function bulletIntersectsSlashParryZone(bullet) {
+  function bulletIntersectsSlashBlade(bullet) {
     if (!bullet?.enemy) return false;
-    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
-    const dirX = player.parryDirX / aimLength;
-    const dirY = player.parryDirY / aimLength;
+    const aimLength = Math.max(0.001, Math.hypot(player.slashDirX, player.slashDirY));
+    const dirX = player.slashDirX / aimLength;
+    const dirY = player.slashDirY / aimLength;
     const bulletCenterX = bullet.x + bullet.w / 2;
     const bulletCenterY = bullet.y + bullet.h / 2;
-    const relativeX = bulletCenterX - player.parryAnchorX;
-    const relativeY = bulletCenterY - player.parryAnchorY;
+    const relativeX = bulletCenterX - player.slashAnchorX;
+    const relativeY = bulletCenterY - player.slashAnchorY;
     const alongBlade = relativeX * dirX + relativeY * dirY;
     const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
     const bulletRadius = Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5);
@@ -4499,81 +4484,10 @@
     );
   }
 
-  function bulletIntersectsPerfectParrySweetSpot(bullet) {
-    if (!bullet?.enemy) return false;
-    const aimLength = Math.max(0.001, Math.hypot(player.parryDirX, player.parryDirY));
-    const dirX = player.parryDirX / aimLength;
-    const dirY = player.parryDirY / aimLength;
-    const bulletCenterX = bullet.x + bullet.w / 2;
-    const bulletCenterY = bullet.y + bullet.h / 2;
-    const relativeX = bulletCenterX - player.parryAnchorX;
-    const relativeY = bulletCenterY - player.parryAnchorY;
-    const alongBlade = relativeX * dirX + relativeY * dirY;
-    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
-    const bulletRadius = Math.min(6, Math.max(2, Math.hypot(bullet.w, bullet.h) * 0.5));
-    const sweetStart = player.chargedAttack ? 106 : 98;
-    const sweetEnd = player.chargedAttack ? 150 : 142;
-    const sweetHalfWidth = player.chargedAttack ? 10 : 8;
-    return (
-      alongBlade >= sweetStart - bulletRadius
-      && alongBlade <= sweetEnd + bulletRadius
-      && acrossBlade <= sweetHalfWidth + bulletRadius
-    );
-  }
-
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
     const elapsed = player.attackDuration - player.attackTimer;
     return elapsed > player.attackDuration * 0.14 && elapsed < player.attackDuration * 0.8;
-  }
-
-  function canPerfectParryBullet(bullet) {
-    return Boolean(
-      bullet?.enemy
-      && !bullet.harmless
-      && !bullet.perfectParry
-      && Number.isFinite(bullet.vx)
-      && Number.isFinite(bullet.vy)
-      && Math.hypot(bullet.vx, bullet.vy) > 1,
-    );
-  }
-
-  function reflectPerfectParryBullet(bullet) {
-    const centerX = bullet.x + bullet.w / 2;
-    const centerY = bullet.y + bullet.h / 2;
-    const incomingSpeed = Math.max(1, Math.hypot(bullet.vx, bullet.vy));
-    const reflectedSpeed = Math.max(PARRY_REFLECT_MIN_SPEED, incomingSpeed * PARRY_REFLECT_SPEED_MULTIPLIER);
-    const reverseX = -bullet.vx / incomingSpeed;
-    const reverseY = -bullet.vy / incomingSpeed;
-
-    bullet.enemy = false;
-    bullet.harmless = false;
-    bullet.kind = "parried-bullet";
-    bullet.vx = reverseX * reflectedSpeed;
-    bullet.vy = reverseY * reflectedSpeed;
-    bullet.gravity = 0;
-    bullet.life = Math.max(1.4, Math.min(3.4, Number(bullet.life) || 2.2));
-    bullet.maxLife = bullet.life;
-    bullet.damage = Math.max(1, Number(bullet.damage) || 1);
-    bullet.piercing = false;
-    bullet.shotId = ++player.shotId;
-    bullet.color = "#9ffcff";
-    bullet.perfectParry = true;
-
-    spawnParticles(centerX, centerY, "#9ffcff", 18, 520, 0.48, 0);
-    spawnParticles(centerX, centerY, palette.white, 10, 350, 0.32, 0);
-    if (player.perfectParryAttackId !== player.attackId) {
-      player.perfectParryAttackId = player.attackId;
-      player.perfectParryCount += 1;
-      player.perfectParryFlash = 0.18;
-      game.freeze = Math.max(game.freeze, 0.09);
-      game.shake = Math.max(game.shake, 8);
-      game.flash = Math.max(game.flash, 0.12);
-      game.hint = "정확 패링 · 탄환 반사";
-      game.hintTimer = 1.25;
-      sound.tone(760, 0.12, "sine", 0.045, 1.75);
-      sound.tone(380, 0.08, "square", 0.022, 1.4);
-    }
   }
 
   function damageEnemy(enemy) {
@@ -4582,18 +4496,6 @@
 
     if (game.adminMode && player.adminEraseAttackId === player.attackId) {
       eraseEnemyData(enemy);
-      return;
-    }
-
-    if (enemy.type === "boss" && enemy.bossKind === "echo" && (enemy.echoParryTimer || 0) > 0) {
-      enemy.echoParryTimer = 0;
-      enemy.windup = 0.16;
-      enemy.bossAction = "echoCounter";
-      enemy.cooldown = Math.max(enemy.cooldown, 0.72);
-      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, "#f5eaff", 24, 500, 0.44, 0);
-      game.freeze = Math.max(game.freeze, 0.05);
-      game.shake = Math.max(game.shake, 9);
-      sound.tone(780, 0.1, "sine", 0.04, 0.5);
       return;
     }
 
@@ -4697,11 +4599,6 @@
     if (enemy.type === "boss" && enemy.bossKind === "oracle" && enemy.pendingShotId === bullet.shotId) {
       // 치환 예고 중인 산탄은 육화에게 피해를 주지 않고 잠시 후 플레이어에게 역류한다.
       enemy.hitShotId = bullet.shotId;
-      return true;
-    }
-    if (enemy.type === "boss" && enemy.bossKind === "echo" && (enemy.echoParryTimer || 0) > 0) {
-      enemy.hitShotId = bullet.shotId;
-      echoParryShotgun(enemy);
       return true;
     }
     const shielded = ensureShieldState(enemy)
@@ -4872,7 +4769,6 @@
     player.vx = player.x < sourceX ? -430 : 430;
     player.vy = -460;
     player.attackTimer = 0;
-    player.perfectParryFrameArmed = false;
     game.shake = 18;
     game.flash = 0.16;
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.red, 16, 420, 0.6, 800);
@@ -4951,8 +4847,6 @@
       enemy.comboHitsRemaining = 0;
       enemy.comboHitTimer = 0;
       enemy.adaptivePhase = false;
-      enemy.echoParryTimer = 0;
-      enemy.echoParryCooldown = 0;
       enemy.echoAnalysis = null;
       enemy.echoDecisionSerial = 0;
       enemy.echoMimicJumpCooldown = 0;
@@ -5020,7 +4914,6 @@
     player.invincible = 1.2;
     player.airJumpAvailable = true;
     player.attackTimer = 0;
-    player.perfectParryFrameArmed = false;
     player.shotgunCooldown = 0;
     player.shotgunReload = 0;
     player.shells = player.maxShells;
@@ -5515,26 +5408,6 @@
     sound.tone(145, 0.18, "sawtooth", 0.035, 0.72);
   }
 
-  function echoParryShotgun(enemy) {
-    const originX = enemy.x + enemy.w / 2 + enemy.facing * 18;
-    const originY = enemy.y + enemy.h * 0.42;
-    const target = {
-      x: player.x + player.w / 2 + player.vx * 0.12,
-      y: player.y + player.h / 2 + player.vy * 0.08,
-    };
-    [-0.08, 0, 0.08].forEach((spread, index) => (
-      firePointBullet(originX, originY, target, 610 + index * 25, spread, "echo-parried-shot", "#b994ff")
-    ));
-    enemy.echoParryTimer = 0;
-    enemy.windup = 0.16;
-    enemy.bossAction = "echoCounter";
-    enemy.cooldown = Math.max(enemy.cooldown, 0.72);
-    spawnParticles(originX, originY, "#f5eaff", 26, 520, 0.46, 0);
-    game.freeze = Math.max(game.freeze, 0.055);
-    game.shake = Math.max(game.shake, 10);
-    sound.tone(820, 0.1, "sine", 0.04, 0.48);
-  }
-
   function swapBossWithPlayer(enemy, { grantInvincibility = true, shake = 16 } = {}) {
     const arena = getBossArenaBounds(enemy, 90);
     const playerX = player.x;
@@ -5995,7 +5868,6 @@
     const impactVelocity = player.vy;
     player.attackTimer = Math.max(0, player.attackTimer - dt);
     player.attackCooldown = Math.max(0, player.attackCooldown - dt);
-    player.perfectParryFlash = Math.max(0, player.perfectParryFlash - dt);
     player.invincible = Math.max(0, player.invincible - dt);
     player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
     player.comboTimer = Math.max(0, player.comboTimer - dt);
@@ -6174,30 +6046,13 @@
       }
       for (let i = bullets.length - 1; i >= 0; i -= 1) {
         const bullet = bullets[i];
-        if (bullet.enemy && bulletIntersectsSlashParryZone(bullet)) {
-          const firstBladeContact = bullet.bladeContactAttackId !== player.attackId;
-          if (firstBladeContact) bullet.bladeContactAttackId = player.attackId;
-
-          // 탄환이 칼날에 처음 닿는 순간, 끝부분의 좁은 정확 지점에서만 한 발까지 반사한다.
-          const exactParry = (
-            firstBladeContact
-            && player.perfectParryFrameArmed
-            && player.perfectParryAttackId !== player.attackId
-            && canPerfectParryBullet(bullet)
-            && bulletIntersectsPerfectParrySweetSpot(bullet)
-          );
-          if (exactParry) {
-            reflectPerfectParryBullet(bullet);
-          } else {
-            spawnParticles(bullet.x, bullet.y, palette.cyan, 5, 180, 0.25, 0);
-            bullets.splice(i, 1);
-          }
+        if (bullet.enemy && bulletIntersectsSlashBlade(bullet)) {
+          spawnParticles(bullet.x, bullet.y, palette.cyan, 5, 180, 0.25, 0);
+          bullets.splice(i, 1);
           player.shotgunCharge = Math.min(3, player.shotgunCharge + 0.42);
           if (!player.grounded) player.airJumpAvailable = true;
         }
       }
-      // 정확 패링은 발도의 첫 유효 충돌 프레임 한 번만 열린다.
-      player.perfectParryFrameArmed = false;
     }
 
     for (const hazard of hazards) {
@@ -6685,8 +6540,6 @@
     }
 
     if (bossKind === "echo") {
-      enemy.echoParryTimer = Math.max(0, (enemy.echoParryTimer || 0) - dt);
-      enemy.echoParryCooldown = Math.max(0, (enemy.echoParryCooldown || 0) - dt);
       enemy.echoMimicJumpCooldown = Math.max(0, (enemy.echoMimicJumpCooldown || 0) - dt);
       const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
       const sampleRate = Math.min(1, dt * 4.8);
@@ -6702,13 +6555,6 @@
         enemy.vx = Math.sign(dx || 1) * 310;
         enemy.echoMimicJumpCooldown = 0.68;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h, "#63ffc6", 12, 270, 0.36, 260);
-      }
-      if (enemy.adaptivePhase && enemy.echoParryCooldown <= 0 && distance < 390 && player.attackTimer > 0.08) {
-        enemy.echoParryTimer = 0.24;
-        enemy.echoParryCooldown = 1.05;
-        enemy.bossAction = "echoParry";
-        enemy.windup = Math.max(enemy.windup, 0.24);
-        enemy.cooldown = Math.max(enemy.cooldown, 0.62);
       }
     }
 
@@ -7029,12 +6875,9 @@
           enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
           enemy.dashRange = Math.min(820, Math.max(260, Math.abs(dx) + 90));
           enemy.cooldown = 1.28 * recovery;
-        } else if ((adaptiveChoice === "shotgun" && enemy.echoParryCooldown <= 0) || phase === 2) {
-          enemy.windup = 0.34;
-          enemy.bossAction = "echoParry";
-          enemy.echoParryTimer = 0.42;
-          enemy.echoParryCooldown = 1.15;
-          enemy.cooldown = 1.2 * recovery;
+        } else if (adaptiveChoice === "shotgun" || phase === 2) {
+          startBossChargedShot(enemy, "echo-shotgun", dx, 0.46);
+          enemy.cooldown = 1.42 * recovery;
         } else if (phase === 1 || phase === 5) {
           startBossChargedShot(enemy, "echo-shotgun", dx, 0.48);
           enemy.cooldown = 1.38 * recovery;
@@ -7197,13 +7040,6 @@
           enemy.vy = player.y + player.h < enemy.y && enemy.grounded ? -390 : enemy.vy;
           if (Math.abs(dx) < 205 && Math.abs(player.y - enemy.y) < 118) damagePlayer(1, enemy.x);
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.48, "#63ffc6", 26, 620, 0.42, 0);
-          enemy.bossAction = null;
-        } else if (enemy.bossAction === "echoParry") {
-          if (Math.abs(dx) < 170 && Math.abs(player.y - enemy.y) < 112) {
-            enemy.vx = Math.sign(dx || 1) * 560;
-            damagePlayer(1, enemy.x);
-          }
-          enemy.echoParryTimer = 0;
           enemy.bossAction = null;
         } else if (enemy.bossAction === "chargeShot") {
           releaseBossChargedShot(enemy);
@@ -8616,26 +8452,6 @@
       ctx.restore();
     }
 
-    if (player.perfectParryFlash > 0) {
-      const flashProgress = 1 - player.perfectParryFlash / 0.18;
-      const centerX = player.x + player.w / 2;
-      const centerY = player.y + player.h / 2;
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = 1 - flashProgress;
-      ctx.strokeStyle = "#9ffcff";
-      ctx.lineWidth = 7 - flashProgress * 4;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 42 + flashProgress * 58, 0, TAU);
-      ctx.stroke();
-      ctx.strokeStyle = palette.white;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 31 + flashProgress * 74, 0, TAU);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     if (player.burstTimer > 0) {
       const progress = 1 - player.burstTimer / 0.38;
       const radius = 48 + progress * 115;
@@ -9432,7 +9248,7 @@
         attackDir: player.attackDir,
         chargedAttack: player.chargedAttack,
       };
-      const echoDrawingSword = ["echoSlash", "echoCounter", "echoDash", "echoParry"].includes(enemy.bossAction);
+      const echoDrawingSword = ["echoSlash", "echoCounter", "echoDash"].includes(enemy.bossAction);
       Object.assign(player, {
         vx: enemy.vx,
         vy: enemy.vy,
@@ -9444,7 +9260,7 @@
         attackTimer: echoDrawingSword ? Math.max(0.04, enemy.windup || 0.1) : 0,
         attackDuration: 0.4,
         attackDir: { x: enemy.facing, y: enemy.bossAction === "echoCounter" ? -0.24 : 0.08 },
-        chargedAttack: enemy.bossAction === "echoCounter" || enemy.bossAction === "echoParry",
+        chargedAttack: enemy.bossAction === "echoCounter",
       });
       ctx.save();
       ctx.globalAlpha = 0.28;
@@ -9475,15 +9291,6 @@
         ctx.scale(enemy.facing, 1);
         ctx.fillStyle = "#241934"; ctx.fillRect(0, -5, 28, 10);
         ctx.fillStyle = "#c9a7ff"; ctx.fillRect(19, -3, 19, 3); ctx.fillRect(19, 2, 19, 3);
-        ctx.restore();
-      }
-      if ((enemy.echoParryTimer || 0) > 0 || enemy.bossAction === "echoParry") {
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = "rgba(184,148,255,0.92)"; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(enemy.x + enemy.w / 2 + enemy.facing * 17, enemy.y + 37, 31 + Math.sin(game.time * 22) * 4, -1.55, 1.55); ctx.stroke();
-        ctx.strokeStyle = "rgba(99,255,198,0.65)"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(enemy.x + enemy.w / 2 + enemy.facing * 17, enemy.y + 37, 39, -1.35, 1.35); ctx.stroke();
         ctx.restore();
       }
       ctx.save();
@@ -10343,28 +10150,7 @@
       ctx.restore();
       return;
     }
-    if (bullet.kind === "parried-bullet") {
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
-      ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = "rgba(159, 252, 255, 0.24)";
-      ctx.fillRect(-34, -7, 48, 14);
-      ctx.fillStyle = "#9ffcff";
-      ctx.beginPath();
-      ctx.moveTo(17, 0);
-      ctx.lineTo(-3, -7);
-      ctx.lineTo(-13, 0);
-      ctx.lineTo(-3, 7);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-    if (bullet.kind === "reflected-shotgun" || bullet.kind === "echo-parried-shot" || bullet.kind === "funnel-shot") {
+    if (bullet.kind === "reflected-shotgun" || bullet.kind === "funnel-shot") {
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
@@ -12079,7 +11865,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.5.1",
+    version: "2.5.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -12156,29 +11942,13 @@
     empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
-    slashBulletDeflect: true,
-    perfectParryReflect: true,
-    perfectParryWindowSeconds: 1 / 60,
-    perfectParryWindowFrames: 1,
-    perfectParryTimingMode: "first-active-frame-and-first-blade-contact",
-    perfectParryFirstActiveFrameOnly: true,
-    perfectParryActionDurationIndependent: true,
-    perfectParryFrameRateIndependent: false,
-    perfectParryRequiresIncomingBullet: false,
-    perfectParryCandidateLimit: 1,
-    perfectParrySweetSpot: true,
-    perfectParrySweetSpotAlongBlade: [98, 142],
-    perfectParrySweetSpotHalfWidth: 8,
-    perfectParryFullBladeReflect: false,
-    perfectParryAnimationPhaseWindow: false,
-    perfectParryReflectSpeedMultiplier: PARRY_REFLECT_SPEED_MULTIPLIER,
-    directionNeutralParry: true,
-    frontOnlyParry: false,
-    allDirectionBulletDeflect: true,
-    nonFrontBulletOutcome: "sweet-spot-reflect-otherwise-destroy",
-    parryForwardAngleDegrees: 360,
-    parryUsesFrozenAttackAnchor: true,
-    parryBladeHalfWidth: 34,
+    slashBulletDestroy: true,
+    parryEnabled: false,
+    playerBulletReflection: false,
+    echoParryEnabled: false,
+    allDirectionBulletDestroy: true,
+    slashUsesFrozenAttackAnchor: true,
+    slashBladeHalfWidth: 34,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     embeddedRepairPickupsRemoved: true,
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
@@ -12225,7 +11995,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.5.1",
+    gameVersion: "2.5.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -12313,29 +12083,13 @@
     chargedSlashBonus: String(CHARGED_SLASH_BONUS),
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
-    slashBulletDeflect: "true",
-    perfectParryReflect: "true",
-    perfectParryWindowSeconds: String(1 / 60),
-    perfectParryWindowFrames: "1",
-    perfectParryTimingMode: "first-active-frame-and-first-blade-contact",
-    perfectParryFirstActiveFrameOnly: "true",
-    perfectParryActionDurationIndependent: "true",
-    perfectParryFrameRateIndependent: "false",
-    perfectParryRequiresIncomingBullet: "false",
-    perfectParryCandidateLimit: "1",
-    perfectParrySweetSpot: "true",
-    perfectParrySweetSpotAlongBlade: "98,142",
-    perfectParrySweetSpotHalfWidth: "8",
-    perfectParryFullBladeReflect: "false",
-    perfectParryAnimationPhaseWindow: "false",
-    perfectParryReflectSpeedMultiplier: String(PARRY_REFLECT_SPEED_MULTIPLIER),
-    directionNeutralParry: "true",
-    frontOnlyParry: "false",
-    allDirectionBulletDeflect: "true",
-    nonFrontBulletOutcome: "sweet-spot-reflect-otherwise-destroy",
-    parryForwardAngleDegrees: "360",
-    parryUsesFrozenAttackAnchor: "true",
-    parryBladeHalfWidth: "34",
+    slashBulletDestroy: "true",
+    parryEnabled: "false",
+    playerBulletReflection: "false",
+    echoParryEnabled: "false",
+    allDirectionBulletDestroy: "true",
+    slashUsesFrozenAttackAnchor: "true",
+    slashBladeHalfWidth: "34",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     embeddedRepairPickupsRemoved: "true",
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
