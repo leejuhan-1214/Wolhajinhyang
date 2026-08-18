@@ -24,17 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Check JavaScript
-        run: node --check game.js
+      - name: Run game smoke test
+        run: node qa-smoke.cjs
 
-      - name: Verify v2.1.5 release root
+      - name: Verify release root and cache version
         shell: bash
         run: |
           test -f index.html
           test -f VERSION.txt
-          test "$(tr -d '\r\n' < VERSION.txt)" = "2.1.5"
-          grep -q "v=2.1.5" index.html
-          grep -q "VERSION 2.1.5" index.html
+          RELEASE_VERSION="$(tr -d '\r\n' < VERSION.txt)"
+          test -n "$RELEASE_VERSION"
+          grep -q "v=$RELEASE_VERSION" index.html
+          grep -q "VERSION $RELEASE_VERSION" index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
