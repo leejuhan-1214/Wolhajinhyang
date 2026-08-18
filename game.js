@@ -5468,8 +5468,11 @@
     });
   }
 
-  function launchBossFunnels(enemy, count = 6) {
+  function launchBossFunnels(enemy, count = 4) {
     if (enemy?.bossKind === "breaker") return;
+    const hpRatio = enemy.hp / enemy.maxHp;
+    const panelCurve = getBossDifficultyCurve(enemy.stageIndex);
+    enemy.funnelCooldown = Math.max(enemy.funnelCooldown || 0, (hpRatio < 0.5 ? 9 : 12) * panelCurve.cooldown);
     const formationSide = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? -1 : 1;
     for (let index = 0; index < count; index += 1) {
       bullets.push({
@@ -5479,8 +5482,8 @@
         h: 9,
         vx: 0,
         vy: 0,
-        life: 4.8,
-        maxLife: 4.8,
+        life: 4.4,
+        maxLife: 4.4,
         enemy: true,
         harmless: true,
         kind: "boss-funnel",
@@ -5489,7 +5492,7 @@
         orbitCount: count,
         formationSide,
         shotTimer: 0.38 + index * 0.055,
-        shotsLeft: 5,
+        shotsLeft: 4,
         color: "#ff496c",
       });
     }
@@ -5697,7 +5700,7 @@
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
       case "warden-funnels":
-        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 6 : 5);
+        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 5 : 4);
         break;
       case "warden-volley":
         [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
@@ -6664,10 +6667,9 @@
     if (bossKind === "warden") {
       enemy.funnelCooldown = Math.max(0, (enemy.funnelCooldown || 0) - dt);
       const activeFunnels = bullets.filter((bullet) => bullet.kind === "boss-funnel" && bullet.ownerId === enemy.id).length;
-      if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < 980 && activeFunnels < 4) {
-        launchBossFunnels(enemy, hpRatio < 0.5 ? 6 : 5);
-        enemy.funnelCooldown = (hpRatio < 0.5 ? 5.2 : 6.7) * bossCurve.cooldown;
-        enemy.cooldown = Math.max(enemy.cooldown, 0.72 * bossCurve.cooldown);
+      if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < 980 && activeFunnels === 0) {
+        launchBossFunnels(enemy, hpRatio < 0.5 ? 5 : 4);
+        enemy.cooldown = Math.max(enemy.cooldown, 0.82 * bossCurve.cooldown);
         game.hint = "철각 · 육익 판넬 재전개";
         game.hintTimer = 1.45;
       }
@@ -6938,10 +6940,10 @@
           enemy.cooldown = 1.6 * recovery;
         }
       } else if (kind === "warden") {
-        if (enemy.bossPhase === 0 || enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "warden-funnels", dx, enemy.bossPhase === 2 ? 0.58 : 0.72);
-          enemy.cooldown = (enemy.bossPhase === 2 ? 1.75 : 2.15) * recovery;
-        } else if (enemy.bossPhase === 1) {
+        if (enemy.bossPhase === 0) {
+          startBossChargedShot(enemy, "warden-funnels", dx, 0.72);
+          enemy.cooldown = 2.35 * recovery;
+        } else if (enemy.bossPhase === 1 || enemy.bossPhase === 2) {
           startBossChargedShot(enemy, "warden-volley", dx, 0.82);
           enemy.cooldown = 1.95 * recovery;
         } else if (enemy.bossPhase === 3) {
@@ -12077,7 +12079,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.5.0",
+    version: "2.5.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -12125,7 +12127,10 @@
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => ({ ...entry })),
     bossDifficultyCurveProgressive: true,
     wardenFloatingChassis: true,
-    wardenPanelPassiveCooldowns: [6.7, 5.2],
+    wardenPanelPassiveCooldowns: [12, 9],
+    wardenPanelCountByPhase: [4, 5],
+    wardenPanelShotsPerUnit: 4,
+    wardenPanelWaveOverlap: false,
     hunterShieldFrontUntilReflection: true,
     hunterShieldFlipsBehindOnBreak: true,
     furnaceCoreExplosionFx: true,
@@ -12220,7 +12225,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.5.0",
+    gameVersion: "2.5.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "authored-stage-progression-v2.5.0",
@@ -12267,7 +12272,10 @@
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => [entry.mobility, entry.cooldown, entry.windup, entry.reaction].join("/")).join(","),
     bossDifficultyCurveProgressive: "true",
     wardenFloatingChassis: "true",
-    wardenPanelPassiveCooldowns: "6.7,5.2",
+    wardenPanelPassiveCooldowns: "12,9",
+    wardenPanelCountByPhase: "4,5",
+    wardenPanelShotsPerUnit: "4",
+    wardenPanelWaveOverlap: "false",
     hunterShieldFrontUntilReflection: "true",
     hunterShieldFlipsBehindOnBreak: "true",
     furnaceCoreExplosionFx: "true",
