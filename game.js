@@ -99,9 +99,11 @@
   const OVERCHARGED_SHOTGUN_PELLETS = 7;
   const SHIELD_GUARD_HITS = 2;
   const SHIELD_BASE_HP = 6;
+  const TURRET_BASE_HP = Math.ceil(SHIELD_BASE_HP * 1.5);
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
+  const PLAYER_BURST_COOLDOWN = 1.8;
   const SENTRY_BURST_ROUNDS = 4;
   const SENTRY_BURST_INTERVAL = 0.115;
   const ROUTE_TRANSITION_BUDGET_BY_STAGE = Object.freeze([
@@ -151,7 +153,7 @@
   const snowPatches = [];
   const boostNodes = [];
   const combatRooms = [];
-  const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "machinegun", "piercer", "mortar", "drone", "shield", "boss"]);
+  const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "machinegun", "turret", "piercer", "mortar", "drone", "shield", "boss"]);
   const ADMIN_PLACE_TYPES = new Set(["repair", "boost"]);
   let adminRemovedEnemyIds = readAdminRemovedEnemies();
   let adminSpawnedEnemyData = readAdminSpawnedEnemies();
@@ -310,7 +312,7 @@
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
-      patterns: ["방패 산탄", "중갑 돌진", "회전 봉인탄", "방패 포격", "추적 방벽탄"],
+      patterns: ["월광 검기", "중갑 돌진", "삼연 검기", "방패 사격", "십자 참월"],
     },
     proxy: {
       name: "금단 외과의 · 의사",
@@ -1083,6 +1085,10 @@
     attackId: 0,
     adminEraseAttackId: -1,
     attackDir: { x: 1, y: -0.2 },
+    slashAnchorX: 0,
+    slashAnchorY: 0,
+    slashDirX: 1,
+    slashDirY: 0,
     invincible: 0,
     hp: 5,
     maxHp: 5,
@@ -1688,6 +1694,7 @@
       runner: [42, 52, 2],
       gunner: [44, 58, 3],
       machinegun: [48, 60, 4],
+      turret: [58, 50, TURRET_BASE_HP],
       piercer: [46, 58, 3],
       mortar: [54, 64, 4],
       drone: [50, 34, 1],
@@ -1695,7 +1702,14 @@
       boss: [...(BOSS_DEFINITIONS[stages[stageIndex].bossKind]?.size || [78, 92]), 16],
     };
     const [w, h, baseHp] = sizes[type];
-    const hp = type === "boss" ? baseHp : type === "drone" ? 1 : baseHp + Math.floor(stageIndex * 0.75);
+    const stageHpBonus = Math.floor(stageIndex * 0.75);
+    const hp = type === "boss"
+      ? baseHp
+      : type === "drone"
+        ? 1
+        : type === "turret"
+          ? Math.ceil((SHIELD_BASE_HP + stageHpBonus) * 1.5)
+          : baseHp + stageHpBonus;
     const support = type === "drone" ? null : platforms.find((platform) => (
       x + w / 2 >= platform.x
       && x + w / 2 <= platform.x + platform.w
@@ -1729,6 +1743,10 @@
       burstRemaining: 0,
       burstInterval: 0,
       burstSequence: 0,
+      staggerHitCount: 0,
+      staggerHitTimer: 0,
+      retreatTimer: 0,
+      retreatDirection: 0,
       hurt: 0,
       anim: hash(x) * 5,
       hitAttackId: -1,
@@ -2581,10 +2599,10 @@
     ]));
     const enemyPools = [
       ["runner", "runner", "gunner", "machinegun", "drone", "shield"],
-      ["runner", "gunner", "machinegun", "drone", "shield", "piercer", "mortar"],
-      ["shield", "piercer", "drone", "gunner", "machinegun", "mortar", "runner"],
-      ["piercer", "mortar", "shield", "drone", "machinegun", "gunner", "runner", "mortar"],
-      ["piercer", "mortar", "drone", "shield", "machinegun", "gunner", "runner", "piercer", "mortar"],
+      ["runner", "gunner", "machinegun", "turret", "drone", "shield", "piercer", "mortar"],
+      ["shield", "piercer", "drone", "gunner", "machinegun", "turret", "mortar", "runner"],
+      ["piercer", "mortar", "shield", "drone", "machinegun", "turret", "gunner", "runner", "mortar"],
+      ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "gunner", "runner", "piercer", "mortar"],
     ];
 
     function addZoneEnemies(zone, floorY, spawnPoints) {
@@ -2606,27 +2624,27 @@
         ],
         [
           ["runner", "gunner", "machinegun", "shield"],
-          ["gunner", "runner", "machinegun", "shield", "drone"],
-          ["gunner", "machinegun", "shield", "drone", "piercer"],
-          ["shield", "drone", "piercer", "mortar", "machinegun", "gunner"],
+          ["gunner", "runner", "machinegun", "turret", "shield", "drone"],
+          ["gunner", "machinegun", "turret", "shield", "drone", "piercer"],
+          ["shield", "drone", "piercer", "mortar", "machinegun", "turret", "gunner"],
         ],
         [
           ["gunner", "machinegun", "shield", "drone", "runner"],
-          ["shield", "drone", "piercer", "machinegun", "gunner"],
-          ["shield", "piercer", "drone", "mortar", "machinegun"],
-          ["piercer", "mortar", "shield", "drone", "machinegun", "gunner"],
+          ["shield", "drone", "piercer", "machinegun", "turret", "gunner"],
+          ["shield", "piercer", "drone", "mortar", "machinegun", "turret"],
+          ["piercer", "mortar", "shield", "drone", "machinegun", "turret", "gunner"],
         ],
         [
           ["piercer", "gunner", "machinegun", "drone", "shield"],
-          ["piercer", "mortar", "machinegun", "shield", "drone"],
-          ["mortar", "piercer", "drone", "shield", "machinegun", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun", "gunner", "runner"],
+          ["piercer", "mortar", "machinegun", "turret", "shield", "drone"],
+          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "gunner"],
+          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "gunner", "runner"],
         ],
         [
           ["shield", "piercer", "drone", "machinegun", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun"],
-          ["mortar", "piercer", "drone", "shield", "machinegun", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun", "gunner", "mortar", "runner"],
+          ["piercer", "mortar", "drone", "shield", "machinegun", "turret"],
+          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "gunner"],
+          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "gunner", "mortar", "runner"],
         ],
       ];
       const pattern = progressionPatterns[zone.stageIndex][section];
@@ -2692,10 +2710,11 @@
           const gateWidth = 62 + (stageIndex % 2) * 8;
           const approachRise = Math.min(gateHeight - 38, 88 + stageIndex * 15 + section * 8);
           addPlatform(zone.x + localX, floorY - gateHeight, gateWidth, gateHeight, kind);
+          addPlatform(zone.x + localX - 430, floorY - Math.max(58, approachRise * 0.5), 190, 22, kind);
           addPlatform(zone.x + localX - 245, floorY - approachRise, 220, 22, kind);
-          addPlatform(zone.x + localX + gateWidth, floorY - gateHeight, 255, 22, kind);
+          addPlatform(zone.x + localX + gateWidth, floorY - gateHeight, 390 + stageIndex * 32, 22, kind);
           if (gateHeight >= 245) addBoostNode(zone.x + localX - 96, floorY - 58, 115, -560 - stageIndex * 18);
-          const upperGuard = stageIndex === 0 && section === 0 ? "gunner" : "machinegun";
+          const upperGuard = stageIndex >= 2 && transitionIndex % 2 === 0 ? "turret" : stageIndex === 0 && section === 0 ? "gunner" : "machinegun";
           spawnPoints.push([localX + gateWidth + 120, floorY - gateHeight, upperGuard]);
           spawnPoints.push([localX - 150, floorY - approachRise, transitionIndex % 2 ? "gunner" : "runner"]);
           transitionKinds.push("rise");
@@ -2717,8 +2736,26 @@
       const nestRise = 205 + stageIndex * 42 + section * 18;
       const nestX = mirrorRoute ? 470 : ZONE_W - 760;
       addPlatform(zone.x + nestX, floorY - nestRise, 290 - stageIndex * 8, 22, kind);
-      spawnPoints.push([nestX + 125, floorY - nestRise, stageIndex >= 1 ? "machinegun" : "gunner"]);
-      zone.routeProfile = `layered-${stageIndex + 1}-${section + 1}-${mirrorRoute ? "reverse" : "forward"}-${transitionKinds.join("-")}`;
+      spawnPoints.push([nestX + 125, floorY - nestRise, stageIndex >= 2 ? "turret" : stageIndex >= 1 ? "machinegun" : "gunner"]);
+
+      // 단순히 장애물을 넘는 수준이 아니라 여러 층을 연속해서 오르는 전용 수직 루트다.
+      const ascentLevels = clamp(1 + Math.floor((stageIndex + section + 1) / 2), 1, 4);
+      const ascentBaseX = mirrorRoute ? ZONE_W - 1370 - (localZoneIndex % 3) * 70 : 640 + (localZoneIndex % 3) * 70;
+      const ascentStepY = 102 + stageIndex * 6;
+      for (let level = 1; level <= ascentLevels; level += 1) {
+        const zigzagX = ascentBaseX + (level % 2 ? 0 : 255);
+        const platformY = floorY - level * ascentStepY;
+        addPlatform(zone.x + zigzagX, platformY, 230 - level * 8, 21, kind);
+        if (level === ascentLevels) {
+          addPlatform(zone.x + zigzagX + (mirrorRoute ? -430 : 190), platformY, 470, 21, kind);
+          spawnPoints.push([zigzagX + 96, platformY, stageIndex >= 1 ? "turret" : "gunner"]);
+        }
+      }
+      if (ascentLevels >= 3) {
+        addBoostNode(zone.x + ascentBaseX - 42, floorY - 72, mirrorRoute ? -95 : 95, -610 - stageIndex * 15);
+      }
+      zone.verticalTraversalLayers = ascentLevels;
+      zone.routeProfile = `layered-${stageIndex + 1}-${section + 1}-${mirrorRoute ? "reverse" : "forward"}-${transitionKinds.join("-")}-climb${ascentLevels}`;
       zone.routeTransitionCount = transitionCount;
     }
 
@@ -2928,6 +2965,7 @@
       boss.iceStormTimer = 0;
       boss.iceSpawnTimer = 0;
       boss.iceStormSerial = 0;
+      boss.censorSnowBlanket = false;
       boss.shieldOverdrive = false;
       boss.shieldMuzzleFlash = 0;
       boss.mutated = false;
@@ -3882,8 +3920,8 @@
         <article><kbd>A</kbd><kbd>D</kbd><b>이동</b><span>좌우 이동과 기본 점프를 연습합니다.</span></article>
         <article><kbd>SPACE</kbd><b>이중 점프</b><span>공중에서 한 번 더 눌러 높이 오릅니다.</span></article>
         <article><kbd>W</kbd><kbd>SPACE</kbd><b>벽타기</b><span>벽을 밀며 오르고 점프로 벽을 찹니다.</span></article>
-        <article><kbd>E</kbd><b>버스트</b><span>주변 탄환을 지울 수 있는 유일한 방어 기술입니다.</span></article>
-        <article><kbd>좌클릭</kbd><b>발도</b><span>적을 베는 근접 공격이며 탄환은 제거하지 못합니다.</span></article>
+        <article><kbd>E</kbd><b>버스트</b><span>일반 적 탄환을 지우는 1.8초 재사용 방어 기술입니다.</span></article>
+        <article><kbd>좌클릭</kbd><b>발도</b><span>칼날에 닿은 투사체와 의사의 플라스크·독가스를 제거합니다.</span></article>
         <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>`;
     }
     if (description) description.textContent = "여섯 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
@@ -4707,6 +4745,10 @@
       player.attackDir.x = dirX / directionLength;
       player.attackDir.y = dirY / directionLength;
     }
+    player.slashAnchorX = player.x + player.w / 2;
+    player.slashAnchorY = player.y + player.h / 2;
+    player.slashDirX = player.attackDir.x;
+    player.slashDirY = player.attackDir.y;
     player.chargedAttack = false;
 
     if (player.grounded) {
@@ -4788,10 +4830,39 @@
     return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain);
   }
 
+  function bulletIntersectsSlashBlade(bullet) {
+    if (!bullet?.enemy || ["mutant-debris", "warden-beam", "rain-controller", "rain-core-burst"].includes(bullet.kind)) return false;
+    const aimLength = Math.max(0.001, Math.hypot(player.slashDirX, player.slashDirY));
+    const dirX = player.slashDirX / aimLength;
+    const dirY = player.slashDirY / aimLength;
+    const bulletCenterX = bullet.x + bullet.w / 2;
+    const bulletCenterY = bullet.y + bullet.h / 2;
+    const relativeX = bulletCenterX - player.slashAnchorX;
+    const relativeY = bulletCenterY - player.slashAnchorY;
+    const alongBlade = relativeX * dirX + relativeY * dirY;
+    const acrossBlade = Math.abs(relativeX * -dirY + relativeY * dirX);
+    const bulletRadius = Math.max(2, Math.min(22, Math.hypot(bullet.w, bullet.h) * 0.5));
+    const reachEnd = player.chargedAttack ? 156 : 146;
+    const halfWidth = player.chargedAttack ? 40 : 34;
+    return alongBlade >= 20 - bulletRadius && alongBlade <= reachEnd + bulletRadius && acrossBlade <= halfWidth + bulletRadius;
+  }
+
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
     const elapsed = player.attackDuration - player.attackTimer;
     return elapsed > player.attackDuration * 0.14 && elapsed < player.attackDuration * 0.8;
+  }
+
+  function registerBossRetreatHit(enemy) {
+    if (enemy.type !== "boss") return;
+    enemy.staggerHitCount = (enemy.staggerHitTimer || 0) > 0 ? (enemy.staggerHitCount || 0) + 1 : 1;
+    enemy.staggerHitTimer = 0.9;
+    if (enemy.staggerHitCount < 2) return;
+    enemy.staggerHitCount = 0;
+    enemy.retreatTimer = 0.48;
+    enemy.retreatDirection = Math.sign((enemy.x + enemy.w / 2) - (player.x + player.w / 2)) || -enemy.facing || -1;
+    enemy.cooldown = Math.max(enemy.cooldown, 1.05);
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.55, "#d9edf0", 14, 300, 0.4, 120);
   }
 
   function damageEnemy(enemy) {
@@ -4871,7 +4942,8 @@
     }
     enemy.hp -= dealtDamage;
     enemy.hurt = 0.18;
-    enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
+    registerBossRetreatHit(enemy);
+    if (enemy.type !== "turret") enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
     game.shake = enemy.type === "boss" ? 8 : chainFinisher ? 16 : 11;
     game.freeze = enemy.type === "boss" ? 0.045 : chainFinisher ? 0.115 : 0.075;
     game.flash = 0.07;
@@ -4942,7 +5014,8 @@
     if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.75;
     enemy.hp -= shotgunDamage;
     enemy.hurt = 0.22;
-    enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
+    registerBossRetreatHit(enemy);
+    if (enemy.type !== "turret") enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
     game.shake = Math.max(game.shake, bullet.piercing ? 24 : 14);
     game.freeze = Math.max(game.freeze, bullet.piercing ? 0.12 : 0.065);
     game.flash = Math.max(game.flash, 0.08);
@@ -5115,6 +5188,10 @@
       enemy.rushDirection = 0;
       enemy.burstRemaining = 0;
       enemy.burstInterval = 0;
+      enemy.staggerHitCount = 0;
+      enemy.staggerHitTimer = 0;
+      enemy.retreatTimer = 0;
+      enemy.retreatDirection = 0;
       enemy.bossAction = null;
       enemy.bossShotPattern = null;
       enemy.bossChargeDuration = 0;
@@ -5150,6 +5227,7 @@
       enemy.iceStormTimer = 0;
       enemy.iceSpawnTimer = 0;
       enemy.iceStormSerial = 0;
+      enemy.censorSnowBlanket = false;
       enemy.shieldOverdrive = false;
       enemy.shieldMuzzleFlash = 0;
       enemy.mutated = false;
@@ -5267,6 +5345,34 @@
               : palette.amber,
     });
     sound.tone(enemy.type === "boss" ? 130 : kind === "machinegun" ? 165 : 210, kind === "machinegun" ? 0.045 : 0.08, "square", 0.018, 0.65);
+  }
+
+  function fireTurretRow(enemy) {
+    const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 32;
+    const sourceY = enemy.y + enemy.h * 0.42;
+    const targetX = enemy.targetX ?? player.x + player.w / 2;
+    const targetY = enemy.targetY ?? player.y + player.h / 2;
+    const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
+    const speed = 455 * difficultySettings[game.difficulty].bulletSpeed * (STAGE_BULLET_PRESSURE[enemy.stageIndex] || 1);
+    for (let lane = -2; lane <= 2; lane += 1) {
+      const laneOffset = lane * 14;
+      bullets.push({
+        x: sourceX - 8,
+        y: sourceY + laneOffset - 5,
+        w: 16,
+        h: 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 4.4,
+        enemy: true,
+        kind: "turret-row",
+        gravity: 0,
+        color: "#ffcf62",
+        damage: 1,
+      });
+    }
+    spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
+    sound.tone(92, 0.16, "square", 0.052, 0.48);
   }
 
   function fireFurnaceRedBurst(enemy, target, count = 5, spreadStep = 0.055, baseSpeed = 430) {
@@ -5495,6 +5601,35 @@
       snowPatches[index].life -= dt;
       if (snowPatches[index].life <= 0) snowPatches.splice(index, 1);
     }
+  }
+
+  function blanketCensorArenaWithSnow(enemy) {
+    const zone = zones[enemy.homeZoneIndex] || zones[enemy.stageIndex * ZONES_PER_STAGE + BOSS_ZONE_INDEX];
+    if (!zone) return;
+    const arenaSurfaces = platforms.filter((platform) => (
+      !platform.hidden
+      && platform.x + platform.w > zone.x
+      && platform.x < zone.end
+      && platform.y > 55
+      && platform.y < WORLD_H - 40
+    ));
+    for (const platform of arenaSurfaces) {
+      const left = Math.max(zone.x + 40, platform.x);
+      const right = Math.min(zone.end - 40, platform.x + platform.w);
+      if (right - left < 44) continue;
+      snowPatches.push({
+        x: left,
+        y: platform.y,
+        w: right - left,
+        depth: 15,
+        life: Number.POSITIVE_INFINITY,
+        ownerId: enemy.id,
+        ownerZone: enemy.homeZoneIndex,
+        fullArena: true,
+      });
+    }
+    enemy.censorSnowBlanket = true;
+    spawnParticles((zone.x + zone.end) / 2, 90, "#dff8ff", 90, 780, 1.2, 240);
   }
 
   function fireHomingMissile(enemy, target, angleOffset = 0) {
@@ -5821,6 +5956,22 @@
     [-0.11, 0, 0.11].forEach((spread) => fireRevenantShieldBullet(enemy, target, spread, 545));
   }
 
+  function fireRevenantSwordWave(enemy, target, spread = 0, speed = 620, scale = 1) {
+    const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 34;
+    const sourceY = enemy.y + enemy.h * 0.42;
+    firePointBullet(sourceX, sourceY, target, speed, spread, "revenant-sword-wave", "#f2e6ff");
+    const wave = bullets[bullets.length - 1];
+    if (wave) {
+      wave.w = 54 * scale;
+      wave.h = 18 * scale;
+      wave.x = sourceX - wave.w / 2;
+      wave.y = sourceY - wave.h / 2;
+      wave.damage = scale > 1.15 ? 2 : 1;
+    }
+    spawnParticles(sourceX, sourceY, "#d7b7ff", 14, 360, 0.35, 0);
+    sound.tone(360, 0.11, "sawtooth", 0.035, 1.7);
+  }
+
   function throwPotion(enemy, targetX, variant = 0, offset = 0) {
     const x = enemy.x + enemy.w / 2 + enemy.facing * 18;
     const y = enemy.y + enemy.h * 0.35;
@@ -5865,6 +6016,37 @@
     game.shake = Math.max(game.shake, 9);
     sound.glassShatter();
     sound.tone(118, 0.18, "sawtooth", 0.038, 0.48);
+  }
+
+  function throwMutantDebris(enemy) {
+    const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 34;
+    const floorY = enemy.y + enemy.h;
+    const targetX = player.x + player.w / 2;
+    const targetY = player.y + player.h / 2;
+    for (let chunk = 0; chunk < 3; chunk += 1) {
+      const size = 24 + chunk * 7;
+      const travel = 0.72 + chunk * 0.12;
+      const offsetX = (chunk - 1) * 70;
+      bullets.push({
+        x: sourceX - size / 2,
+        y: floorY - size - 8,
+        w: size,
+        h: size * 0.82,
+        vx: (targetX + offsetX - sourceX) / travel,
+        vy: (targetY - floorY) / travel - 0.5 * 920 * travel - 120 - chunk * 35,
+        life: 3.4,
+        maxLife: 3.4,
+        enemy: true,
+        kind: "mutant-debris",
+        gravity: 920,
+        color: chunk % 2 ? "#697078" : "#4c555d",
+        damage: 2,
+      });
+    }
+    spawnParticles(sourceX, floorY - 4, "#8a9296", 40, 520, 0.7, 520);
+    spawnParticles(sourceX, floorY - 4, "#474f55", 26, 380, 0.58, 760);
+    game.shake = Math.max(game.shake, 16);
+    sound.tone(58, 0.26, "sawtooth", 0.065, 0.34);
   }
 
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
@@ -6025,20 +6207,24 @@
         [-330, -110, 110, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "revenant-shield-burst":
-        fireRevenantShieldBurst(enemy, target, 5, 0.11, 500);
+        fireRevenantShieldBurst(enemy, target, enemy.shieldOverdrive ? 5 : 3, 0.09, 550);
+        break;
+      case "revenant-sword-wave":
+        fireRevenantSwordWave(enemy, target, 0, 630, 1.08);
         fireRevenantPhaseTwoSupport(enemy, target);
         break;
-      case "revenant-shield-ring":
-        fireRevenantShieldRing(enemy, enemy.shieldOverdrive ? 14 : 10, 375);
+      case "revenant-triple-wave":
+        [-0.17, 0, 0.17].forEach((spread) => fireRevenantSwordWave(enemy, target, spread, 585, 0.92));
         fireRevenantPhaseTwoSupport(enemy, target);
         break;
-      case "revenant-shield-lance":
-        fireRevenantShieldBurst(enemy, target, enemy.shieldOverdrive ? 7 : 5, 0.045, 620);
+      case "revenant-cross-wave":
+        [-0.3, -0.15, 0, 0.15, 0.3].forEach((spread) => fireRevenantSwordWave(enemy, target, spread, 650, spread === 0 ? 1.25 : 0.86));
         fireRevenantPhaseTwoSupport(enemy, target);
         break;
       case "revenant-overdrive":
-        fireRevenantShieldRing(enemy, 16, 430);
-        fireRevenantShieldBurst(enemy, target, 7, 0.075, 600);
+        fireRevenantSwordWave(enemy, target, 0, 700, 1.3);
+        [-0.22, 0.22].forEach((spread) => fireRevenantSwordWave(enemy, target, spread, 620, 0.92));
+        fireRevenantShieldBurst(enemy, target, 3, 0.1, 540);
         break;
       case "proxy-potion":
         [-160, 0, 160].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index, offset));
@@ -6089,7 +6275,7 @@
   function startBurst() {
     if (game.mode !== "playing" || !game.burstUnlocked || player.burstCooldown > 0) return;
     markTutorialSignal("burst");
-    player.burstCooldown = 2.6;
+    player.burstCooldown = PLAYER_BURST_COOLDOWN;
     player.burstTimer = 0.38;
     player.invincible = Math.max(player.invincible, 0.34);
     player.attackId += 1;
@@ -6359,6 +6545,19 @@
       for (const enemy of enemies) {
         if (enemy.alive && overlaps(hitbox, enemy)) damageEnemy(enemy);
       }
+      // 칼날에 직접 닿은 투사체를 제거한다. 의사의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
+      for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
+        const bullet = bullets[bulletIndex];
+        const doctorHazard = ["potion", "poison-gas"].includes(bullet.kind);
+        const swordContact = doctorHazard ? overlaps(hitbox, bullet) : bulletIntersectsSlashBlade(bullet);
+        if (!bullet.enemy || !swordContact) continue;
+        const shieldRound = bullet.kind === "revenant-shield-shot";
+        spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.kind === "potion" ? "#dfffe9" : shieldRound ? "#ffcd70" : bullet.color || palette.cyan, doctorHazard ? 14 : 7, 280, 0.4, 80);
+        if (bullet.kind === "potion") sound.glassShatter();
+        bullets.splice(bulletIndex, 1);
+        player.shotgunCharge = Math.min(3, player.shotgunCharge + (shieldRound ? 0.8 : 0.34));
+        if (!player.grounded) player.airJumpAvailable = true;
+      }
       for (const node of boostNodes) {
         if (node.hitAttackId === player.attackId || !overlaps(hitbox, node)) continue;
         if (game.adminMode && player.adminEraseAttackId === player.attackId) {
@@ -6404,7 +6603,6 @@
     }
 
     if (player.y > WORLD_H + 120) respawn();
-    if (pressed.has("KeyR") && !game.adminMode && !game.adminCadetMode) respawn();
 
     if (!game.adminMode) {
       const firstCheckedZone = game.adminCadetMode ? game.adminCadetStartZone : 0;
@@ -6533,8 +6731,8 @@
         const overlapX = Math.min(first.x + first.w, second.x + second.w) - Math.max(first.x, second.x);
         if (overlapX <= 0) continue;
         const direction = first.x + first.w / 2 <= second.x + second.w / 2 ? -1 : 1;
-        const firstShare = first.type === "boss" ? 0.15 : 0.5;
-        const secondShare = second.type === "boss" ? 0.15 : 0.5;
+        const firstShare = first.type === "turret" ? 0 : first.type === "boss" ? 0.15 : second.type === "turret" ? 1 : 0.5;
+        const secondShare = second.type === "turret" ? 0 : second.type === "boss" ? 0.15 : first.type === "turret" ? 1 : 0.5;
         first.x += direction * overlapX * firstShare;
         second.x -= direction * overlapX * secondShare;
         first.vx *= 0.35;
@@ -6555,7 +6753,7 @@
       const direction = playerCenter <= enemyCenter ? -1 : 1;
       player.x += direction * (overlapX + 0.5);
       player.vx = direction < 0 ? Math.min(0, player.vx) : Math.max(0, player.vx);
-      enemy.vx -= direction * 35;
+      if (enemy.type !== "turret") enemy.vx -= direction * 35;
     }
   }
 
@@ -6571,6 +6769,8 @@
     enemy.anim += dt;
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
+    enemy.staggerHitTimer = Math.max(0, (enemy.staggerHitTimer || 0) - dt);
+    if (enemy.staggerHitTimer <= 0) enemy.staggerHitCount = 0;
     if (enemy.type === "shield") {
       ensureShieldState(enemy);
       const wasBroken = enemy.shieldBreakTimer > 0;
@@ -6704,6 +6904,23 @@
       return;
     }
 
+    if (enemy.type === "turret") {
+      if (distance < 920 && enemy.cooldown <= 0 && enemy.windup <= 0) {
+        enemy.windup = 0.72;
+        enemy.cooldown = (3.05 / stagePressure) * formationCooldown;
+        enemy.targetX = player.x + player.w / 2 + player.vx * 0.16;
+        enemy.targetY = player.y + player.h / 2 + player.vy * 0.05;
+      }
+      if (enemy.windup > 0) {
+        const before = enemy.windup;
+        enemy.windup = Math.max(0, enemy.windup - dt);
+        if (before > 0.07 && enemy.windup <= 0.07) fireTurretRow(enemy);
+      }
+      enemy.vx = moveToward(enemy.vx, 0, 900 * dt);
+      moveEnemyPhysics(enemy, dt);
+      return;
+    }
+
     if (enemy.type === "machinegun") {
       if (enemy.burstRemaining > 0) {
         enemy.burstInterval -= dt;
@@ -6826,6 +7043,21 @@
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
     enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
 
+    if ((enemy.retreatTimer || 0) > 0) {
+      enemy.retreatTimer = Math.max(0, enemy.retreatTimer - dt);
+      if (enemy.bossAction !== "selfInject") {
+        enemy.windup = 0;
+        enemy.bossAction = null;
+        enemy.bossShotPattern = null;
+      }
+      enemy.vx = (enemy.retreatDirection || -enemy.facing || -1) * (350 + rank * 24) * bossCurve.mobility;
+      if (enemy.grounded && !hasGroundAhead(enemy, Math.sign(enemy.vx), 38)) enemy.vy = -420;
+      moveEnemyPhysics(enemy, dt);
+      const retreatArena = getBossArenaBounds(enemy, 120);
+      enemy.x = clamp(enemy.x, retreatArena.left, retreatArena.right - enemy.w);
+      return;
+    }
+
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
       enemy.halfPhaseTriggered = true;
       if (bossKind === "breaker") {
@@ -6861,12 +7093,19 @@
         game.hint = "백면 · 빙설 대강하 · 쌓인 눈 위에서는 이동 속도 감소";
         game.hintTimer = 3.6;
         sound.tone(620, 0.65, "triangle", 0.05, 0.42);
+      } else if (bossKind === "censor") {
+        blanketCensorArenaWithSnow(enemy);
+        enemy.cooldown = 3.4 * bossCurve.cooldown;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#dff8ff", 54, 620, 1, -150);
+        game.hint = "무명 · 2페이즈 백설 봉쇄 · 전장 전체 발판에 눈이 쌓입니다";
+        game.hintTimer = 3.8;
+        sound.tone(490, 0.7, "triangle", 0.055, 0.38);
       } else if (bossKind === "revenant") {
         enemy.shieldOverdrive = true;
         startBossChargedShot(enemy, "revenant-overdrive", dx, 1.08);
         enemy.cooldown = 2.5 * bossCurve.cooldown;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.4, "#ffd4df", 34, 460, 0.7, 0);
-        game.hint = "공문 · 방패 포대 2페이즈 · 모든 패턴에 보조 사격 추가";
+        game.hint = "공문 · 월광검 2페이즈 · 대형 검기와 방패 보조 사격";
         game.hintTimer = 3;
         sound.tone(520, 0.28, "triangle", 0.045, 1.8);
       } else if (bossKind === "proxy") {
@@ -6992,7 +7231,7 @@
       enemy.summonCooldown = Math.max(0, (enemy.summonCooldown || 0) - dt);
       const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id).length;
       if (enemy.summonCooldown <= 0 && distance < 1050 && livingSummons < 4) {
-        const summonPool = ["runner", "gunner", "machinegun", "piercer", "drone", "shield", "mortar"];
+        const summonPool = ["runner", "gunner", "machinegun", "turret", "piercer", "drone", "shield", "mortar"];
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
         const summonArena = getBossArenaBounds(enemy, 180);
@@ -7131,7 +7370,7 @@
         }
       } else if (bossKind === "revenant") {
         if (enemy.bossPhase === 0) {
-          startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.56);
+          startBossChargedShot(enemy, "revenant-sword-wave", dx, 0.56);
           enemy.cooldown = 1.65 * recovery;
         } else if (enemy.bossPhase === 1) {
           enemy.windup = 0.62;
@@ -7140,14 +7379,14 @@
           enemy.dashRange = 560;
           enemy.cooldown = 1.9 * recovery;
         } else if (enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "revenant-shield-ring", dx, 0.74);
+          startBossChargedShot(enemy, "revenant-triple-wave", dx, 0.74);
           enemy.cooldown = 2.05 * recovery;
         } else if (enemy.bossPhase === 3) {
-          startBossChargedShot(enemy, "revenant-shield-lance", dx, 0.88);
+          startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.68);
           enemy.cooldown = 2.15 * recovery;
         } else {
-          startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.62);
-          enemy.cooldown = 1.75 * recovery;
+          startBossChargedShot(enemy, "revenant-cross-wave", dx, 0.88);
+          enemy.cooldown = 2.15 * recovery;
         }
       } else if (bossKind === "proxy") {
         if (enemy.mutated) {
@@ -7166,11 +7405,11 @@
             enemy.dashRange = 680;
             enemy.cooldown = 2.05 * recovery;
           } else {
-            enemy.windup = 0.64;
-            enemy.bossAction = "mutantSmash";
+            enemy.windup = 0.76;
+            enemy.bossAction = "mutantDebris";
             enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
             enemy.dashRange = 360;
-            enemy.cooldown = 1.95 * recovery;
+            enemy.cooldown = 2.25 * recovery;
           }
         } else if (enemy.bossPhase === 0) {
           startBossChargedShot(enemy, "proxy-potion", dx, 0.72);
@@ -7373,6 +7612,7 @@
           throwPotion(enemy, player.x + player.w / 2, 0, 110);
         } else if (enemy.bossAction === "selfInject") {
           enemy.mutated = true;
+          enemy.hp = Math.min(enemy.maxHp, enemy.hp + enemy.maxHp * 0.25);
           enemy.bossAction = null;
           enemy.vx = 0;
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, "#78ff8b", 58, 640, 1, -80);
@@ -7380,6 +7620,10 @@
           game.flash = Math.max(game.flash, 0.26);
           game.freeze = Math.max(game.freeze, 0.08);
           sound.tone(62, 0.62, "sawtooth", 0.07, 0.34);
+        } else if (enemy.bossAction === "mutantDebris") {
+          enemy.vx = 0;
+          throwMutantDebris(enemy);
+          enemy.bossAction = null;
         } else if (enemy.bossAction === "mutantApproach") {
           enemy.bossAction = "mutantCombo";
           enemy.comboHitTimer = 0;
@@ -7836,7 +8080,7 @@
       game.hint = "오른쪽 클릭 샷건 · 아래로 쏘면 반동으로 다시 상승";
       game.hintTimer = 4.2;
     } else if (player.x > 2050 && player.x < 2450 && game.hintTimer <= 0) {
-      game.hint = "왼쪽 클릭 발도 · 적 공격 전용 · 공중 적중 시 이중 점프 회복";
+      game.hint = "왼쪽 클릭 발도 · 칼날에 닿은 투사체와 의사의 플라스크·독가스 제거";
       game.hintTimer = 4.2;
     } else if (player.x > 9400 && player.x < 9800 && game.hintTimer <= 0) {
       game.hint = "발도로 샷건 게이지 3칸 충전 · 강화탄으로 방패 파괴";
@@ -8913,22 +9157,31 @@
       }
       ctx.restore();
     } else if (enemy.type === "runner" && Number.isFinite(enemy.targetX)) {
-      const startX = enemy.x + enemy.w / 2;
-      const laneY = enemy.y + enemy.h - 10;
-      const direction = Math.sign(enemy.targetX - startX) || enemy.facing || 1;
-      const endX = startX + direction * Math.min(430, Math.max(120, Math.abs(enemy.targetX - startX)));
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.strokeStyle = `rgba(101, 245, 234, ${0.45 + pulse * 0.42})`;
-      ctx.fillStyle = `rgba(101, 245, 234, ${0.08 + pulse * 0.08})`;
       ctx.lineWidth = 2;
-      ctx.setLineDash([13, 9]);
-      ctx.fillRect(Math.min(startX, endX), laneY - 18, Math.abs(endX - startX), 36);
-      ctx.strokeRect(Math.min(startX, endX), laneY - 18, Math.abs(endX - startX), 36);
-      ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.arc(startX, enemy.y + enemy.h * 0.46, 18 + pulse * 6, 0, TAU);
+      ctx.arc(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.48, 18 + pulse * 7, 0, TAU);
       ctx.stroke();
+      ctx.restore();
+    } else if (enemy.type === "turret" && Number.isFinite(enemy.targetX)) {
+      const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 31;
+      const sourceY = enemy.y + enemy.h * 0.42;
+      const angle = Math.atan2(enemy.targetY - sourceY, enemy.targetX - sourceX);
+      const lineLength = 620;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 207, 98, ${0.35 + pulse * 0.42})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([7, 9]);
+      for (let lane = -2; lane <= 2; lane += 1) {
+        const laneOffset = lane * 14;
+        ctx.beginPath();
+        ctx.moveTo(sourceX, sourceY + laneOffset);
+        ctx.lineTo(sourceX + Math.cos(angle) * lineLength, sourceY + laneOffset + Math.sin(angle) * lineLength);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
       ctx.restore();
     } else if (enemy.type === "machinegun" && Number.isFinite(enemy.targetX)) {
       const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 30;
@@ -9222,73 +9475,50 @@
         ctx.strokeStyle = side < 0 ? "#ff6b9c" : "#bfa4ff"; ctx.stroke();
       }
     } else if (rawBossKind === "revenant") {
-      // 원형 방패와 장창형 검을 쓰는 동양식 중갑 결투기. 보랏빛 부채 투구가 실루엣을 구분한다.
-      limb(-13, 59, -20 - motion * 4, 86, 11, flash ? "#fff" : "#2e2445");
-      limb(13, 59, 20 + motion * 4, 86, 11, flash ? "#fff" : "#2e2445");
-      ctx.fillStyle = flash ? "#fff" : "#443363";
-      ctx.beginPath(); ctx.moveTo(-24, 20); ctx.lineTo(-10, 11); ctx.lineTo(16, 15); ctx.lineTo(27, 57); ctx.lineTo(0, 72); ctx.lineTo(-28, 55); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 2; ctx.stroke();
-      // 황금 테두리의 넓은 어깨 장갑과 분할 스커트가 왕실 결투기의 실루엣을 만든다.
+      // 장식은 줄이고 회색 장갑, 단순 원형 방패, 긴 실전검으로 읽히는 검객형 실루엣만 남긴다.
+      limb(-13, 58, -19 - motion * 3, 85, 10, flash ? "#fff" : "#303941");
+      limb(13, 58, 19 + motion * 3, 85, 10, flash ? "#fff" : "#303941");
+      ctx.fillStyle = flash ? "#fff" : "#3c4650";
+      ctx.beginPath(); ctx.moveTo(-22, 20); ctx.lineTo(-12, 12); ctx.lineTo(14, 13); ctx.lineTo(25, 57); ctx.lineTo(0, 72); ctx.lineTo(-25, 56); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#9aa8ae"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#202931"; ctx.fillRect(-14, 31, 29, 23);
+      ctx.fillStyle = accent; ctx.fillRect(-7, 37, 15, 3);
       for (const side of [-1, 1]) {
-        ctx.fillStyle = flash ? "#fff" : "#59407c";
-        ctx.beginPath(); ctx.moveTo(side * 13, 19); ctx.lineTo(side * 35, 23); ctx.lineTo(side * 42, 37); ctx.lineTo(side * 20, 40); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = "#c64f83"; ctx.fillRect(side < 0 ? -39 : 31, 27, 8, 4);
+        ctx.fillStyle = flash ? "#fff" : "#4e5962";
+        ctx.beginPath(); ctx.moveTo(side * 12, 20); ctx.lineTo(side * 31, 24); ctx.lineTo(side * 34, 35); ctx.lineTo(side * 20, 39); ctx.closePath(); ctx.fill();
       }
-      for (let skirt = -2; skirt <= 2; skirt += 1) {
-        const sx = skirt * 10;
-        ctx.fillStyle = skirt % 2 ? "#33254e" : "#4d376f";
-        ctx.beginPath(); ctx.moveTo(sx - 6, 55); ctx.lineTo(sx + 5, 55); ctx.lineTo(sx + 8, 78); ctx.lineTo(sx - 7, 76); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = "rgba(232,197,111,0.72)"; ctx.lineWidth = 1.5; ctx.stroke();
-      }
-      ctx.fillStyle = "#191426"; ctx.fillRect(-14, 30, 30, 22);
-      ctx.fillStyle = accent; ctx.fillRect(-7, 35, 20, 4);
-      ctx.fillStyle = flash ? "#fff" : "#ddd5ee";
-      ctx.beginPath(); ctx.moveTo(-14, 4); ctx.lineTo(0, -5); ctx.lineTo(16, 5); ctx.lineTo(13, 22); ctx.lineTo(-12, 22); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#251b39"; ctx.fillRect(-12, 9, 24, 8);
-      ctx.fillStyle = "#ff537d"; ctx.fillRect(-7, 11, 16, 3);
-      ctx.fillStyle = "#fff0a8"; ctx.fillRect(3, 11, 5, 2);
-      ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-15, 7); ctx.lineTo(-22, 15); ctx.moveTo(15, 7); ctx.lineTo(22, 15); ctx.stroke();
-      for (let fin = -2; fin <= 2; fin += 1) {
-        ctx.save(); ctx.rotate(fin * 0.2); ctx.fillStyle = fin === 0 ? "#ff6b9c" : "#6f55a0";
-        ctx.beginPath(); ctx.moveTo(-3, 1); ctx.lineTo(0, -25 - Math.abs(fin) * 3); ctx.lineTo(4, 1); ctx.closePath(); ctx.fill(); ctx.restore();
-      }
-      // 거대한 원형 방패: 외곽 스파이크와 회전 봉인이 돌진·콤보의 방향을 강조한다.
-      ctx.save(); ctx.translate(-38, 41); ctx.rotate(game.time * 0.16 + motion * 0.025);
-      ctx.fillStyle = flash ? "#fff" : "#312549"; ctx.beginPath(); ctx.arc(0, 0, 32, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 4; ctx.stroke();
-      for (let spike = 0; spike < 8; spike += 1) {
-        const a = spike * TAU / 8;
-        ctx.save(); ctx.rotate(a); ctx.fillStyle = spike % 2 ? "#7a55a8" : "#d15a8b";
-        ctx.beginPath(); ctx.moveTo(27, -5); ctx.lineTo(43, 0); ctx.lineTo(27, 5); ctx.closePath(); ctx.fill(); ctx.restore();
-      }
-      ctx.fillStyle = "#15111f"; ctx.beginPath(); ctx.arc(0, 0, 20, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "#b78cff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 14 + pulse * 2, 0, TAU); ctx.stroke();
-      for (let seal = 0; seal < 8; seal += 1) { const a = seal * TAU / 8; ctx.fillStyle = seal % 2 ? "#ff8bad" : "#ffe59a"; ctx.beginPath(); ctx.arc(Math.cos(a) * 23, Math.sin(a) * 23, 2.8, 0, TAU); ctx.fill(); }
-      ctx.fillStyle = "#ff537d"; ctx.beginPath(); ctx.arc(0, 0, 5 + pulse * 1.5, 0, TAU); ctx.fill();
+      ctx.fillStyle = flash ? "#fff" : "#aeb8bc";
+      ctx.beginPath(); ctx.moveTo(-13, 5); ctx.lineTo(0, -4); ctx.lineTo(14, 5); ctx.lineTo(11, 23); ctx.lineTo(-11, 23); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#202830"; ctx.fillRect(-11, 10, 22, 8);
+      ctx.fillStyle = accent; ctx.fillRect(-6, 12, 13, 3);
+      ctx.fillStyle = "#727f85"; ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(1, -17); ctx.lineTo(5, -2); ctx.closePath(); ctx.fill();
+      limb(-13, 31, -29, 43, 9, flash ? "#fff" : "#39444c");
+      ctx.save(); ctx.translate(-35, 43);
+      ctx.fillStyle = flash ? "#fff" : "#29333b"; ctx.beginPath(); ctx.arc(0, 0, 27, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#a5b1b5"; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = "#141b20"; ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill();
+      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10, 0); ctx.moveTo(0, -10); ctx.lineTo(0, 10); ctx.stroke();
+      for (let barrel = -1; barrel <= 1; barrel += 1) { ctx.fillStyle = "#d4dde0"; ctx.fillRect(-34, barrel * 7 - 2, 14, 4); }
       ctx.restore();
-      // 검 대신 방패 자체에 포구를 내장했다. 2페이즈에는 포구가 연속 점등된다.
-      limb(-13, 30, -31, 42, 9, flash ? "#fff" : "#3a2b56");
-      limb(14, 29, 30, 47, 9, flash ? "#fff" : "#3a2b56");
-      ctx.fillStyle = "#251b39";
-      ctx.beginPath(); ctx.arc(31, 49, 10, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "#e8c56f"; ctx.lineWidth = 2; ctx.stroke();
-      for (let barrel = -1; barrel <= 1; barrel += 1) {
-        ctx.fillStyle = barrel === 0 ? "#e8c56f" : "#7d5c9d";
-        ctx.fillRect(-92, 38 + barrel * 8, 28, 5);
-        ctx.fillStyle = "#17101f";
-        ctx.fillRect(-95, 39 + barrel * 8, 7, 3);
-      }
-      if (enemy.shieldOverdrive) {
-        ctx.strokeStyle = `rgba(255,139,173,${0.5 + pulse * 0.35})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(-38, 41, 39 + pulse * 3, 0, TAU); ctx.stroke();
+      const swordPattern = chargingShot && String(enemy.bossShotPattern || "").includes("revenant-") && enemy.bossShotPattern !== "revenant-shield-burst";
+      const swordAngle = swordPattern ? -1.35 + chargeProgress * 1.65 : -0.42 + motion * 0.025;
+      limb(14, 30, 28, 43, 9, flash ? "#fff" : "#39444c");
+      ctx.save(); ctx.translate(29, 43); ctx.rotate(swordAngle);
+      ctx.fillStyle = "#171d22"; ctx.fillRect(-4, -5, 21, 10);
+      ctx.fillStyle = accent; ctx.fillRect(8, -8, 5, 16);
+      ctx.fillStyle = "#e8eff1";
+      ctx.beginPath(); ctx.moveTo(14, -5); ctx.lineTo(83, -2); ctx.lineTo(96, 0); ctx.lineTo(82, 4); ctx.lineTo(14, 5); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#91a0a7"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
+      if (swordPattern) {
+        ctx.strokeStyle = `rgba(226,207,255,${0.35 + pulse * 0.35})`; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(25, 42, 78, -1.45, 0.38); ctx.stroke();
       }
       if ((enemy.shieldMuzzleFlash || 0) > 0) {
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = "#fff0b7";
-        ctx.beginPath(); ctx.moveTo(-98, 41); ctx.lineTo(-120, 33); ctx.lineTo(-113, 41); ctx.lineTo(-120, 50); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-69, 43); ctx.lineTo(-88, 35); ctx.lineTo(-81, 43); ctx.lineTo(-88, 51); ctx.closePath(); ctx.fill();
         ctx.restore();
       }
     } else if (rawBossKind === "proxy") {
@@ -9599,7 +9829,7 @@
       }
     }
 
-    if (chargingShot && bossKind !== "weaver") {
+    if (chargingShot && bossKind !== "weaver" && rawBossKind !== "revenant") {
       const muzzleX = bossKind === "warden" ? 72 : 62;
       const muzzleY = bossKind === "warden" ? 50 : 42;
       ctx.save();
@@ -9828,6 +10058,34 @@
       ctx.fillStyle = "rgba(255, 73, 108, 0.35)";
       ctx.fillRect(-30, 14, 8, 3);
       ctx.fillRect(22, 14, 8, 3);
+    } else if (enemy.type === "turret") {
+      const aimY = enemy.targetY ?? player.y + player.h / 2;
+      const aimX = enemy.targetX ?? player.x + player.w / 2;
+      const aimAngle = clamp(Math.atan2(aimY - (enemy.y + enemy.h * 0.42), Math.abs(aimX - (enemy.x + enemy.w / 2))), -0.62, 0.62);
+      ctx.fillStyle = "#101820";
+      ctx.fillRect(-25, 40, 50, 9);
+      ctx.fillStyle = "#48535a";
+      ctx.beginPath();
+      ctx.moveTo(-29, 42); ctx.lineTo(-20, 25); ctx.lineTo(20, 25); ctx.lineTo(29, 42); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ffcf62"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#28343b";
+      ctx.beginPath(); ctx.arc(0, 24, 20, Math.PI, TAU); ctx.lineTo(20, 31); ctx.lineTo(-20, 31); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#121a20";
+      ctx.beginPath(); ctx.arc(0, 24, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#ffcf62";
+      ctx.beginPath(); ctx.arc(2, 24, 4 + Math.sin(enemy.anim * 5) * 0.6, 0, TAU); ctx.fill();
+      ctx.save();
+      ctx.translate(9, 23);
+      ctx.rotate(aimAngle);
+      for (let lane = -2; lane <= 2; lane += 1) {
+        ctx.fillStyle = lane === 0 ? "#cbd4d7" : "#8f9ca1";
+        ctx.fillRect(0, lane * 6 - 2, 39, 4);
+        ctx.fillStyle = "#ffcf62";
+        ctx.fillRect(36, lane * 6 - 2, 7, 4);
+      }
+      ctx.fillStyle = "#222c32";
+      ctx.fillRect(4, -17, 15, 34);
+      ctx.restore();
     } else if (enemy.type === "gunner" || enemy.type === "machinegun" || enemy.type === "piercer" || enemy.type === "mortar") {
       const isMachinegun = enemy.type === "machinegun";
       const isPiercer = enemy.type === "piercer";
@@ -10541,6 +10799,43 @@
       ctx.strokeStyle = "#f3ffff";
       ctx.lineWidth = 2;
       ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "mutant-debris") {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(game.time * 2.4 + bullet.vx * 0.002);
+      ctx.fillStyle = "rgba(12,16,18,0.42)";
+      ctx.beginPath(); ctx.arc(3, 5, radius * 0.72, 0, TAU); ctx.fill();
+      ctx.fillStyle = bullet.color;
+      ctx.beginPath();
+      ctx.moveTo(-bullet.w * 0.5, -bullet.h * 0.12);
+      ctx.lineTo(-bullet.w * 0.18, -bullet.h * 0.52);
+      ctx.lineTo(bullet.w * 0.43, -bullet.h * 0.31);
+      ctx.lineTo(bullet.w * 0.52, bullet.h * 0.25);
+      ctx.lineTo(0, bullet.h * 0.48);
+      ctx.lineTo(-bullet.w * 0.46, bullet.h * 0.28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#a0a7aa"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = "#30373c"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(4, 2); ctx.lineTo(-2, 10); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (bullet.kind === "revenant-sword-wave") {
+      const angle = Math.atan2(bullet.vy, bullet.vx);
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(215,183,255,0.18)";
+      ctx.beginPath(); ctx.ellipse(0, 0, bullet.w * 0.72, bullet.h * 1.2, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#f6eeff"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(-bullet.w * 0.55, bullet.h * 0.35); ctx.quadraticCurveTo(0, -bullet.h * 0.75, bullet.w * 0.55, bullet.h * 0.35); ctx.stroke();
+      ctx.strokeStyle = "#b88cff"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-bullet.w * 0.48, bullet.h * 0.55); ctx.quadraticCurveTo(0, -bullet.h * 0.45, bullet.w * 0.48, bullet.h * 0.55); ctx.stroke();
       ctx.restore();
       return;
     }
@@ -12233,7 +12528,7 @@
       else togglePause();
     }
     if (event.code === "Enter" && game.mode === "menu") resetGame();
-    if ((event.code === "Enter" || event.code === "KeyR") && game.mode === "won") resetGame();
+    if (event.code === "Enter" && game.mode === "won") resetGame();
   });
 
   window.addEventListener("keyup", (event) => {
@@ -12318,10 +12613,10 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.7.0",
+    version: "2.8.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
-    terrainGeneration: "layered-switchback-routes-v2.7.0",
+    terrainGeneration: "vertical-ascent-routes-v2.8.0",
     randomSignatureTerrain: false,
     earlyStageTerrainPreserved: true,
     platformComplexityBudgetByStage: [[0, 0, 1, 1], [0, 1, 1, 2], [1, 1, 2, 2], [1, 2, 2, 3], [2, 2, 3, 4]],
@@ -12338,6 +12633,10 @@
     routeTransitionBudgetByStage: ROUTE_TRANSITION_BUDGET_BY_STAGE.map((row) => [...row]),
     routeProfileCount: new Set(zones.map((zone) => zone.routeProfile).filter(Boolean)).size,
     layeredRouteZoneCount: zones.filter((zone) => zone.routeProfile).length,
+    verticalTraversalLayerRange: [
+      Math.min(...zones.filter((zone) => Number.isFinite(zone.verticalTraversalLayers)).map((zone) => zone.verticalTraversalLayers)),
+      Math.max(...zones.filter((zone) => Number.isFinite(zone.verticalTraversalLayers)).map((zone) => zone.verticalTraversalLayers)),
+    ],
     routeTransitionRange: [
       Math.min(...zones.filter((zone) => Number.isFinite(zone.routeTransitionCount)).map((zone) => zone.routeTransitionCount)),
       Math.max(...zones.filter((zone) => Number.isFinite(zone.routeTransitionCount)).map((zone) => zone.routeTransitionCount)),
@@ -12348,15 +12647,21 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "layered-sentry-formations-v2.7.0",
+    enemyPlacementDensity: "vertical-turret-formations-v2.8.0",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
     stageCombatPressure: [...STAGE_COMBAT_PRESSURE],
     stageBulletPressure: [...STAGE_BULLET_PRESSURE],
     progressiveCombatDifficulty: true,
-    sentryRoles: { runner: "charge", gunner: "single-shot", machinegun: "four-round-burst" },
+    sentryRoles: { runner: "charge", gunner: "single-shot", machinegun: "four-round-burst", turret: "five-parallel-shot" },
+    runnerDashPathTelegraph: false,
+    runnerCompactChargeTelegraph: true,
     machinegunBurstRounds: SENTRY_BURST_ROUNDS,
     machinegunBurstInterval: SENTRY_BURST_INTERVAL,
     machinegunCount: enemies.filter((enemy) => enemy.type === "machinegun").length,
+    turretCount: enemies.filter((enemy) => enemy.type === "turret").length,
+    turretBaseHp: TURRET_BASE_HP,
+    turretShieldHpRatio: 1.5,
+    turretVolleyCount: 5,
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -12389,6 +12694,7 @@
     oracleScreenFlipHpRatio: 0.25,
     weaverIceStorm: true,
     weaverSnowSpeedMultiplier: 0.58,
+    censorPhaseTwoFullArenaSnow: true,
     revenantMeleeCombo: false,
     revenantShieldArtillery: true,
     revenantPhaseTwoSupportFire: true,
@@ -12404,7 +12710,9 @@
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
     bossRewardsEnabled: false,
     midBossHealReward: false,
-    gongmunSwordMotion: false,
+    gongmunSwordMotion: true,
+    gongmunSwordWaves: true,
+    gongmunSimplifiedArmor: true,
     adminDirectCanvasTransform: true,
     adminTransformHandles: 8,
     adminTransformAutoSave: true,
@@ -12423,15 +12731,25 @@
     empoweredSlashBonus: EMPOWERED_SLASH_BONUS,
     overchargedShotgunDamage: OVERCHARGED_SHOTGUN_DAMAGE,
     overchargedShotgunPellets: OVERCHARGED_SHOTGUN_PELLETS,
-    slashBulletDestroy: false,
-    burstOnlyBulletRemoval: true,
-    slashAffectsBullets: false,
+    slashBulletDestroy: true,
+    burstOnlyBulletRemoval: false,
+    burstOnlyRegularBulletRemoval: false,
+    slashAffectsBullets: "all-deflectable-projectiles",
+    doctorFlaskSlashClear: true,
+    doctorPoisonGasSlashClear: true,
+    mutantDebrisSlashClear: false,
+    proxyMutationHealRatio: 0.25,
     parryEnabled: false,
     playerBulletReflection: false,
     echoParryEnabled: false,
     allDirectionBulletDestroy: false,
-    slashUsesFrozenAttackAnchor: false,
-    slashBladeHalfWidth: 0,
+    slashUsesFrozenAttackAnchor: true,
+    slashBladeHalfWidth: 34,
+    playerBurstCooldown: PLAYER_BURST_COOLDOWN,
+    manualRespawnKeyEnabled: false,
+    adminRModeToggle: true,
+    enemyHitInterruptsFire: false,
+    bossRetreatEveryHits: 2,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     embeddedRepairPickupsRemoved: true,
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
@@ -12478,10 +12796,10 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.7.0",
+    gameVersion: "2.8.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
-    terrainGeneration: "layered-switchback-routes-v2.7.0",
+    terrainGeneration: "vertical-ascent-routes-v2.8.0",
     randomSignatureTerrain: "false",
     earlyStageTerrainPreserved: "true",
     platformComplexityBudgetByStage: "0-0-1-1|0-1-1-2|1-1-2-2|1-2-2-3|2-2-3-4",
@@ -12498,6 +12816,10 @@
     routeTransitionBudgetByStage: ROUTE_TRANSITION_BUDGET_BY_STAGE.map((row) => row.join("-")).join("|"),
     routeProfileCount: String(new Set(zones.map((zone) => zone.routeProfile).filter(Boolean)).size),
     layeredRouteZoneCount: String(zones.filter((zone) => zone.routeProfile).length),
+    verticalTraversalLayerRange: [
+      Math.min(...zones.filter((zone) => Number.isFinite(zone.verticalTraversalLayers)).map((zone) => zone.verticalTraversalLayers)),
+      Math.max(...zones.filter((zone) => Number.isFinite(zone.verticalTraversalLayers)).map((zone) => zone.verticalTraversalLayers)),
+    ].join(","),
     stageCount: String(stages.length),
     zoneCount: String(zones.length),
     distinctStageMaps: "true",
@@ -12512,15 +12834,21 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "layered-sentry-formations-v2.7.0",
+    enemyPlacementDensity: "vertical-turret-formations-v2.8.0",
     enemyBaseCountByStage: "8,10,12,14,16",
     stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
     stageBulletPressure: STAGE_BULLET_PRESSURE.join(","),
     progressiveCombatDifficulty: "true",
-    sentryRoles: "runner:charge,gunner:single-shot,machinegun:four-round-burst",
+    sentryRoles: "runner:charge,gunner:single-shot,machinegun:four-round-burst,turret:five-parallel-shot",
+    runnerDashPathTelegraph: "false",
+    runnerCompactChargeTelegraph: "true",
     machinegunBurstRounds: String(SENTRY_BURST_ROUNDS),
     machinegunBurstInterval: String(SENTRY_BURST_INTERVAL),
     machinegunCount: String(enemies.filter((enemy) => enemy.type === "machinegun").length),
+    turretCount: String(enemies.filter((enemy) => enemy.type === "turret").length),
+    turretBaseHp: String(TURRET_BASE_HP),
+    turretShieldHpRatio: "1.5",
+    turretVolleyCount: "5",
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
@@ -12544,6 +12872,7 @@
     oracleScreenFlipHpRatio: "0.25",
     weaverIceStorm: "true",
     weaverSnowSpeedMultiplier: "0.58",
+    censorPhaseTwoFullArenaSnow: "true",
     revenantMeleeCombo: "false",
     revenantShieldArtillery: "true",
     revenantPhaseTwoSupportFire: "true",
@@ -12569,7 +12898,9 @@
     bossRewardsEnabled: "false",
     midBossHealReward: "false",
     bossRewardDamagePerLevel: "0",
-    gongmunSwordMotion: "false",
+    gongmunSwordMotion: "true",
+    gongmunSwordWaves: "true",
+    gongmunSimplifiedArmor: "true",
     adminDirectCanvasTransform: "true",
     adminTransformHandles: "8",
     adminTransformAutoSave: "true",
@@ -12589,15 +12920,25 @@
     chargedSlashBonus: String(CHARGED_SLASH_BONUS),
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
     overchargedShotgunPellets: String(OVERCHARGED_SHOTGUN_PELLETS),
-    slashBulletDestroy: "false",
-    burstOnlyBulletRemoval: "true",
-    slashAffectsBullets: "false",
+    slashBulletDestroy: "true",
+    burstOnlyBulletRemoval: "false",
+    burstOnlyRegularBulletRemoval: "false",
+    slashAffectsBullets: "all-deflectable-projectiles",
+    doctorFlaskSlashClear: "true",
+    doctorPoisonGasSlashClear: "true",
+    mutantDebrisSlashClear: "false",
+    proxyMutationHealRatio: "0.25",
     parryEnabled: "false",
     playerBulletReflection: "false",
     echoParryEnabled: "false",
     allDirectionBulletDestroy: "false",
-    slashUsesFrozenAttackAnchor: "false",
-    slashBladeHalfWidth: "0",
+    slashUsesFrozenAttackAnchor: "true",
+    slashBladeHalfWidth: "34",
+    playerBurstCooldown: String(PLAYER_BURST_COOLDOWN),
+    manualRespawnKeyEnabled: "false",
+    adminRModeToggle: "true",
+    enemyHitInterruptsFire: "false",
+    bossRetreatEveryHits: "2",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     embeddedRepairPickupsRemoved: "true",
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),

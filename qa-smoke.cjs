@@ -68,7 +68,7 @@ global.cancelAnimationFrame = () => {};
 vm.runInThisContext(fs.readFileSync("game.js", "utf8"), { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "2.7.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "2.8.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -80,8 +80,26 @@ if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 
 if (diagnostics.machinegunBurstRounds !== 4 || diagnostics.machinegunCount < 1) {
   throw new Error(`machinegun sentry invalid: ${diagnostics.machinegunBurstRounds}/${diagnostics.machinegunCount}`);
 }
-if (diagnostics.slashBulletDestroy || !diagnostics.burstOnlyBulletRemoval || diagnostics.slashAffectsBullets) {
-  throw new Error("bullets must be removable by burst only");
+if (!diagnostics.slashBulletDestroy || diagnostics.burstOnlyRegularBulletRemoval || diagnostics.slashAffectsBullets !== "all-deflectable-projectiles") {
+  throw new Error("sword projectile clearing was not restored");
+}
+if (diagnostics.verticalTraversalLayerRange[0] !== 1 || diagnostics.verticalTraversalLayerRange[1] !== 4) {
+  throw new Error(`vertical traversal progression invalid: ${diagnostics.verticalTraversalLayerRange}`);
+}
+if (diagnostics.turretCount < 1 || diagnostics.turretBaseHp !== 9 || diagnostics.turretShieldHpRatio !== 1.5 || diagnostics.turretVolleyCount !== 5) {
+  throw new Error(`turret configuration invalid: ${diagnostics.turretCount}/${diagnostics.turretBaseHp}/${diagnostics.turretVolleyCount}`);
+}
+if (diagnostics.runnerDashPathTelegraph || diagnostics.playerBurstCooldown !== 1.8 || diagnostics.manualRespawnKeyEnabled) {
+  throw new Error("runner telegraph, burst cooldown, or R-key restart configuration invalid");
+}
+if (!diagnostics.gongmunSwordMotion || !diagnostics.gongmunSwordWaves || !diagnostics.censorPhaseTwoFullArenaSnow) {
+  throw new Error("boss v2.8.0 combat changes missing");
+}
+if (!diagnostics.doctorFlaskSlashClear || !diagnostics.doctorPoisonGasSlashClear || diagnostics.mutantDebrisSlashClear || diagnostics.proxyMutationHealRatio !== 0.25) {
+  throw new Error("doctor hazard and mutation rules invalid");
+}
+if (diagnostics.enemyHitInterruptsFire || diagnostics.bossRetreatEveryHits !== 2) {
+  throw new Error("enemy fire must continue on hit while two-hit boss retreat remains enabled");
 }
 document.getElementById("continue-button").click();
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
@@ -98,5 +116,9 @@ console.log(JSON.stringify({
   layeredRouteZoneCount: diagnostics.layeredRouteZoneCount,
   routeTransitionRange: diagnostics.routeTransitionRange,
   machinegunCount: diagnostics.machinegunCount,
-  burstOnlyBulletRemoval: diagnostics.burstOnlyBulletRemoval,
+  turretCount: diagnostics.turretCount,
+  verticalTraversalLayerRange: diagnostics.verticalTraversalLayerRange,
+  playerBurstCooldown: diagnostics.playerBurstCooldown,
+  manualRespawnKeyEnabled: diagnostics.manualRespawnKeyEnabled,
+  slashAffectsBullets: diagnostics.slashAffectsBullets,
 }));
