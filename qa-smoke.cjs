@@ -68,7 +68,7 @@ global.cancelAnimationFrame = () => {};
 vm.runInThisContext(fs.readFileSync("game.js", "utf8"), { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "2.8.1") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "2.8.2") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -104,6 +104,9 @@ if (diagnostics.enemyHitInterruptsFire || diagnostics.bossRetreatEveryHits !== 2
 if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.wardenPanelShotsPerUnit !== 5 || diagnostics.wardenPanelShotInterval !== 0.32 || diagnostics.wardenAttackRecoveryScale !== 0.78) {
   throw new Error(`warden frequency tuning invalid: ${diagnostics.wardenPanelPassiveCooldowns}/${diagnostics.wardenPanelShotsPerUnit}/${diagnostics.wardenAttackRecoveryScale}`);
 }
+if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
+  throw new Error(`player step-up tuning invalid: ${diagnostics.playerGroundSeamStepHeight}/${diagnostics.playerPlatformStepHeight}`);
+}
 document.getElementById("continue-button").click();
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 if (restored.activeCheckpointKey !== "2:12") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
@@ -127,4 +130,5 @@ console.log(JSON.stringify({
   wardenPanelCooldowns: diagnostics.wardenPanelPassiveCooldowns,
   wardenPanelShotsPerUnit: diagnostics.wardenPanelShotsPerUnit,
   wardenAttackRecoveryScale: diagnostics.wardenAttackRecoveryScale,
+  playerGroundSeamStepHeight: diagnostics.playerGroundSeamStepHeight,
 }));

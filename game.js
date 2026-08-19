@@ -110,6 +110,8 @@
   const WARDEN_PANEL_SHOTS_PER_UNIT = 5;
   const WARDEN_PANEL_SHOT_INTERVAL = 0.32;
   const WARDEN_ATTACK_RECOVERY_SCALE = 0.78;
+  const PLAYER_GROUND_SEAM_STEP_HEIGHT = 44;
+  const PLAYER_PLATFORM_STEP_HEIGHT = 12;
   const ROUTE_TRANSITION_BUDGET_BY_STAGE = Object.freeze([
     [1, 1, 2, 2],
     [1, 2, 2, 3],
@@ -6315,6 +6317,7 @@
   }
 
   function resolvePlayerCollision(dt) {
+    const startedGrounded = player.grounded;
     player.wallLeft = false;
     player.wallRight = false;
     player.grounded = false;
@@ -6329,6 +6332,27 @@
       for (const platform of nearbyPlatforms) {
         if (platform.hidden) continue;
         if (!overlaps(player, platform)) continue;
+        const stepHeight = player.y + player.h - platform.y;
+        const maxStepHeight = platform.h >= 500 ? PLAYER_GROUND_SEAM_STEP_HEIGHT : PLAYER_PLATFORM_STEP_HEIGHT;
+        const canStepUp = startedGrounded
+          && player.vy >= 0
+          && stepHeight > 0
+          && stepHeight <= maxStepHeight;
+        if (canStepUp) {
+          const steppedPlayer = { x: player.x, y: platform.y - player.h, w: player.w, h: player.h };
+          const stepBlocked = nearbyPlatforms.some((other) => (
+            other !== platform
+            && !other.hidden
+            && overlaps(steppedPlayer, other)
+          ));
+          if (!stepBlocked) {
+            player.y = steppedPlayer.y;
+            player.vy = 0;
+            player.grounded = true;
+            player.airJumpAvailable = true;
+            continue;
+          }
+        }
         if (previousX + player.w <= platform.x + 1 && player.vx > 0) {
           player.x = platform.x - player.w;
           player.vx = 0;
@@ -12618,7 +12642,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.8.1",
+    version: "2.8.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12753,6 +12777,9 @@
     slashUsesFrozenAttackAnchor: true,
     slashBladeHalfWidth: 34,
     playerBurstCooldown: PLAYER_BURST_COOLDOWN,
+    playerGroundSeamStepHeight: PLAYER_GROUND_SEAM_STEP_HEIGHT,
+    playerPlatformStepHeight: PLAYER_PLATFORM_STEP_HEIGHT,
+    playerStepUpRequiresClearance: true,
     manualRespawnKeyEnabled: false,
     adminRModeToggle: true,
     enemyHitInterruptsFire: false,
@@ -12803,7 +12830,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.8.1",
+    gameVersion: "2.8.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12944,6 +12971,9 @@
     slashUsesFrozenAttackAnchor: "true",
     slashBladeHalfWidth: "34",
     playerBurstCooldown: String(PLAYER_BURST_COOLDOWN),
+    playerGroundSeamStepHeight: String(PLAYER_GROUND_SEAM_STEP_HEIGHT),
+    playerPlatformStepHeight: String(PLAYER_PLATFORM_STEP_HEIGHT),
+    playerStepUpRequiresClearance: "true",
     manualRespawnKeyEnabled: "false",
     adminRModeToggle: "true",
     enemyHitInterruptsFire: "false",
