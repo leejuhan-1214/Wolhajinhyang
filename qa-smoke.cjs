@@ -74,7 +74,23 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.3.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.4.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향.hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
+  throw new Error("HWPX story alignment diagnostics missing");
+}
+const storyDialogueEntries = [...gameSource.matchAll(/\{\s*speaker:\s*"[^"]+",\s*text:\s*"[^"]+"/g)];
+const requiredDocumentStoryLines = [
+  "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,418명의 신경 기록을 피난선으로 보낼 수 있어.",
+  "새봄이한테 언니가 도망친 게 아니라고 전해 줘. 그리고 여기 있던 사람들을 숫자로만 남기지 마.",
+  "대역-13의 계산에서 내가 우세하다. 나는 사고 이후의 죄책감이 없고 중앙국 명령에 저항한 전력도 없다.",
+  "대역-13을 멈추고 배합 전 원자료를 복구한다. 누구의 얼굴도 나오지 않는 실험 보고서가 마지막 증언이 되게 두지 않겠다.",
+];
+if (storyDialogueEntries.length !== 216 || requiredDocumentStoryLines.some((line) => !gameSource.includes(line))) {
+  throw new Error(`HWPX story text mismatch: ${storyDialogueEntries.length}/216`);
+}
+if (diagnostics.normalEnemyRepairDropChance !== 0 || diagnostics.bossRewardsEnabled || diagnostics.midBossHealReward) {
+  throw new Error("enemy defeat healing rewards must remain disabled");
+}
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {

@@ -111,7 +111,7 @@
   const FLAME_SWORD_BURN_DAMAGE = 0.2;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
-  const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
+  const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0;
   const PLAYER_BURST_COOLDOWN = 1.8;
   const SENTRY_BURST_ROUNDS = 4;
   const SENTRY_BURST_INTERVAL = 0.115;
@@ -331,7 +331,7 @@
       patterns: ["월광 검기", "중갑 돌진", "삼연 검기", "방패 사격", "십자 참월"],
     },
     proxy: {
-      name: "금단 외과의 · 의사",
+      name: "광기 연구체 · 대역-13",
       hp: 54,
       size: [58, 78],
       accent: "#78ff8b",
@@ -712,8 +712,8 @@
     ],
     [
       [
-        { speaker: "원본 판정체 · 의사", text: "한서린 후보 둘을 확인했다. 법적 원본 선정을 위해 기억 손실, 시민 기여도, 가족 선호도를 점수화한다.", tone: "hostile", duration: 6.4 },
-        { speaker: "잔영-00", text: "의사의 계산에서 내가 우세하다. 나는 사고 이후의 죄책감이 없고 중앙국 명령에 저항한 전력도 없다.", tone: "hostile", duration: 6.2 },
+        { speaker: "원본 판정체 · 대역-13", text: "한서린 후보 둘을 확인했다. 법적 원본 선정을 위해 기억 손실, 시민 기여도, 가족 선호도를 점수화한다.", tone: "hostile", duration: 6.4 },
+        { speaker: "잔영-00", text: "대역-13의 계산에서 내가 우세하다. 나는 사고 이후의 죄책감이 없고 중앙국 명령에 저항한 전력도 없다.", tone: "hostile", duration: 6.2 },
         { speaker: "서린", text: "상처가 적고 복종을 잘한다는 이유로 사람의 진위를 정하는 판정은 거부한다. 너도 그 점수표 밖으로 나와.", tone: "operative", duration: 6.3 },
       ],
       [
@@ -738,11 +738,11 @@
       { speaker: "서린-12", text: "우리가 서로 모순되는 건 가짜라서가 아니야. 중앙국이 각자에게 다른 장면만 보여 줬다는 증거야.", tone: "archive", duration: 6.1 },
     ],
     [
-      { speaker: "방패 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
+      { speaker: "검기 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
       { speaker: "도담", text: "내 소각 서명도 숨기지 않고 함께 올렸어. 잘못을 고백하는 것만으로 끝내지 않고 송신탑을 끝까지 열겠다.", tone: "control", duration: 6.1 },
     ],
     [
-      { speaker: "광기 연구체 · 의사", text: "제5 야간 기록 복구. 표본 배합 전 원자료와 원본 판정 실험의 실패 보고서를 분리한다.", tone: "archive", duration: 6.2 },
+      { speaker: "광기 연구체 · 대역-13", text: "제5 야간 기록 복구. 표본 배합 전 원자료와 원본 판정 실험의 실패 보고서를 분리한다.", tone: "archive", duration: 6.2 },
       { speaker: "서린", text: "다섯 기록이 모였다. 이제 원형 보관소의 잔영과 함께 누가 원본인지가 아니라 누가 삭제 규칙을 끝낼지 결정한다.", tone: "operative", duration: 6.2 },
     ],
   ];
@@ -779,9 +779,9 @@
       location: "6년 전 / 백야 폐기장",
       visual: "rain",
       shots: [
-        { speaker: "한서린", text: "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,401명의 신경 기록을 피난선으로 보낼 수 있어.", tone: "operative", duration: 5.8 },
+        { speaker: "한서린", text: "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,418명의 신경 기록을 피난선으로 보낼 수 있어.", tone: "operative", duration: 5.8 },
         { speaker: "도담", text: "대신 네 기억이 전송 통로가 돼. 육체는 버티지 못해. 서린아, 내가 다른 방법을 찾을게.", tone: "control", duration: 5.7 },
-        { speaker: "한서린", text: "새봄에게 언니가 도망친 게 아니라고 전해 줘. 그리고 여기 있던 사람들을 숫자로만 남기지 마.", tone: "operative", duration: 6.1 },
+        { speaker: "한서린", text: "새봄이한테 언니가 도망친 게 아니라고 전해 줘. 그리고 여기 있던 사람들을 숫자로만 남기지 마.", tone: "operative", duration: 6.1 },
       ],
     },
     {
@@ -939,9 +939,9 @@
       title: "중간 장면 · 원본 점수표",
       visual: "capsule",
       shots: [
-        { speaker: "광기 연구체 · 의사", text: "표본 2,401명의 감정 배합 완료. 다섯 야간 기록을 독성 기억으로 변환하면 원본 판정 장치가 깨어난다.", tone: "hostile", duration: 6.3 },
+        { speaker: "광기 연구체 · 대역-13", text: "표본 2,401명의 감정 배합 완료. 다섯 야간 기록을 독성 기억으로 변환하면 원본 판정 장치가 깨어난다.", tone: "hostile", duration: 6.3 },
         { speaker: "연구원 · 이재우", text: "저건 잔영이 아니야. 원본을 만들겠다며 수천 명의 기억을 섞어 놓은 실험실의 관리체야. 이름조차 실험 번호뿐이었어.", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "의사을 멈추고 배합 전 원자료를 복구한다. 누구의 얼굴도 나오지 않는 실험 보고서가 마지막 증언이 되게 두지 않겠다.", tone: "operative", duration: 6.4 },
+        { speaker: "서린", text: "대역-13을 멈추고 배합 전 원자료를 복구한다. 누구의 얼굴도 나오지 않는 실험 보고서가 마지막 증언이 되게 두지 않겠다.", tone: "operative", duration: 6.4 },
       ],
     },
   ];
@@ -4044,7 +4044,7 @@
         <article><kbd>SPACE</kbd><b>이중 점프</b><span>공중에서 한 번 더 눌러 높이 오릅니다.</span></article>
         <article><kbd>W</kbd><kbd>SPACE</kbd><b>벽타기</b><span>벽을 밀며 오르고 점프로 벽을 찹니다.</span></article>
         <article><kbd>E</kbd><b>버스트</b><span>일반 적 탄환을 지우는 1.8초 재사용 방어 기술입니다.</span></article>
-        <article><kbd>좌클릭</kbd><b>발도</b><span>칼날에 닿은 투사체와 의사의 플라스크·독가스를 제거합니다.</span></article>
+        <article><kbd>좌클릭</kbd><b>발도</b><span>칼날에 닿은 투사체와 대역-13의 플라스크·독가스를 제거합니다.</span></article>
         <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>`;
     }
     if (description) description.textContent = "여섯 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
@@ -5287,7 +5287,7 @@
       queueStory(victoryStories[rank], { stageIndex: rank, minX: stages[rank].x, maxX: stages[rank].end });
       saveCampaign();
       if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
-    } else if (countKill && !silent && player.hp < player.maxHp) {
+    } else if (NORMAL_ENEMY_REPAIR_DROP_CHANCE > 0 && countKill && !silent && player.hp < player.maxHp) {
       const repairDropRoll = hash(enemy.originX * 0.017 + enemy.spawnY * 0.031 + game.kills * 9.73);
       if (repairDropRoll < NORMAL_ENEMY_REPAIR_DROP_CHANCE) {
         addPickup(enemy.x + enemy.w / 2, enemy.y, "repair");
@@ -6799,7 +6799,7 @@
       for (const enemy of enemies) {
         if (enemy.alive && overlaps(hitbox, enemy)) damageEnemy(enemy);
       }
-      // 칼날에 직접 닿은 투사체를 제거한다. 의사의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
+      // 칼날에 직접 닿은 투사체를 제거한다. 대역-13의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
       for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
         const bullet = bullets[bulletIndex];
         const doctorHazard = ["potion", "poison-gas"].includes(bullet.kind);
@@ -7400,7 +7400,7 @@
         enemy.injectionDuration = enemy.windup;
         enemy.cooldown = 3.1 * bossCurve.cooldown;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.35, "#78ff8b", 36, 360, 0.8, 0);
-        game.hint = "의사 · 금단 약물 자가 투약 · 변이 반응 시작";
+        game.hint = "대역-13 · 금단 약물 자가 투약 · 변이 반응 시작";
         game.hintTimer = 3.4;
         sound.tone(96, 0.72, "sawtooth", 0.05, 1.9);
       } else if (bossKind === "echo") {
@@ -8386,7 +8386,7 @@
       game.hint = "오른쪽 클릭 샷건 · 아래로 쏘면 반동으로 다시 상승";
       game.hintTimer = 4.2;
     } else if (player.x > 2050 && player.x < 2450 && game.hintTimer <= 0) {
-      game.hint = "왼쪽 클릭 발도 · 칼날에 닿은 투사체와 의사의 플라스크·독가스 제거";
+      game.hint = "왼쪽 클릭 발도 · 칼날에 닿은 투사체와 대역-13의 플라스크·독가스 제거";
       game.hintTimer = 4.2;
     } else if (player.x > 9400 && player.x < 9800 && game.hintTimer <= 0) {
       game.hint = "발도로 샷건 게이지 3칸 충전 · 강화탄으로 방패 파괴";
@@ -12698,7 +12698,7 @@
       { key: "hunter", name: "반사 사냥꾼 · 적린", code: "MID BOSS 02" },
       { key: "oracle", name: "전위 심문관 · 육화", code: "MID BOSS 03" },
       { key: "revenant", name: "월광 결투기 · 공문", code: "MID BOSS 04" },
-      { key: "proxy", name: "금단 외과의 · 의사", code: "MID BOSS 05" },
+      { key: "proxy", name: "광기 연구체 · 대역-13", code: "MID BOSS 05" },
     ],
     [
       { key: "warden", name: "붉은 부유 지휘기 · 철각", code: "TRUE BOSS 01" },
@@ -13445,7 +13445,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.3.0",
+    version: "3.4.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13569,7 +13569,7 @@
     revenantPhaseTwoSupportFire: true,
     revenantShieldRoundsGrantCharge: 0.8,
     censorArenaLaserCount: 0,
-    proxyName: "의사",
+    proxyName: "대역-13",
     proxySelfInjection: true,
     proxyArenaLaserCount: 0,
     echoAdaptiveCombatAI: true,
@@ -13675,11 +13675,14 @@
     proceduralFlaskShatterSfx: true,
     storyStageContext: true,
     storyQueueContext: true,
+    documentStorySource: "월하잔향.hwpx",
+    documentStoryDialogueLines: 216,
+    documentStoryAligned: true,
     prologueTriggerX: TUTORIAL_END_X + 620,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.3.0",
+    gameVersion: "3.4.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13798,7 +13801,7 @@
     revenantPhaseTwoSupportFire: "true",
     revenantShieldRoundsGrantCharge: "0.8",
     censorArenaLaserCount: "0",
-    proxyName: "의사",
+    proxyName: "대역-13",
     proxySelfInjection: "true",
     proxyArenaLaserCount: "0",
     echoAdaptiveCombatAI: "true",
@@ -13908,6 +13911,9 @@
     proceduralFlaskShatterSfx: "true",
     storyStageContext: "true",
     storyQueueContext: "true",
+    documentStorySource: "월하잔향.hwpx",
+    documentStoryDialogueLines: "216",
+    documentStoryAligned: "true",
     prologueTriggerX: String(TUTORIAL_END_X + 620),
   });
   updateContinueButton();
