@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.0.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.0.1") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -128,7 +128,7 @@ if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZon
 if (!diagnostics.mortarExactMarkedImpact || !diagnostics.mortarBallisticTargetLock || !/lockedImpactX:[\s\S]{0,180}impactTimer:/.test(gameSource)) {
   throw new Error("mortar marked-position targeting is missing");
 }
-if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82) {
+if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82 || diagnostics.turretChargeDisplay !== "muzzle-convergence") {
   throw new Error(`turret prefire charge invalid: ${diagnostics.turretChargeSeconds}`);
 }
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {

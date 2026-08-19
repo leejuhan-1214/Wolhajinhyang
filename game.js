@@ -9511,11 +9511,19 @@
         ctx.arc(muzzleX, muzzleY, 30 - progress * 21 + ring * 7, 0, TAU);
         ctx.stroke();
       }
+      // 다섯 발의 장전 상태를 본체 위 게이지가 아니라 총구로 빨려 들어가는 에너지 구슬로 표시한다.
       for (let round = 0; round < 5; round += 1) {
-        const armed = progress >= (round + 1) / 5;
-        ctx.fillStyle = armed ? "rgba(255, 244, 188, 0.95)" : "rgba(255, 207, 98, 0.24)";
-        ctx.fillRect(enemy.x + enemy.w / 2 - 31 + round * 14, enemy.y - 13, 9, 5);
+        const gatherProgress = clamp(progress * 5 - round, 0, 1);
+        const laneOffset = (round - 2) * 8;
+        const beadX = muzzleX - enemy.facing * (34 * (1 - gatherProgress));
+        const beadY = muzzleY + laneOffset * (1 - gatherProgress);
+        ctx.globalAlpha = 0.18 + gatherProgress * 0.82;
+        ctx.fillStyle = gatherProgress >= 1 ? "#fff4bc" : "#ffcf62";
+        ctx.beginPath();
+        ctx.arc(beadX, beadY, 2.5 + gatherProgress * 2.5, 0, TAU);
+        ctx.fill();
       }
+      ctx.globalAlpha = 1;
       ctx.fillStyle = `rgba(255, 207, 98, ${0.22 + progress * 0.65})`;
       ctx.beginPath();
       ctx.arc(muzzleX, muzzleY, 3 + progress * 7, 0, TAU);
@@ -13030,7 +13038,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.0.0",
+    version: "3.0.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13081,6 +13089,7 @@
     turretVolleyCount: 5,
     turretAimTelegraph: false,
     turretPrefireLocalCharge: true,
+    turretChargeDisplay: "muzzle-convergence",
     turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
@@ -13243,7 +13252,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.0.0",
+    gameVersion: "3.0.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13298,6 +13307,7 @@
     turretVolleyCount: "5",
     turretAimTelegraph: "false",
     turretPrefireLocalCharge: "true",
+    turretChargeDisplay: "muzzle-convergence",
     turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
