@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.2.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.3.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -136,6 +136,12 @@ if (!diagnostics.playerFrameBasedAnimation || diagnostics.playerRunPoseCount !==
 }
 if (diagnostics.poseInterpolation !== "eased-pixel-snapped" || !diagnostics.weaponsAttachedToHands || !diagnostics.swordFullBodyAnimation || !diagnostics.shotgunBodyRecoilAnimation || !diagnostics.detailedShotgunDesign) {
   throw new Error("smooth combat pose or detailed weapon rendering missing");
+}
+if (!diagnostics.dynamicSwordFullBodyMotion || !diagnostics.dynamicShotgunFollowThrough || diagnostics.shotgunPoseSeconds !== 0.3) {
+  throw new Error("dynamic sword or shotgun follow-through is missing");
+}
+if (!diagnostics.characterArchiveRenderer || diagnostics.characterArchivePages !== 5 || !diagnostics.characterArchiveUsesLiveRenderers) {
+  throw new Error("live character archive renderer is missing");
 }
 if (!diagnostics.runnerSweptRushHitbox || diagnostics.runnerRushLeadingReach !== 16 || diagnostics.bossBurstParryEnabled) {
   throw new Error("runner rush symmetry or boss parry restriction missing");

@@ -4788,7 +4788,7 @@
     player.shells -= 1;
     player.shotgunCooldown = overcharged ? 0.36 : 0.27;
     player.shotgunReload = overcharged ? 1.02 : 0.78;
-    player.recoilTimer = 0.18;
+    player.recoilTimer = 0.3;
     player.shotAimX = aim.x;
     player.shotAimY = aim.y;
     if (overcharged) player.shotgunCharge = 0;
@@ -8961,21 +8961,22 @@
     const attacking = player.attackTimer > 0;
     const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
     const shooting = player.recoilTimer > 0;
-    const shotProgress = shooting ? 1 - player.recoilTimer / 0.18 : 1;
+    const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
     const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
     const attackLunge = attacking
       ? attackProgress < 0.22
-        ? -poseEase(attackProgress / 0.22) * 2.5
+        ? -poseEase(attackProgress / 0.22) * 4.5
         : attackProgress < 0.64
-          ? lerp(-2.5, 7.5, poseEase((attackProgress - 0.22) / 0.42))
-          : lerp(7.5, 0, poseEase((attackProgress - 0.64) / 0.36))
+          ? lerp(-4.5, 14, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
       : 0;
+    const attackImpact = attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
     const baseLean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
-    const actionLean = attacking ? lerp(-0.09, 0.18, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.1 * shotKick : 0;
+    const actionLean = attacking ? lerp(-0.14, 0.28, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.2 * shotKick : 0;
     const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
 
-    ctx.translate(attackLunge - shotKick * 5, -bob + shotKick * 1.5);
-    ctx.scale(squashX, squashY);
+    ctx.translate(attackLunge - shotKick * 11, -bob + shotKick * 3 - attackImpact * 2.5);
+    ctx.scale(squashX * (1 + attackImpact * 0.055), squashY * (1 - attackImpact * 0.035));
     ctx.rotate(baseLean + actionLean);
 
     if (ghost) {
@@ -9073,8 +9074,8 @@
       }
       if (shooting) {
         return layer === "back"
-          ? { upper: -0.5 - shotKick * 0.12, knee: 0.34 + shotKick * 0.34 }
-          : { upper: 0.48, knee: 0.42 + shotKick * 0.22 };
+          ? { upper: -0.66 - shotKick * 0.16, knee: 0.42 + shotKick * 0.46 }
+          : { upper: 0.62, knee: 0.34 + shotKick * 0.28 };
       }
       if (attacking) {
         if (attackProgress < 0.22) {
@@ -9135,7 +9136,13 @@
     ctx.strokeStyle = "#526d79";
     ctx.beginPath();
     ctx.moveTo(-14, -43);
-    const equipmentLag = running ? -2 - Math.round((stride + 1) * 0.8) : 0;
+    const equipmentLag = running
+      ? -2 - Math.round((stride + 1) * 0.8)
+      : attacking
+        ? -Math.round(attackLunge * 0.24)
+        : shooting
+          ? Math.round(shotKick * 4)
+          : 0;
     ctx.lineTo(-18 + equipmentLag, -54 + (running ? runFrame % 2 : 0));
     ctx.stroke();
 
@@ -9402,7 +9409,7 @@
       ctx.restore();
     } else if (shooting) {
       ctx.save();
-      const recoilOffset = shotKick * 7;
+      const recoilOffset = shotKick * 12;
       ctx.translate(frontHand.x - Math.cos(shotAimAngle) * recoilOffset, frontHand.y - Math.sin(shotAimAngle) * recoilOffset);
       ctx.rotate(shotAimAngle);
 
@@ -9450,6 +9457,30 @@
       ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : bodyCyan;
       ctx.fillRect(12, -5, 2, 3);
 
+      // Ejected shell and residual muzzle smoke make the recoil readable after
+      // the single-frame flash has passed.
+      if (shotProgress > 0.08) {
+        ctx.save();
+        ctx.translate(2 - shotProgress * 20, -10 - Math.sin(shotProgress * Math.PI) * 15);
+        ctx.rotate(shotProgress * 5.5);
+        ctx.fillStyle = bodyAmber;
+        ctx.fillRect(-4, -2, 8, 4);
+        ctx.fillStyle = "#fff0af";
+        ctx.fillRect(2, -1, 2, 2);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = clamp(0.72 - shotProgress * 0.8, 0, 0.72);
+      ctx.strokeStyle = "rgba(215, 248, 246, 0.7)";
+      ctx.lineWidth = 3;
+      for (let smoke = 0; smoke < 3; smoke += 1) {
+        ctx.beginPath();
+        ctx.arc(64 + shotProgress * (18 + smoke * 7), (smoke - 1) * 5, 4 + shotProgress * 8, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.restore();
+
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = clamp(player.recoilTimer * 9, 0, 1);
       ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : palette.white;
@@ -9495,6 +9526,24 @@
       ctx.rotate(angle);
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = Math.sin(clamp(progress, 0, 1) * Math.PI);
+      const impactPulse = Math.sin(clamp((progress - 0.12) / 0.74, 0, 1) * Math.PI);
+      ctx.strokeStyle = flameSword ? "rgba(255,132,48,0.72)" : "rgba(101,245,234,0.62)";
+      ctx.lineWidth = 2;
+      for (let streak = 0; streak < 4; streak += 1) {
+        const offset = (streak - 1.5) * 11;
+        ctx.beginPath();
+        ctx.moveTo(-48 - streak * 13, offset - impactPulse * 5);
+        ctx.lineTo(14 + impactPulse * (38 + streak * 7), offset * 0.42);
+        ctx.stroke();
+      }
+      ctx.fillStyle = flameSword ? "rgba(255,196,78,0.48)" : "rgba(255,255,255,0.38)";
+      ctx.beginPath();
+      ctx.moveTo(18 + impactPulse * 28, 0);
+      ctx.lineTo(1, -11 * impactPulse);
+      ctx.lineTo(-10, 0);
+      ctx.lineTo(1, 11 * impactPulse);
+      ctx.closePath();
+      ctx.fill();
       ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -12629,9 +12678,199 @@
     ctx.restore();
   }
 
+  const CHARACTER_ARCHIVE_PAGES = Object.freeze([
+    [{ key: "player", name: "한서린 M-07", code: "PLAYABLE OPERATIVE" }],
+    [
+      { key: "runner", name: "돌격 감시병", code: "RUSH SENTRY" },
+      { key: "gunner", name: "소총 감시병", code: "RIFLE SENTRY" },
+      { key: "machinegun", name: "기관총 감시병", code: "BURST SENTRY" },
+      { key: "piercer", name: "관통병", code: "PHASE LANCER" },
+      { key: "mortar", name: "박격포병", code: "ARC BOMBARDIER" },
+    ],
+    [
+      { key: "drone", name: "감시 드론", code: "AERIAL SPOTTER" },
+      { key: "shield", name: "방패병", code: "BULWARK UNIT" },
+      { key: "turret", name: "5열 관통 대포탑", code: "WALLBREAKER TURRET" },
+      { key: "mortarTurret", name: "삼연 박격포탑", code: "TRI-MORTAR TOWER" },
+    ],
+    [
+      { key: "breaker", name: "폐철 집행기 · 쇄우", code: "MID BOSS 01" },
+      { key: "hunter", name: "반사 사냥꾼 · 적린", code: "MID BOSS 02" },
+      { key: "oracle", name: "전위 심문관 · 육화", code: "MID BOSS 03" },
+      { key: "revenant", name: "월광 결투기 · 공문", code: "MID BOSS 04" },
+      { key: "proxy", name: "금단 외과의 · 의사", code: "MID BOSS 05" },
+    ],
+    [
+      { key: "warden", name: "붉은 부유 지휘기 · 철각", code: "TRUE BOSS 01" },
+      { key: "furnace", name: "용광 심장 · 홍련", code: "TRUE BOSS 02" },
+      { key: "weaver", name: "기억 직조기 · 백면", code: "TRUE BOSS 03" },
+      { key: "censor", name: "중앙국 검열기 · 무명", code: "TRUE BOSS 04" },
+      { key: "echo", name: "원본 대행체 · 잔영-00", code: "TRUE BOSS 05" },
+    ],
+  ]);
+  let characterArchivePage = null;
+
+  function drawCharacterArchiveBackdrop(pageIndex, title) {
+    const gradient = ctx.createLinearGradient(0, 0, W, H);
+    gradient.addColorStop(0, "#06131b");
+    gradient.addColorStop(0.55, "#0b2029");
+    gradient.addColorStop(1, "#071018");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(101,245,234,0.08)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 40) ctx.strokeRect(x, 0, 1, H);
+    for (let y = 0; y <= H; y += 40) ctx.strokeRect(0, y, W, 1);
+    ctx.fillStyle = palette.cyan;
+    ctx.fillRect(0, 0, W, 8);
+    ctx.font = "900 13px monospace";
+    ctx.fillText("WOLHAJINHYANG // LIVE CHARACTER RENDER ARCHIVE", 34, 34);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#8aaab0";
+    ctx.fillText(`PAGE ${String(pageIndex + 1).padStart(2, "0")} / ${String(CHARACTER_ARCHIVE_PAGES.length).padStart(2, "0")}`, W - 34, 34);
+    ctx.textAlign = "left";
+    ctx.font = "900 30px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = palette.white;
+    ctx.fillText(title, 34, 78);
+    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = "#7899a2";
+    ctx.fillText("게임의 실제 캔버스 렌더 함수를 그대로 사용한 디자인 원본", 35, 100);
+  }
+
+  function drawCharacterArchiveCardFrame(x, y, w, h, entry, accent) {
+    ctx.fillStyle = "rgba(9, 28, 38, 0.94)";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(101,245,234,0.28)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.fillStyle = accent;
+    ctx.fillRect(x, y, w, 5);
+    ctx.font = "900 10px monospace";
+    ctx.fillStyle = accent;
+    ctx.fillText(entry.code, x + 16, y + 26);
+    ctx.font = "900 19px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = palette.white;
+    ctx.fillText(entry.name, x + 16, y + 53);
+  }
+
+  function archiveEnemyFor(entry) {
+    const boss = BOSS_DEFINITIONS[entry.key];
+    const source = boss
+      ? enemies.find((enemy) => enemy.type === "boss" && enemy.bossKind === entry.key)
+      : enemies.find((enemy) => enemy.type === entry.key);
+    if (!source) return null;
+    return {
+      ...source,
+      x: -source.w / 2,
+      y: -source.h / 2,
+      baseY: -source.h / 2,
+      spawnX: -source.w / 2,
+      spawnY: -source.h / 2,
+      vx: 0,
+      vy: 0,
+      facing: 1,
+      grounded: true,
+      alive: true,
+      hp: source.maxHp,
+      hurt: 0,
+      anim: 1.37,
+      windup: 0,
+      rushTimer: 0,
+      bossAction: "idle",
+      bossShotPattern: null,
+      reflectTimer: entry.key === "hunter" ? 1 : 0,
+      reflectBreakTimer: 0,
+      barrierTimer: entry.key === "censor" ? 1 : 0,
+    };
+  }
+
+  function drawArchiveEnemy(entry, centerX, centerY, scale) {
+    const archiveEnemy = archiveEnemyFor(entry);
+    if (!archiveEnemy) return;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(scale, scale);
+    drawEnemy(archiveEnemy);
+    ctx.restore();
+  }
+
+  function drawArchivePlayerPose(centerX, centerY, scale, pose) {
+    const saved = {
+      vx: player.vx, vy: player.vy, grounded: player.grounded,
+      wallLeft: player.wallLeft, wallRight: player.wallRight,
+      runCycle: player.runCycle, squash: player.squash,
+      attackTimer: player.attackTimer, attackDuration: player.attackDuration,
+      attackDir: player.attackDir, chargedAttack: player.chargedAttack,
+      recoilTimer: player.recoilTimer, shotAimX: player.shotAimX, shotAimY: player.shotAimY,
+    };
+    Object.assign(player, {
+      vx: pose === "slash" ? 230 : 0,
+      vy: 0,
+      grounded: true,
+      wallLeft: false,
+      wallRight: false,
+      runCycle: 0.8,
+      squash: pose === "shotgun" ? 0.12 : 0,
+      attackTimer: pose === "slash" ? 0.11 : 0,
+      attackDuration: 0.23,
+      attackDir: { x: 1, y: 0 },
+      chargedAttack: false,
+      recoilTimer: pose === "shotgun" ? 0.255 : 0,
+      shotAimX: 1,
+      shotAimY: 0,
+    });
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(scale, scale);
+    drawPlayerBody(-player.w / 2, -player.h / 2, 1);
+    ctx.restore();
+    Object.assign(player, saved);
+  }
+
+  function drawCharacterArchive(pageIndex) {
+    const page = CHARACTER_ARCHIVE_PAGES[pageIndex] || CHARACTER_ARCHIVE_PAGES[0];
+    const titles = ["주인공 실제 동작", "일반 전투 기체", "방어 · 고정 화력 기체", "중간 보스", "진 보스"];
+    drawCharacterArchiveBackdrop(pageIndex, titles[pageIndex] || "캐릭터 도감");
+    if (pageIndex === 0) {
+      const labels = [
+        { pose: "idle", name: "대기 · 이동 준비", code: "IDLE / MOVE" },
+        { pose: "slash", name: "발도 · 전신 베기", code: "DYNAMIC DRAW" },
+        { pose: "shotgun", name: "샷건 · 전신 반동", code: "M-12 RECOIL" },
+      ];
+      labels.forEach((item, index) => {
+        const x = 34 + index * 414;
+        drawCharacterArchiveCardFrame(x, 126, 382, 520, { name: item.name, code: item.code }, index === 1 ? palette.red : palette.cyan);
+        const poseScale = item.pose === "shotgun" ? 2.2 : item.pose === "slash" ? 2.9 : 3.25;
+        const poseCenterX = x + (item.pose === "shotgun" ? 154 : 191);
+        drawArchivePlayerPose(poseCenterX, 400, poseScale, item.pose);
+      });
+      return;
+    }
+    const positions = page.length === 4
+      ? [[34, 126], [652, 126], [34, 390], [652, 390]]
+      : [[34, 126], [446, 126], [858, 126], [240, 390], [652, 390]];
+    const cardW = page.length === 4 ? 594 : 388;
+    const cardH = page.length === 4 ? 238 : 238;
+    page.forEach((entry, index) => {
+      const [x, y] = positions[index];
+      const accent = BOSS_DEFINITIONS[entry.key]?.accent
+        || (entry.key === "machinegun" ? "#ff8066" : entry.key === "piercer" ? "#79dfff" : entry.key === "mortar" || entry.key === "mortarTurret" ? "#ff8b68" : entry.key === "shield" || entry.key === "turret" ? palette.amber : palette.cyan);
+      drawCharacterArchiveCardFrame(x, y, cardW, cardH, entry, accent);
+      const isBoss = Boolean(BOSS_DEFINITIONS[entry.key]);
+      const isFixed = entry.key === "turret" || entry.key === "mortarTurret";
+      const scale = isBoss ? (entry.key === "echo" ? 1.85 : 1.45) : isFixed ? 2.25 : 2.45;
+      const centerYOffset = entry.key === "echo" ? 36 : 0;
+      drawArchiveEnemy(entry, x + cardW / 2, y + cardH * 0.66 + centerYOffset, scale);
+    });
+  }
+
   function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    if (Number.isInteger(characterArchivePage)) {
+      drawCharacterArchive(characterArchivePage);
+      return;
+    }
     const flipped = game.screenFlipActive && game.mode !== "menu";
     if (flipped) {
       ctx.save();
@@ -13190,8 +13429,23 @@
   prepareTutorialBriefing();
   buildLevel();
   levelReady = true;
+  window.__MOONLIT_ECHO_CHARACTER_ARCHIVE__ = (pageIndex = 0) => {
+    characterArchivePage = clamp(Math.floor(Number(pageIndex) || 0), 0, CHARACTER_ARCHIVE_PAGES.length - 1);
+    render();
+    return {
+      page: characterArchivePage,
+      pageCount: CHARACTER_ARCHIVE_PAGES.length,
+      entries: CHARACTER_ARCHIVE_PAGES[characterArchivePage].map((entry) => ({ ...entry })),
+      usesLivePlayerRenderer: true,
+      usesLiveEnemyRenderer: true,
+    };
+  };
+  window.__MOONLIT_ECHO_CLOSE_CHARACTER_ARCHIVE__ = () => {
+    characterArchivePage = null;
+    render();
+  };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.2.0",
+    version: "3.3.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13256,6 +13510,12 @@
     swordFullBodyAnimation: true,
     shotgunBodyRecoilAnimation: true,
     detailedShotgunDesign: true,
+    dynamicSwordFullBodyMotion: true,
+    dynamicShotgunFollowThrough: true,
+    shotgunPoseSeconds: 0.3,
+    characterArchiveRenderer: true,
+    characterArchivePages: CHARACTER_ARCHIVE_PAGES.length,
+    characterArchiveUsesLiveRenderers: true,
     turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
@@ -13419,7 +13679,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.2.0",
+    gameVersion: "3.3.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13488,6 +13748,12 @@
     swordFullBodyAnimation: "true",
     shotgunBodyRecoilAnimation: "true",
     detailedShotgunDesign: "true",
+    dynamicSwordFullBodyMotion: "true",
+    dynamicShotgunFollowThrough: "true",
+    shotgunPoseSeconds: "0.3",
+    characterArchiveRenderer: "true",
+    characterArchivePages: String(CHARACTER_ARCHIVE_PAGES.length),
+    characterArchiveUsesLiveRenderers: "true",
     turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
