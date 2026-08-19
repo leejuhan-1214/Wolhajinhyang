@@ -1217,7 +1217,10 @@ button:focus-visible {
 .enemy-token.machinegun::after { right: -25px; top: 7px; width: 27px; height: 8px; background: repeating-linear-gradient(0deg, #e7edef 0 2px, #38434c 2px 3px); box-shadow: -9px 9px 0 #28313a, 4px 0 0 #ff8066; }
 .enemy-token.turret { width: 34px; height: 24px; margin-top: 7px; border-color: #ffcf62; border-radius: 45% 45% 4px 4px; background: linear-gradient(#59646a 0 52%, #202a30 52%); }
 .enemy-token.turret::before { left: 9px; top: 5px; width: 11px; height: 11px; border-color: #ffcf62; }
-.enemy-token.turret::after { right: -25px; top: 1px; width: 28px; height: 20px; background: repeating-linear-gradient(0deg, #ffcf62 0 2px, transparent 2px 4px); box-shadow: none; }
+.enemy-token.turret::after { right: -25px; top: 4px; width: 28px; height: 13px; border: 3px solid #8f9ca1; border-left-width: 7px; background: #11181d; box-shadow: 5px 0 0 #ffcf62; }
+.enemy-token.mortar-turret { width: 36px; height: 27px; margin-top: 5px; border-color: #ff8066; border-radius: 45% 45% 3px 3px; background: linear-gradient(#554047 0 55%, #21191e 55%); }
+.enemy-token.mortar-turret::before { left: 11px; top: 8px; width: 10px; height: 10px; border-color: #ff8066; background: #20171c; }
+.enemy-token.mortar-turret::after { right: -12px; top: -13px; width: 28px; height: 20px; border: 0; background: repeating-linear-gradient(0deg, #9ba5a8 0 3px, transparent 3px 7px); box-shadow: none; transform: rotate(-55deg); }
 .enemy-token.mortar { width: 31px; background-color: #452f35; }
 .enemy-token.mortar::after { top: -5px; right: -10px; width: 18px; transform: rotate(-28deg); }
 .enemy-token.drone { width: 38px; height: 18px; margin-top: 10px; border-radius: 45%; }

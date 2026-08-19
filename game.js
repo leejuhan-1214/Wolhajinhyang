@@ -100,6 +100,8 @@
   const SHIELD_GUARD_HITS = 2;
   const SHIELD_BASE_HP = 6;
   const TURRET_BASE_HP = Math.ceil(SHIELD_BASE_HP * 1.5);
+  const MORTAR_TURRET_BASE_HP = TURRET_BASE_HP + 2;
+  const MORTAR_TURRET_VOLLEY_COUNT = 3;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
@@ -159,7 +161,7 @@
   const snowPatches = [];
   const boostNodes = [];
   const combatRooms = [];
-  const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "machinegun", "turret", "piercer", "mortar", "drone", "shield", "boss"]);
+  const ADMIN_SPAWN_TYPES = new Set(["runner", "gunner", "machinegun", "turret", "mortarTurret", "piercer", "mortar", "drone", "shield", "boss"]);
   const ADMIN_PLACE_TYPES = new Set(["repair", "boost"]);
   let adminRemovedEnemyIds = readAdminRemovedEnemies();
   let adminSpawnedEnemyData = readAdminSpawnedEnemies();
@@ -1694,6 +1696,11 @@
     return removed;
   }
 
+  function isStationaryTurret(enemyOrType) {
+    const type = typeof enemyOrType === "string" ? enemyOrType : enemyOrType?.type;
+    return type === "turret" || type === "mortarTurret";
+  }
+
   function addEnemy(type, x, surfaceY, range = 150) {
     const stageIndex = getStageIndexAt(x);
     const sizes = {
@@ -1701,6 +1708,7 @@
       gunner: [44, 58, 3],
       machinegun: [48, 60, 4],
       turret: [58, 50, TURRET_BASE_HP],
+      mortarTurret: [66, 62, MORTAR_TURRET_BASE_HP],
       piercer: [46, 58, 3],
       mortar: [54, 64, 4],
       drone: [50, 34, 1],
@@ -1715,6 +1723,8 @@
         ? 1
         : type === "turret"
           ? Math.ceil((SHIELD_BASE_HP + stageHpBonus) * 1.5)
+          : type === "mortarTurret"
+            ? MORTAR_TURRET_BASE_HP + stageHpBonus
           : baseHp + stageHpBonus;
     const support = type === "drone" ? null : platforms.find((platform) => (
       x + w / 2 >= platform.x
@@ -2632,25 +2642,25 @@
           ["runner", "gunner", "machinegun", "shield"],
           ["gunner", "runner", "machinegun", "turret", "shield", "drone"],
           ["gunner", "machinegun", "turret", "shield", "drone", "piercer"],
-          ["shield", "drone", "piercer", "mortar", "machinegun", "turret", "gunner"],
+          ["shield", "drone", "piercer", "mortar", "machinegun", "turret", "mortarTurret", "gunner"],
         ],
         [
           ["gunner", "machinegun", "shield", "drone", "runner"],
           ["shield", "drone", "piercer", "machinegun", "turret", "gunner"],
-          ["shield", "piercer", "drone", "mortar", "machinegun", "turret"],
-          ["piercer", "mortar", "shield", "drone", "machinegun", "turret", "gunner"],
+          ["shield", "piercer", "drone", "mortar", "machinegun", "turret", "mortarTurret"],
+          ["piercer", "mortar", "shield", "drone", "machinegun", "turret", "mortarTurret", "gunner"],
         ],
         [
           ["piercer", "gunner", "machinegun", "drone", "shield"],
-          ["piercer", "mortar", "machinegun", "turret", "shield", "drone"],
-          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "gunner", "runner"],
+          ["piercer", "mortar", "machinegun", "turret", "mortarTurret", "shield", "drone"],
+          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "mortarTurret", "gunner"],
+          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "mortarTurret", "gunner", "runner"],
         ],
         [
           ["shield", "piercer", "drone", "machinegun", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun", "turret"],
-          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "gunner"],
-          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "gunner", "mortar", "runner"],
+          ["piercer", "mortar", "drone", "shield", "machinegun", "turret", "mortarTurret"],
+          ["mortar", "piercer", "drone", "shield", "machinegun", "turret", "mortarTurret", "gunner"],
+          ["piercer", "mortarTurret", "drone", "shield", "machinegun", "turret", "gunner", "mortar", "runner"],
         ],
       ];
       const pattern = progressionPatterns[zone.stageIndex][section];
@@ -2720,7 +2730,13 @@
           addPlatform(zone.x + localX - 245, floorY - approachRise, 220, 22, kind);
           addPlatform(zone.x + localX + gateWidth, floorY - gateHeight, 390 + stageIndex * 32, 22, kind);
           if (gateHeight >= 245) addBoostNode(zone.x + localX - 96, floorY - 58, 115, -560 - stageIndex * 18);
-          const upperGuard = stageIndex >= 2 && transitionIndex % 2 === 0 ? "turret" : stageIndex === 0 && section === 0 ? "gunner" : "machinegun";
+          const upperGuard = stageIndex >= 3 && (localZoneIndex + transitionIndex) % 3 === 0
+            ? "mortarTurret"
+            : stageIndex >= 2 && transitionIndex % 2 === 0
+              ? "turret"
+              : stageIndex === 0 && section === 0
+                ? "gunner"
+                : "machinegun";
           spawnPoints.push([localX + gateWidth + 120, floorY - gateHeight, upperGuard]);
           spawnPoints.push([localX - 150, floorY - approachRise, transitionIndex % 2 ? "gunner" : "runner"]);
           transitionKinds.push("rise");
@@ -2754,7 +2770,12 @@
         addPlatform(zone.x + zigzagX, platformY, 230 - level * 8, 21, kind);
         if (level === ascentLevels) {
           addPlatform(zone.x + zigzagX + (mirrorRoute ? -430 : 190), platformY, 470, 21, kind);
-          spawnPoints.push([zigzagX + 96, platformY, stageIndex >= 1 ? "turret" : "gunner"]);
+          const summitGuard = stageIndex >= 3 && (localZoneIndex + level) % 3 === 1
+            ? "mortarTurret"
+            : stageIndex >= 1
+              ? "turret"
+              : "gunner";
+          spawnPoints.push([zigzagX + 96, platformY, summitGuard]);
         }
       }
       if (ascentLevels >= 3) {
@@ -4949,7 +4970,7 @@
     enemy.hp -= dealtDamage;
     enemy.hurt = 0.18;
     registerBossRetreatHit(enemy);
-    if (enemy.type !== "turret") enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
+    if (!isStationaryTurret(enemy)) enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
     game.shake = enemy.type === "boss" ? 8 : chainFinisher ? 16 : 11;
     game.freeze = enemy.type === "boss" ? 0.045 : chainFinisher ? 0.115 : 0.075;
     game.flash = 0.07;
@@ -5021,7 +5042,7 @@
     enemy.hp -= shotgunDamage;
     enemy.hurt = 0.22;
     registerBossRetreatHit(enemy);
-    if (enemy.type !== "turret") enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
+    if (!isStationaryTurret(enemy)) enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
     game.shake = Math.max(game.shake, bullet.piercing ? 24 : 14);
     game.freeze = Math.max(game.freeze, bullet.piercing ? 0.12 : 0.065);
     game.flash = Math.max(game.flash, 0.08);
@@ -5373,6 +5394,7 @@
         enemy: true,
         kind: "turret-row",
         gravity: 0,
+        piercePlatforms: true,
         color: "#ffcf62",
         damage: 1,
       });
@@ -5398,7 +5420,7 @@
     );
   }
 
-  function fireMortar(enemy, lockedTargetX = null) {
+  function fireMortar(enemy, lockedTargetX = null, silent = false) {
     const sourceX = enemy.x + enemy.w / 2;
     const sourceY = enemy.y + 12;
     const targetX = lockedTargetX ?? player.x + player.w / 2 + player.vx * 0.32;
@@ -5417,7 +5439,20 @@
       gravity: 860,
       color: "#ff6f75",
     });
-    sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
+    if (!silent) sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
+  }
+
+  function fireMortarTurretVolley(enemy) {
+    const centerTargetX = enemy.targetX ?? player.x + player.w / 2;
+    const spread = 135;
+    for (let shell = 0; shell < MORTAR_TURRET_VOLLEY_COUNT; shell += 1) {
+      const targetOffset = (shell - (MORTAR_TURRET_VOLLEY_COUNT - 1) / 2) * spread;
+      fireMortar(enemy, centerTargetX + targetOffset, true);
+    }
+    const muzzleX = enemy.x + enemy.w / 2;
+    const muzzleY = enemy.y + 8;
+    spawnParticles(muzzleX, muzzleY, "#ff9b68", 24, 380, 0.4, -140);
+    sound.tone(74, 0.26, "sawtooth", 0.052, 0.46);
   }
 
   function fireHeavyOrb(enemy, target, speed = 610, size = 30) {
@@ -6760,8 +6795,8 @@
         const overlapX = Math.min(first.x + first.w, second.x + second.w) - Math.max(first.x, second.x);
         if (overlapX <= 0) continue;
         const direction = first.x + first.w / 2 <= second.x + second.w / 2 ? -1 : 1;
-        const firstShare = first.type === "turret" ? 0 : first.type === "boss" ? 0.15 : second.type === "turret" ? 1 : 0.5;
-        const secondShare = second.type === "turret" ? 0 : second.type === "boss" ? 0.15 : first.type === "turret" ? 1 : 0.5;
+        const firstShare = isStationaryTurret(first) ? 0 : first.type === "boss" ? 0.15 : isStationaryTurret(second) ? 1 : 0.5;
+        const secondShare = isStationaryTurret(second) ? 0 : second.type === "boss" ? 0.15 : isStationaryTurret(first) ? 1 : 0.5;
         first.x += direction * overlapX * firstShare;
         second.x -= direction * overlapX * secondShare;
         first.vx *= 0.35;
@@ -6782,7 +6817,7 @@
       const direction = playerCenter <= enemyCenter ? -1 : 1;
       player.x += direction * (overlapX + 0.5);
       player.vx = direction < 0 ? Math.min(0, player.vx) : Math.max(0, player.vx);
-      if (enemy.type !== "turret") enemy.vx -= direction * 35;
+      if (!isStationaryTurret(enemy)) enemy.vx -= direction * 35;
     }
   }
 
@@ -7003,6 +7038,23 @@
         if (before > 0.07 && enemy.windup <= 0.07) fireBullet(enemy, 560, 0, "phase", { x: enemy.targetX, y: enemy.targetY });
       }
       enemy.vx = moveToward(enemy.vx, 0, 520 * dt);
+      moveEnemyPhysics(enemy, dt);
+      return;
+    }
+
+    if (enemy.type === "mortarTurret") {
+      if (distance < 1080 && enemy.cooldown <= 0 && enemy.windup <= 0) {
+        enemy.windup = 1.02;
+        enemy.cooldown = (4.25 / stagePressure) * formationCooldown;
+        enemy.targetX = player.x + player.w / 2 + player.vx * 0.42;
+        enemy.targetY = player.y + player.h;
+      }
+      if (enemy.windup > 0) {
+        const before = enemy.windup;
+        enemy.windup = Math.max(0, enemy.windup - dt);
+        if (before > 0.1 && enemy.windup <= 0.1) fireMortarTurretVolley(enemy);
+      }
+      enemy.vx = moveToward(enemy.vx, 0, 980 * dt);
       moveEnemyPhysics(enemy, dt);
       return;
     }
@@ -7260,7 +7312,7 @@
       enemy.summonCooldown = Math.max(0, (enemy.summonCooldown || 0) - dt);
       const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id).length;
       if (enemy.summonCooldown <= 0 && distance < 1050 && livingSummons < 4) {
-        const summonPool = ["runner", "gunner", "machinegun", "turret", "piercer", "drone", "shield", "mortar"];
+        const summonPool = ["runner", "gunner", "machinegun", "turret", "mortarTurret", "piercer", "drone", "shield", "mortar"];
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
         const summonArena = getBossArenaBounds(enemy, 180);
@@ -9194,24 +9246,6 @@
       ctx.arc(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.48, 18 + pulse * 7, 0, TAU);
       ctx.stroke();
       ctx.restore();
-    } else if (enemy.type === "turret" && Number.isFinite(enemy.targetX)) {
-      const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 31;
-      const sourceY = enemy.y + enemy.h * 0.42;
-      const angle = Math.atan2(enemy.targetY - sourceY, enemy.targetX - sourceX);
-      const lineLength = 620;
-      ctx.save();
-      ctx.strokeStyle = `rgba(255, 207, 98, ${0.35 + pulse * 0.42})`;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([7, 9]);
-      for (let lane = -2; lane <= 2; lane += 1) {
-        const laneOffset = lane * 14;
-        ctx.beginPath();
-        ctx.moveTo(sourceX, sourceY + laneOffset);
-        ctx.lineTo(sourceX + Math.cos(angle) * lineLength, sourceY + laneOffset + Math.sin(angle) * lineLength);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.restore();
     } else if (enemy.type === "machinegun" && Number.isFinite(enemy.targetX)) {
       const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 30;
       const sourceY = enemy.y + enemy.h * 0.38;
@@ -9243,17 +9277,20 @@
       ctx.fillRect(enemy.targetX - 5, enemy.targetY - 1, 10, 2);
       ctx.fillRect(enemy.targetX - 1, enemy.targetY - 5, 2, 10);
       ctx.restore();
-    } else if (enemy.type === "mortar" && Number.isFinite(enemy.targetX)) {
+    } else if ((enemy.type === "mortar" || enemy.type === "mortarTurret") && Number.isFinite(enemy.targetX)) {
       ctx.save();
       ctx.strokeStyle = `rgba(255, 73, 108, ${pulse + 0.18})`;
       ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.ellipse(enemy.targetX, enemy.targetY, 52, 13, 0, 0, TAU);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(255, 73, 108, ${pulse * 0.2})`;
-      ctx.beginPath();
-      ctx.ellipse(enemy.targetX, enemy.targetY, 48, 10, 0, 0, TAU);
-      ctx.fill();
+      const targets = enemy.type === "mortarTurret" ? [-135, 0, 135] : [0];
+      for (const offset of targets) {
+        ctx.beginPath();
+        ctx.ellipse(enemy.targetX + offset, enemy.targetY, 52, 13, 0, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255, 73, 108, ${pulse * 0.2})`;
+        ctx.beginPath();
+        ctx.ellipse(enemy.targetX + offset, enemy.targetY, 48, 10, 0, 0, TAU);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -10104,17 +10141,52 @@
       ctx.fillStyle = "#ffcf62";
       ctx.beginPath(); ctx.arc(2, 24, 4 + Math.sin(enemy.anim * 5) * 0.6, 0, TAU); ctx.fill();
       ctx.save();
-      ctx.translate(9, 23);
+      ctx.translate(7, 23);
       ctx.rotate(aimAngle);
-      for (let lane = -2; lane <= 2; lane += 1) {
-        ctx.fillStyle = lane === 0 ? "#cbd4d7" : "#8f9ca1";
-        ctx.fillRect(0, lane * 6 - 2, 39, 4);
-        ctx.fillStyle = "#ffcf62";
-        ctx.fillRect(36, lane * 6 - 2, 7, 4);
-      }
-      ctx.fillStyle = "#222c32";
-      ctx.fillRect(4, -17, 15, 34);
+      ctx.fillStyle = "#1a2329";
+      ctx.beginPath(); ctx.arc(3, 0, 14, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#8f9ca1";
+      ctx.beginPath();
+      ctx.moveTo(3, -8); ctx.lineTo(39, -7); ctx.lineTo(44, -11); ctx.lineTo(51, -11);
+      ctx.lineTo(51, 11); ctx.lineTo(44, 11); ctx.lineTo(39, 7); ctx.lineTo(3, 8); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#cbd4d7"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#273137";
+      ctx.fillRect(39, -13, 11, 26);
+      ctx.fillStyle = "#070b0e";
+      ctx.fillRect(47, -8, 6, 16);
+      ctx.strokeStyle = "#ffcf62";
+      ctx.strokeRect(40, -11, 8, 22);
       ctx.restore();
+    } else if (enemy.type === "mortarTurret") {
+      const chargePulse = enemy.windup > 0 ? 0.55 + Math.sin(enemy.anim * 22) * 0.28 : 0.2;
+      ctx.fillStyle = "#11171d";
+      ctx.fillRect(-31, 49, 62, 10);
+      ctx.fillStyle = "#4d3b40";
+      ctx.beginPath();
+      ctx.moveTo(-34, 51); ctx.lineTo(-23, 34); ctx.lineTo(23, 34); ctx.lineTo(34, 51); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ff8066"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#30262d";
+      ctx.beginPath(); ctx.arc(0, 34, 23, Math.PI, TAU); ctx.lineTo(23, 41); ctx.lineTo(-23, 41); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#11171d";
+      ctx.beginPath(); ctx.arc(0, 34, 10, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(255, 128, 102, ${chargePulse})`;
+      ctx.beginPath(); ctx.arc(0, 34, 5, 0, TAU); ctx.fill();
+      for (let barrel = -1; barrel <= 1; barrel += 1) {
+        ctx.save();
+        ctx.translate(barrel * 11, 31);
+        ctx.rotate(-1.08 + barrel * 0.12);
+        ctx.fillStyle = barrel === 0 ? "#a7afb2" : "#727f84";
+        ctx.fillRect(0, -6, 43, 12);
+        ctx.fillStyle = "#252d31";
+        ctx.fillRect(34, -9, 11, 18);
+        ctx.fillStyle = "#080b0d";
+        ctx.fillRect(41, -6, 6, 12);
+        ctx.strokeStyle = "#ff8066"; ctx.lineWidth = 1.5;
+        ctx.strokeRect(35, -8, 8, 16);
+        ctx.restore();
+      }
+      ctx.fillStyle = "#88969c";
+      ctx.fillRect(-21, 54, 42, 3);
     } else if (enemy.type === "gunner" || enemy.type === "machinegun" || enemy.type === "piercer" || enemy.type === "mortar") {
       const isMachinegun = enemy.type === "machinegun";
       const isPiercer = enemy.type === "piercer";
@@ -12642,7 +12714,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.8.2",
+    version: "2.9.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12676,12 +12748,12 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "vertical-turret-formations-v2.8.0",
+    enemyPlacementDensity: "artillery-tower-formations-v2.9.0",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
     stageCombatPressure: [...STAGE_COMBAT_PRESSURE],
     stageBulletPressure: [...STAGE_BULLET_PRESSURE],
     progressiveCombatDifficulty: true,
-    sentryRoles: { runner: "charge", gunner: "single-shot", machinegun: "four-round-burst", turret: "five-parallel-shot" },
+    sentryRoles: { runner: "charge", gunner: "single-shot", machinegun: "four-round-burst", turret: "five-parallel-wall-piercing-shot", mortarTurret: "triple-mortar-volley" },
     runnerDashPathTelegraph: false,
     runnerCompactChargeTelegraph: true,
     machinegunBurstRounds: SENTRY_BURST_ROUNDS,
@@ -12691,6 +12763,14 @@
     turretBaseHp: TURRET_BASE_HP,
     turretShieldHpRatio: 1.5,
     turretVolleyCount: 5,
+    turretAimTelegraph: false,
+    turretCannonMuzzle: true,
+    turretShotsPiercePlatforms: true,
+    mortarTurretCount: enemies.filter((enemy) => enemy.type === "mortarTurret").length,
+    mortarTurretBaseHp: MORTAR_TURRET_BASE_HP,
+    mortarTurretVolleyCount: MORTAR_TURRET_VOLLEY_COUNT,
+    mortarTurretTerrainCollision: true,
+    mortarTurretAdminSpawn: ADMIN_SPAWN_TYPES.has("mortarTurret"),
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -12830,7 +12910,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.8.2",
+    gameVersion: "2.9.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12868,12 +12948,12 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "vertical-turret-formations-v2.8.0",
+    enemyPlacementDensity: "artillery-tower-formations-v2.9.0",
     enemyBaseCountByStage: "8,10,12,14,16",
     stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
     stageBulletPressure: STAGE_BULLET_PRESSURE.join(","),
     progressiveCombatDifficulty: "true",
-    sentryRoles: "runner:charge,gunner:single-shot,machinegun:four-round-burst,turret:five-parallel-shot",
+    sentryRoles: "runner:charge,gunner:single-shot,machinegun:four-round-burst,turret:five-parallel-wall-piercing-shot,mortarTurret:triple-mortar-volley",
     runnerDashPathTelegraph: "false",
     runnerCompactChargeTelegraph: "true",
     machinegunBurstRounds: String(SENTRY_BURST_ROUNDS),
@@ -12883,6 +12963,14 @@
     turretBaseHp: String(TURRET_BASE_HP),
     turretShieldHpRatio: "1.5",
     turretVolleyCount: "5",
+    turretAimTelegraph: "false",
+    turretCannonMuzzle: "true",
+    turretShotsPiercePlatforms: "true",
+    mortarTurretCount: String(enemies.filter((enemy) => enemy.type === "mortarTurret").length),
+    mortarTurretBaseHp: String(MORTAR_TURRET_BASE_HP),
+    mortarTurretVolleyCount: String(MORTAR_TURRET_VOLLEY_COUNT),
+    mortarTurretTerrainCollision: "true",
+    mortarTurretAdminSpawn: String(ADMIN_SPAWN_TYPES.has("mortarTurret")),
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),

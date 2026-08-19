@@ -65,10 +65,11 @@ global.document = {
 global.requestAnimationFrame = () => 1;
 global.cancelAnimationFrame = () => {};
 
-vm.runInThisContext(fs.readFileSync("game.js", "utf8"), { filename: "game.js" });
+const gameSource = fs.readFileSync("game.js", "utf8");
+vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "2.8.2") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "2.9.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -107,6 +108,15 @@ if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.w
 if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
   throw new Error(`player step-up tuning invalid: ${diagnostics.playerGroundSeamStepHeight}/${diagnostics.playerPlatformStepHeight}`);
 }
+if (diagnostics.turretAimTelegraph || !diagnostics.turretCannonMuzzle || !diagnostics.turretShotsPiercePlatforms) {
+  throw new Error("five-row turret presentation or wall-piercing rule invalid");
+}
+if (gameSource.includes('enemy.type === "turret" && Number.isFinite(enemy.targetX)') || !/kind:\s*"turret-row"[\s\S]{0,180}piercePlatforms:\s*true/.test(gameSource)) {
+  throw new Error("five-row turret still exposes an aim line or lacks platform piercing");
+}
+if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || !diagnostics.mortarTurretAdminSpawn) {
+  throw new Error(`mortar turret invalid: ${diagnostics.mortarTurretCount}/${diagnostics.mortarTurretVolleyCount}`);
+}
 document.getElementById("continue-button").click();
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 if (restored.activeCheckpointKey !== "2:12") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
@@ -131,4 +141,7 @@ console.log(JSON.stringify({
   wardenPanelShotsPerUnit: diagnostics.wardenPanelShotsPerUnit,
   wardenAttackRecoveryScale: diagnostics.wardenAttackRecoveryScale,
   playerGroundSeamStepHeight: diagnostics.playerGroundSeamStepHeight,
+  turretShotsPiercePlatforms: diagnostics.turretShotsPiercePlatforms,
+  mortarTurretCount: diagnostics.mortarTurretCount,
+  mortarTurretVolleyCount: diagnostics.mortarTurretVolleyCount,
 }));
