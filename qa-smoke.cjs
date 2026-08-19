@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.0.1") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.1.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -130,6 +130,9 @@ if (!diagnostics.mortarExactMarkedImpact || !diagnostics.mortarBallisticTargetLo
 }
 if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82 || diagnostics.turretChargeDisplay !== "muzzle-convergence") {
   throw new Error(`turret prefire charge invalid: ${diagnostics.turretChargeSeconds}`);
+}
+if (!diagnostics.playerFrameBasedAnimation || diagnostics.playerRunPoseCount !== 8 || diagnostics.playerAttackKeyPoseCount !== 3 || !diagnostics.playerSecondaryMotion || !diagnostics.enemyFrameBasedGait || !diagnostics.pixelSnappedJoints) {
+  throw new Error("frame-based pixel character animation diagnostics missing");
 }
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {
   throw new Error("act 3 triple-projectile burst parry is missing");

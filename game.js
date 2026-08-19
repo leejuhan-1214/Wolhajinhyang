@@ -8919,10 +8919,18 @@
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
     const running = runBlend > 0.04;
     const walling = !player.grounded && (player.wallLeft || player.wallRight);
-    const stride = Math.sin(player.runCycle);
+    // Distance-driven 8-pose pixel animation: contact, compression, passing and lift.
+    // Holding each key pose for a few display frames keeps the silhouette crisp
+    // instead of making the limbs look like smoothly rotating sticks.
+    const runFrame = ((Math.floor(player.runCycle / (TAU / 8)) % 8) + 8) % 8;
+    const runStride = [0.82, 0.42, 0, -0.48, -0.84, -0.44, 0, 0.5];
+    const runBob = [0, 1.15, 2.25, 1.35, 0, 1.05, 2.05, 1.2];
+    const idleFrame = Math.floor(game.time * 6) % 8;
+    const idleBob = [0, 0, 0.45, 0.45, 0.45, 0, 0, 0];
+    const stride = runStride[runFrame];
     const bob = running
-      ? Math.abs(Math.sin(player.runCycle * 2)) * (1.1 + runBlend * 1.35)
-      : Math.sin(game.time * 2.4) * 0.65;
+      ? runBob[runFrame] * (0.72 + runBlend * 0.58)
+      : idleBob[idleFrame];
     const squashX = 1 + player.squash * 0.42;
     const squashY = 1 - player.squash * 0.52;
     const lean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
@@ -8968,11 +8976,11 @@
     }
 
     function drawJointedLimb(px, py, upperLength, lowerLength, width, upperAngle, kneeBend, color, foot = false, hand = false) {
-      const kneeX = px + Math.sin(upperAngle) * upperLength;
-      const kneeY = py + Math.cos(upperAngle) * upperLength;
+      const kneeX = Math.round(px + Math.sin(upperAngle) * upperLength);
+      const kneeY = Math.round(py + Math.cos(upperAngle) * upperLength);
       const lowerAngle = upperAngle - kneeBend;
-      const endX = kneeX + Math.sin(lowerAngle) * lowerLength;
-      const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
+      const endX = Math.round(kneeX + Math.sin(lowerAngle) * lowerLength);
+      const endY = Math.round(kneeY + Math.cos(lowerAngle) * lowerLength);
       drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)");
       drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(4, width - 1), color, "rgba(151, 207, 216, 0.18)");
       ctx.fillStyle = "#07101a";
@@ -9006,33 +9014,48 @@
       return { x: endX, y: endY, angle: lowerAngle };
     }
 
-    function legPose(phase, layer) {
+    function legPose(frame, layer) {
       if (walling) {
         return layer === "back"
           ? { upper: -0.72, knee: -0.88 }
           : { upper: 0.82, knee: 1.12 };
       }
-      if (!player.grounded && player.vy < -60) {
+      if (!player.grounded && player.vy < -140) {
         return layer === "back"
-          ? { upper: -0.38, knee: -0.18 }
-          : { upper: 0.78, knee: 1.18 };
+          ? { upper: -0.52, knee: -0.12 }
+          : { upper: 0.84, knee: 1.28 };
+      }
+      if (!player.grounded && Math.abs(player.vy) <= 140) {
+        return layer === "back"
+          ? { upper: -0.18, knee: 0.62 }
+          : { upper: 0.42, knee: 1.12 };
       }
       if (!player.grounded) {
         return layer === "back"
-          ? { upper: 0.28, knee: 0.76 }
-          : { upper: -0.38, knee: -0.72 };
+          ? { upper: 0.42, knee: 0.88 }
+          : { upper: -0.52, knee: -0.6 };
       }
-      const swing = Math.sin(phase);
-      const swingLift = Math.max(0, swing);
+      const runLegPoses = [
+        { upper: 0.72, knee: 0.18 },
+        { upper: 0.34, knee: 0.42 },
+        { upper: 0.02, knee: 0.92 },
+        { upper: -0.48, knee: 1.18 },
+        { upper: -0.7, knee: 0.22 },
+        { upper: -0.3, knee: 0.16 },
+        { upper: 0.08, knee: 0.5 },
+        { upper: 0.48, knee: 0.72 },
+      ];
+      const poseIndex = layer === "back" ? (frame + 4) % 8 : frame;
+      const pose = runLegPoses[poseIndex];
       const landingBend = player.squash * 0.8;
       return {
-        upper: swing * 0.7 * runBlend + (layer === "back" ? -0.04 : 0.04),
-        knee: (0.12 + swingLift * 0.9 + landingBend) * runBlend + (1 - runBlend) * 0.16,
+        upper: pose.upper * runBlend + (layer === "back" ? -0.04 : 0.04) * (1 - runBlend),
+        knee: (pose.knee + landingBend) * runBlend + (1 - runBlend) * 0.16,
       };
     }
 
-    const backPose = legPose(player.runCycle + Math.PI, "back");
-    const frontPose = legPose(player.runCycle, "front");
+    const backPose = legPose(runFrame, "back");
+    const frontPose = legPose(runFrame, "front");
     drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, "#0c1825", true);
     drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, "#172b3c", true);
 
@@ -9048,13 +9071,14 @@
     ctx.strokeStyle = "#526d79";
     ctx.beginPath();
     ctx.moveTo(-14, -43);
-    ctx.lineTo(-18, -54);
+    const equipmentLag = running ? -2 - Math.round((stride + 1) * 0.8) : 0;
+    ctx.lineTo(-18 + equipmentLag, -54 + (running ? runFrame % 2 : 0));
     ctx.stroke();
 
     // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
     ctx.save();
-    ctx.translate(-7, -23);
-    ctx.rotate(2.66);
+    ctx.translate(-7 + equipmentLag * 0.25, -23 + (running ? runFrame % 2 : 0));
+    ctx.rotate(2.66 + stride * runBlend * 0.035);
     ctx.fillStyle = "#070d16";
     ctx.fillRect(0, -3, 42, 7);
     ctx.fillStyle = "#334d5b";
@@ -9157,7 +9181,7 @@
     ctx.fillRect(-4, -18, 3, 2);
     ctx.fillRect(5, -18, 3, 2);
 
-    const rearArm = running ? -stride * 0.48 * runBlend + 0.14 : 0.28;
+    const rearArm = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
     drawJointedLimb(-10, -38, 8, 8, 5, rearArm, -0.42, "#152638", false, true);
 
     ctx.fillStyle = "#8da0aa";
@@ -9198,6 +9222,10 @@
     ctx.fillStyle = "#263842";
     ctx.fillRect(-10, -57, 12, 3);
     ctx.fillRect(-11, -55, 4, 5);
+    // Short pixel clusters trail the head by one pose, giving hair secondary motion.
+    const hairLag = running ? equipmentLag : (!player.grounded ? -3 : 0);
+    ctx.fillRect(-12 + hairLag, -56, 5, 3);
+    ctx.fillRect(-14 + hairLag, -53 + (running ? runFrame % 2 : 0), 5, 2);
     ctx.fillStyle = "#c9d6d4";
     ctx.fillRect(-8, -48, 3, 4);
     ctx.fillStyle = "#738c92";
@@ -9212,9 +9240,19 @@
     ctx.fillStyle = "#506873";
     ctx.fillRect(-10, -46, 2, 3);
 
-    let armAngle = running ? stride * 0.42 : -0.15;
+    let armAngle = running ? stride * 0.5 : -0.15;
     if (!player.grounded) armAngle = -0.48;
-    if (attacking) armAngle = -2.15 + attackProgress * 4.15 + player.attackDir.y * 0.72;
+    if (attacking) {
+      const ease = (value) => value * value * (3 - value * 2);
+      if (attackProgress < 0.2) {
+        armAngle = -0.48 + (-2.28 + 0.48) * ease(attackProgress / 0.2);
+      } else if (attackProgress < 0.62) {
+        armAngle = -2.28 + 4.38 * ease((attackProgress - 0.2) / 0.42);
+      } else {
+        armAngle = 2.1 + (-0.08 - 2.1) * ease((attackProgress - 0.62) / 0.38);
+      }
+      armAngle += player.attackDir.y * 0.72;
+    }
 
     drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0 : 0.38, "#294459", false, !attacking);
     if (attacking) {
@@ -10297,7 +10335,10 @@
     }
     const variant = hash(enemy.originX * 0.17 + enemy.maxHp);
     const damageRatio = 1 - enemy.hp / enemy.maxHp;
-    const locomotion = Math.sin(enemy.anim * (enemy.type === "runner" ? 10 : 6));
+    const enemyGaitPhase = enemy.anim * (enemy.type === "runner" ? 10 : 6);
+    const enemyGaitFrame = ((Math.floor(enemyGaitPhase / (TAU / 8)) % 8) + 8) % 8;
+    const enemyGaitPoses = [0.86, 0.48, 0, -0.5, -0.88, -0.46, 0, 0.52];
+    const locomotion = enemyGaitPoses[enemyGaitFrame];
     const movingRatio = clamp(Math.abs(enemy.vx) / 110, 0, 1);
     const bodyBob = enemy.type === "drone"
       ? Math.sin(enemy.anim * 3.4) * 2
@@ -10336,16 +10377,17 @@
     }
 
     function drawRobotLeg(hipX, hipY, phase, upperLength, lowerLength, width, accent, heavy = false) {
-      const gait = Math.sin(phase);
+      const gaitFrame = ((Math.floor(phase / (TAU / 8)) % 8) + 8) % 8;
+      const gait = enemyGaitPoses[gaitFrame];
       const strideAmount = (heavy ? 0.34 : 0.58) * movingRatio;
       const upperAngle = gait * strideAmount;
       const kneeLift = Math.max(0, gait) * movingRatio;
       const kneeBend = (heavy ? 0.12 : 0.18) + kneeLift * (heavy ? 0.48 : 0.82);
-      const kneeX = hipX + Math.sin(upperAngle) * upperLength;
-      const kneeY = hipY + Math.cos(upperAngle) * upperLength;
+      const kneeX = Math.round(hipX + Math.sin(upperAngle) * upperLength);
+      const kneeY = Math.round(hipY + Math.cos(upperAngle) * upperLength);
       const shinAngle = upperAngle - kneeBend;
-      const footX = kneeX + Math.sin(shinAngle) * lowerLength;
-      const footY = kneeY + Math.cos(shinAngle) * lowerLength;
+      const footX = Math.round(kneeX + Math.sin(shinAngle) * lowerLength);
+      const footY = Math.round(kneeY + Math.cos(shinAngle) * lowerLength);
       const rearShell = heavy ? "#241b26" : "#111c29";
       const frontShell = heavy ? "#5b3448" : "#324b5b";
       drawRobotSegment(hipX, hipY, kneeX, kneeY, width, rearShell, accent);
@@ -13038,7 +13080,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.0.1",
+    version: "3.1.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13090,6 +13132,12 @@
     turretAimTelegraph: false,
     turretPrefireLocalCharge: true,
     turretChargeDisplay: "muzzle-convergence",
+    playerFrameBasedAnimation: true,
+    playerRunPoseCount: 8,
+    playerAttackKeyPoseCount: 3,
+    playerSecondaryMotion: true,
+    enemyFrameBasedGait: true,
+    pixelSnappedJoints: true,
     turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
@@ -13252,7 +13300,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.0.1",
+    gameVersion: "3.1.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13308,6 +13356,12 @@
     turretAimTelegraph: "false",
     turretPrefireLocalCharge: "true",
     turretChargeDisplay: "muzzle-convergence",
+    playerFrameBasedAnimation: "true",
+    playerRunPoseCount: "8",
+    playerAttackKeyPoseCount: "3",
+    playerSecondaryMotion: "true",
+    enemyFrameBasedGait: "true",
+    pixelSnappedJoints: "true",
     turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
