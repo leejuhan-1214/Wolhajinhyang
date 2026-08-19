@@ -106,6 +106,10 @@
   const PLAYER_BURST_COOLDOWN = 1.8;
   const SENTRY_BURST_ROUNDS = 4;
   const SENTRY_BURST_INTERVAL = 0.115;
+  const WARDEN_PANEL_COOLDOWNS = Object.freeze([8, 6]);
+  const WARDEN_PANEL_SHOTS_PER_UNIT = 5;
+  const WARDEN_PANEL_SHOT_INTERVAL = 0.32;
+  const WARDEN_ATTACK_RECOVERY_SCALE = 0.78;
   const ROUTE_TRANSITION_BUDGET_BY_STAGE = Object.freeze([
     [1, 1, 2, 2],
     [1, 2, 2, 3],
@@ -5817,7 +5821,8 @@
     if (enemy?.bossKind === "breaker") return;
     const hpRatio = enemy.hp / enemy.maxHp;
     const panelCurve = getBossDifficultyCurve(enemy.stageIndex);
-    enemy.funnelCooldown = Math.max(enemy.funnelCooldown || 0, (hpRatio < 0.5 ? 9 : 12) * panelCurve.cooldown);
+    const panelCooldown = hpRatio < 0.5 ? WARDEN_PANEL_COOLDOWNS[1] : WARDEN_PANEL_COOLDOWNS[0];
+    enemy.funnelCooldown = Math.max(enemy.funnelCooldown || 0, panelCooldown * panelCurve.cooldown);
     const formationSide = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? -1 : 1;
     for (let index = 0; index < count; index += 1) {
       bullets.push({
@@ -5837,7 +5842,7 @@
         orbitCount: count,
         formationSide,
         shotTimer: 0.38 + index * 0.055,
-        shotsLeft: 4,
+        shotsLeft: WARDEN_PANEL_SHOTS_PER_UNIT,
         color: "#ff496c",
       });
     }
@@ -7433,22 +7438,22 @@
       } else if (kind === "warden") {
         if (enemy.bossPhase === 0) {
           startBossChargedShot(enemy, "warden-funnels", dx, 0.72);
-          enemy.cooldown = 2.35 * recovery;
+          enemy.cooldown = 2.05 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else if (enemy.bossPhase === 1 || enemy.bossPhase === 2) {
-          startBossChargedShot(enemy, "warden-volley", dx, 0.82);
-          enemy.cooldown = 1.95 * recovery;
+          startBossChargedShot(enemy, "warden-volley", dx, 0.68);
+          enemy.cooldown = 1.9 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else if (enemy.bossPhase === 3) {
           enemy.windup = 0.72;
           enemy.bossAction = "dash";
           enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
           enemy.dashRange = 580;
-          enemy.cooldown = 2.25 * recovery;
+          enemy.cooldown = 2.1 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else if (enemy.bossPhase === 4) {
-          startBossChargedShot(enemy, "warden-air", dx, 0.68);
-          enemy.cooldown = 2.1 * recovery;
+          startBossChargedShot(enemy, "warden-air", dx, 0.58);
+          enemy.cooldown = 2 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else {
-          startBossChargedShot(enemy, "warden-suppress", dx, 0.92);
-          enemy.cooldown = 2.3 * recovery;
+          startBossChargedShot(enemy, "warden-suppress", dx, 0.76);
+          enemy.cooldown = 2.15 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         }
       } else if (kind === "furnace") {
         if (enemy.bossPhase === 0) {
@@ -7752,7 +7757,7 @@
             "#ff496c",
           );
           bullet.shotsLeft -= 1;
-          bullet.shotTimer = 0.36 + bullet.orbitIndex * 0.018;
+          bullet.shotTimer = WARDEN_PANEL_SHOT_INTERVAL + bullet.orbitIndex * 0.016;
         }
         continue;
       }
@@ -12613,7 +12618,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.8.0",
+    version: "2.8.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12683,9 +12688,11 @@
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => ({ ...entry })),
     bossDifficultyCurveProgressive: true,
     wardenFloatingChassis: true,
-    wardenPanelPassiveCooldowns: [12, 9],
+    wardenPanelPassiveCooldowns: [...WARDEN_PANEL_COOLDOWNS],
+    wardenPanelShotsPerUnit: WARDEN_PANEL_SHOTS_PER_UNIT,
+    wardenPanelShotInterval: WARDEN_PANEL_SHOT_INTERVAL,
+    wardenAttackRecoveryScale: WARDEN_ATTACK_RECOVERY_SCALE,
     wardenPanelCountByPhase: [4, 5],
-    wardenPanelShotsPerUnit: 4,
     wardenPanelWaveOverlap: false,
     hunterShieldFrontUntilReflection: true,
     hunterShieldFlipsBehindOnBreak: true,
@@ -12796,7 +12803,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.8.0",
+    gameVersion: "2.8.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12861,9 +12868,11 @@
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => [entry.mobility, entry.cooldown, entry.windup, entry.reaction].join("/")).join(","),
     bossDifficultyCurveProgressive: "true",
     wardenFloatingChassis: "true",
-    wardenPanelPassiveCooldowns: "12,9",
+    wardenPanelPassiveCooldowns: WARDEN_PANEL_COOLDOWNS.join(","),
     wardenPanelCountByPhase: "4,5",
-    wardenPanelShotsPerUnit: "4",
+    wardenPanelShotsPerUnit: String(WARDEN_PANEL_SHOTS_PER_UNIT),
+    wardenPanelShotInterval: String(WARDEN_PANEL_SHOT_INTERVAL),
+    wardenAttackRecoveryScale: String(WARDEN_ATTACK_RECOVERY_SCALE),
     wardenPanelWaveOverlap: "false",
     hunterShieldFrontUntilReflection: "true",
     hunterShieldFlipsBehindOnBreak: "true",
@@ -12915,7 +12924,7 @@
     })),
     cheolgakFunnelFormation: "single-side",
     cheolgakFunnelShots: "5",
-    cheolgakFunnelShotInterval: "0.36",
+    cheolgakFunnelShotInterval: String(WARDEN_PANEL_SHOT_INTERVAL),
     empoweredSlashBonus: String(EMPOWERED_SLASH_BONUS),
     chargedSlashBonus: String(CHARGED_SLASH_BONUS),
     overchargedShotgunDamage: String(OVERCHARGED_SHOTGUN_DAMAGE),
