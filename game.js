@@ -102,6 +102,13 @@
   const TURRET_BASE_HP = Math.ceil(SHIELD_BASE_HP * 1.5);
   const MORTAR_TURRET_BASE_HP = TURRET_BASE_HP + 2;
   const MORTAR_TURRET_VOLLEY_COUNT = 3;
+  const TURRET_CHARGE_SECONDS = 0.82;
+  const ACT_THREE_INDEX = 2;
+  const ACT_FOUR_INDEX = 3;
+  const BURST_PARRY_PROJECTILE_COUNT = 3;
+  const FLAME_SWORD_BURN_SECONDS = 2.4;
+  const FLAME_SWORD_BURN_INTERVAL = 0.48;
+  const FLAME_SWORD_BURN_DAMAGE = 0.2;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0.06;
@@ -182,6 +189,7 @@
   let levelReady = false;
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
+  let enemyZoneAuditAccumulator = 0;
   let platformSpatialBuckets = [];
   let platformSpatialDirty = true;
   let enemyWorldCullAccumulator = 0;
@@ -1071,6 +1079,9 @@
     controlsReversed: false,
     screenFlipActive: false,
     screenFlipFlash: 0,
+    stageAbilityNotice: null,
+    stageAbilityNoticeTimer: 0,
+    lastAbilityNoticeStage: -1,
   };
 
   const camera = { x: 0, y: 0, lookX: 0 };
@@ -1126,6 +1137,7 @@
     wallRight: false,
     burstCooldown: 0,
     burstTimer: 0,
+    burstParryTimer: 0,
     buffTimer: 0,
     rewardPower: 0,
     squash: 0,
@@ -1322,14 +1334,30 @@
     };
   }
 
+  function normalizeEnemyHomeZone(enemy) {
+    const candidateAnchorX = Number.isFinite(enemy.spawnX)
+      ? enemy.spawnX
+      : Number.isFinite(enemy.originX)
+        ? enemy.originX
+        : enemy.x;
+    const anchorX = Number.isFinite(candidateAnchorX) ? candidateAnchorX : 0;
+    const resolvedIndex = getZoneIndexAt(clamp(anchorX, 0, WORLD_W - 1));
+    const storedZone = Number.isInteger(enemy.homeZoneIndex) ? zones[enemy.homeZoneIndex] : null;
+    const storedMatchesAnchor = storedZone && anchorX >= storedZone.x && anchorX < storedZone.end;
+    if (!storedMatchesAnchor) enemy.homeZoneIndex = resolvedIndex;
+    if (!Number.isInteger(enemy.stageIndex) || enemy.stageIndex !== getStageIndexAt(anchorX)) {
+      enemy.stageIndex = getStageIndexAt(anchorX);
+    }
+    return enemy.homeZoneIndex;
+  }
+
   function getEnemyLockdownBounds(enemy) {
-    const homeZoneIndex = Number.isInteger(enemy.homeZoneIndex)
-      ? enemy.homeZoneIndex
-      : getZoneIndexAt(enemy.originX);
-    const zone = zones[homeZoneIndex];
+    const homeZoneIndex = normalizeEnemyHomeZone(enemy);
+    const zone = zones[homeZoneIndex] || zones[getZoneIndexAt(enemy.x)] || zones[0];
     let left = zone.x + 48;
     let right = zone.end - 48;
-    const room = combatRooms.find((candidate) => enemy.originX > candidate.left && enemy.originX < candidate.right);
+    const homeX = Number.isFinite(enemy.spawnX) ? enemy.spawnX : enemy.originX;
+    const room = combatRooms.find((candidate) => homeX > candidate.left && homeX < candidate.right);
     if (room) {
       left = Math.max(left, room.left + 24);
       right = Math.min(right, room.right - 24);
@@ -1351,6 +1379,36 @@
       enemy.vx = Math.min(0, enemy.vx);
     }
     return bounds;
+  }
+
+  function isEnemyOutsideHomeZone(enemy, margin = 0) {
+    const bounds = getEnemyLockdownBounds(enemy);
+    return !Number.isFinite(enemy.x)
+      || enemy.x < bounds.left - margin
+      || enemy.x + enemy.w > bounds.right + margin;
+  }
+
+  function auditEnemyZoneContainment() {
+    let corrected = 0;
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      const bounds = getEnemyLockdownBounds(enemy);
+      if (!isEnemyOutsideHomeZone(enemy, 0)) continue;
+      const farOutside = enemy.x < bounds.left - 180 || enemy.x + enemy.w > bounds.right + 180;
+      if (farOutside) {
+        const homeX = Number.isFinite(enemy.spawnX) ? enemy.spawnX : bounds.left;
+        const homeY = Number.isFinite(enemy.spawnY) ? enemy.spawnY : enemy.y;
+        enemy.x = clamp(homeX, bounds.left, bounds.right - enemy.w);
+        enemy.y = homeY;
+        enemy.baseY = homeY;
+        enemy.vx = 0;
+        enemy.vy = 0;
+      } else {
+        constrainEnemyToLockdown(enemy, bounds);
+      }
+      corrected += 1;
+    }
+    return corrected;
   }
 
   function recoverEnemyToHome(enemy) {
@@ -1398,6 +1456,7 @@
   function enforceEnemyLockdowns(collection = enemies) {
     for (const enemy of collection) {
       if (!enemy.alive) continue;
+      normalizeEnemyHomeZone(enemy);
       constrainEnemyToLockdown(enemy);
       ejectEnemyFromPlatforms(enemy);
       if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
@@ -1432,6 +1491,28 @@
     const minutes = Math.floor(seconds / 60);
     const rest = Math.floor(seconds % 60).toString().padStart(2, "0");
     return `${minutes}:${rest}`;
+  }
+
+  function announceStageAbility(stageIndex, force = false) {
+    if (!force && game.lastAbilityNoticeStage === stageIndex) return;
+    game.lastAbilityNoticeStage = stageIndex;
+    if (stageIndex === ACT_THREE_INDEX) {
+      game.stageAbilityNotice = {
+        title: "3막 무장 해금 · 삼중 소거 패링",
+        detail: "E 버스트로 탄환 3개 이상을 한 번에 지우면 3발의 반격탄이 발사됩니다.",
+        color: palette.cyan,
+      };
+    } else if (stageIndex === ACT_FOUR_INDEX) {
+      game.stageAbilityNotice = {
+        title: "4막 무장 변환 · 화염검",
+        detail: "발도 적중 시 불길이 남아 짧은 시간 동안 추가 피해를 줍니다.",
+        color: "#ff8a42",
+      };
+    } else {
+      return;
+    }
+    game.stageAbilityNoticeTimer = 6.2;
+    sound.checkpoint();
   }
 
   function getStyleRank(score) {
@@ -1759,6 +1840,10 @@
       burstRemaining: 0,
       burstInterval: 0,
       burstSequence: 0,
+      turretChargeDuration: 0,
+      turretRecoil: 0,
+      burnTimer: 0,
+      burnTickTimer: 0,
       staggerHitCount: 0,
       staggerHitTimer: 0,
       retreatTimer: 0,
@@ -2566,6 +2651,7 @@
   }
 
   function buildLevel() {
+    enemyZoneAuditAccumulator = 0;
     platformSerial = 0;
     hazardSerial = 0;
     signSerial = 0;
@@ -3302,6 +3388,7 @@
     }
     rebuildPlatformSpatialIndex();
     configureCombatRooms();
+    auditEnemyZoneContainment();
     applyAdminRemovedEnemyData();
     zoneDiversityMetrics = calculateZoneDiversityMetrics();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
@@ -3661,6 +3748,7 @@
     game.cutsceneShotElapsed = 0;
     game.stage = player.respawnStage;
     game.zone = player.respawnZone;
+    announceStageAbility(game.stage, true);
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
     game.burstUnlocked = game.tutorialCompleted || game.tutorialActive || player.x > 5200;
@@ -3731,6 +3819,7 @@
       wallRight: false,
       burstCooldown: 0,
       burstTimer: 0,
+      burstParryTimer: 0,
       buffTimer: 0,
       rewardPower: 0,
       squash: 0,
@@ -3779,6 +3868,9 @@
       tutorialStep: 0,
       tutorialPulse: 0,
       tutorialSignals: createTutorialSignals(),
+      stageAbilityNotice: null,
+      stageAbilityNoticeTimer: 0,
+      lastAbilityNoticeStage: -1,
     });
     if (saved) restoreCampaign(saved);
     if (!saved) {
@@ -4422,6 +4514,7 @@
     }
     game.stage = stageIndex;
     game.zone = checkpointIndex;
+    announceStageAbility(stageIndex, true);
     game.stageTitle = 0;
     game.zoneTitle = 0;
     game.hint = `관리자 이동 · ${stageIndex + 1}-${String((checkpointIndex % ZONES_PER_STAGE) + 1).padStart(2, "0")} · ${zones[checkpointIndex].name}`;
@@ -4892,7 +4985,38 @@
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.55, "#d9edf0", 14, 300, 0.4, 120);
   }
 
-  function damageEnemy(enemy) {
+  function igniteEnemyWithFlameSword(enemy) {
+    if (!enemy.alive) return;
+    enemy.burnTimer = Math.max(enemy.burnTimer || 0, FLAME_SWORD_BURN_SECONDS);
+    enemy.burnTickTimer = Math.min(
+      Number.isFinite(enemy.burnTickTimer) && enemy.burnTickTimer > 0 ? enemy.burnTickTimer : FLAME_SWORD_BURN_INTERVAL,
+      0.26,
+    );
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.55, "#ff8a42", 8, 185, 0.42, -120);
+  }
+
+  function updateEnemyBurn(enemy, dt) {
+    if ((enemy.burnTimer || 0) <= 0) return;
+    enemy.burnTimer = Math.max(0, enemy.burnTimer - dt);
+    enemy.burnTickTimer = (enemy.burnTickTimer || FLAME_SWORD_BURN_INTERVAL) - dt;
+    if (enemy.burnTickTimer > 0) return;
+    enemy.burnTickTimer += FLAME_SWORD_BURN_INTERVAL;
+    const burnDamage = enemy.type === "boss" ? FLAME_SWORD_BURN_DAMAGE * 0.7 : FLAME_SWORD_BURN_DAMAGE;
+    enemy.hp -= burnDamage;
+    enemy.hurt = Math.max(enemy.hurt, 0.08);
+    spawnParticles(
+      enemy.x + enemy.w * (0.25 + hash(enemy.anim * 13.7) * 0.5),
+      enemy.y + enemy.h * (0.3 + hash(enemy.anim * 21.3) * 0.45),
+      hash(enemy.anim * 8.9) > 0.45 ? "#ffcb62" : "#ff613d",
+      4,
+      125,
+      0.34,
+      -170,
+    );
+    if (enemy.hp <= 0) killEnemy(enemy);
+  }
+
+  function damageEnemy(enemy, { source = "slash" } = {}) {
     if (!enemy.alive || enemy.hitAttackId === player.attackId) return;
     enemy.hitAttackId = player.attackId;
 
@@ -4968,6 +5092,7 @@
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, formation.accent, 8, 210, 0.3, 160);
     }
     enemy.hp -= dealtDamage;
+    if (source === "slash" && game.stage >= ACT_FOUR_INDEX && enemy.hp > 0) igniteEnemyWithFlameSword(enemy);
     enemy.hurt = 0.18;
     registerBossRetreatHit(enemy);
     if (!isStationaryTurret(enemy)) enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
@@ -5250,6 +5375,8 @@
       enemy.bossJumpCooldown = 0;
       enemy.halfPhaseTriggered = false;
       enemy.quarterPhaseTriggered = false;
+      enemy.burnTimer = 0;
+      enemy.burnTickTimer = 0;
       enemy.controlInversionActive = false;
       enemy.iceStormTimer = 0;
       enemy.iceSpawnTimer = 0;
@@ -5399,6 +5526,7 @@
         damage: 1,
       });
     }
+    enemy.turretRecoil = 0.2;
     spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
     sound.tone(92, 0.16, "square", 0.052, 0.48);
   }
@@ -5420,23 +5548,30 @@
     );
   }
 
-  function fireMortar(enemy, lockedTargetX = null, silent = false) {
+  function fireMortar(enemy, lockedTargetX = null, lockedTargetY = null, silent = false) {
     const sourceX = enemy.x + enemy.w / 2;
     const sourceY = enemy.y + 12;
     const targetX = lockedTargetX ?? player.x + player.w / 2 + player.vx * 0.32;
-    const direction = Math.sign(targetX - sourceX) || enemy.facing;
+    const targetY = lockedTargetY ?? enemy.targetY ?? player.y + player.h;
     const bulletScale = difficultySettings[game.difficulty].bulletSpeed;
+    const gravity = 860;
+    const flightTime = clamp((0.82 + Math.abs(targetX - sourceX) / 1250) / Math.sqrt(bulletScale), 0.78, 1.58);
+    const velocityX = (targetX - sourceX) / flightTime;
+    const velocityY = (targetY - sourceY - 0.5 * gravity * flightTime * flightTime) / flightTime;
     bullets.push({
       x: sourceX - 9,
       y: sourceY - 9,
       w: 18,
       h: 18,
-      vx: direction * (235 + Math.min(170, Math.abs(targetX - sourceX) * 0.18)) * bulletScale,
-      vy: -535 * bulletScale,
-      life: 5,
+      vx: velocityX,
+      vy: velocityY,
+      life: flightTime + 0.25,
       enemy: true,
       kind: "mortar",
-      gravity: 860,
+      gravity,
+      lockedImpactX: targetX,
+      lockedImpactY: targetY,
+      impactTimer: flightTime,
       color: "#ff6f75",
     });
     if (!silent) sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
@@ -5447,7 +5582,7 @@
     const spread = 135;
     for (let shell = 0; shell < MORTAR_TURRET_VOLLEY_COUNT; shell += 1) {
       const targetOffset = (shell - (MORTAR_TURRET_VOLLEY_COUNT - 1) / 2) * spread;
-      fireMortar(enemy, centerTargetX + targetOffset, true);
+      fireMortar(enemy, centerTargetX + targetOffset, enemy.targetY, true);
     }
     const muzzleX = enemy.x + enemy.w / 2;
     const muzzleY = enemy.y + 8;
@@ -6004,8 +6139,9 @@
     firePointBullet(sourceX, sourceY, target, speed, spread, "revenant-sword-wave", "#f2e6ff");
     const wave = bullets[bullets.length - 1];
     if (wave) {
-      wave.w = 54 * scale;
-      wave.h = 18 * scale;
+      // 검기의 진행 방향은 플레이어를 향하되, 칼날 형상은 세워서 가로 탄처럼 보이지 않게 한다.
+      wave.w = 22 * scale;
+      wave.h = 58 * scale;
       wave.x = sourceX - wave.w / 2;
       wave.y = sourceY - wave.h / 2;
       wave.damage = scale > 1.15 ? 2 : 1;
@@ -6314,6 +6450,40 @@
     game.shake = Math.max(game.shake, 12 + enemy.stageIndex * 2);
   }
 
+  function launchBurstParryCounters(centerX, centerY, removedProjectiles) {
+    const targets = getActiveEnemies()
+      .filter((enemy) => enemy.alive)
+      .sort((first, second) => (
+        Math.hypot(first.x + first.w / 2 - centerX, first.y + first.h / 2 - centerY)
+        - Math.hypot(second.x + second.w / 2 - centerX, second.y + second.h / 2 - centerY)
+      ));
+    if (targets.length === 0) return;
+    player.shotId += 1;
+    for (let index = 0; index < Math.min(BURST_PARRY_PROJECTILE_COUNT, removedProjectiles.length); index += 1) {
+      const target = targets[index % targets.length];
+      const targetX = target.x + target.w / 2;
+      const targetY = target.y + target.h / 2;
+      const angle = Math.atan2(targetY - centerY, targetX - centerX);
+      const laneOffset = (index - 1) * 9;
+      bullets.push({
+        x: centerX - 6,
+        y: centerY + laneOffset - 3,
+        w: 12,
+        h: 6,
+        vx: Math.cos(angle) * 920,
+        vy: Math.sin(angle) * 920,
+        life: 0.82,
+        enemy: false,
+        kind: "burst-parry",
+        gravity: 0,
+        color: "#f3ffff",
+        damage: 0.9,
+        shotId: player.shotId,
+        piercing: false,
+      });
+    }
+  }
+
   function startBurst() {
     if (game.mode !== "playing" || !game.burstUnlocked || player.burstCooldown > 0) return;
     markTutorialSignal("burst");
@@ -6322,6 +6492,7 @@
     player.invincible = Math.max(player.invincible, 0.34);
     player.attackId += 1;
     let cancelled = 0;
+    const removedProjectiles = [];
     const centerX = player.x + player.w / 2;
     const centerY = player.y + player.h / 2;
 
@@ -6330,6 +6501,7 @@
       if (!bullet.enemy) continue;
       const distance = Math.hypot(bullet.x + bullet.w / 2 - centerX, bullet.y + bullet.h / 2 - centerY);
       if (distance <= 155) {
+        removedProjectiles.push({ x: bullet.x + bullet.w / 2, y: bullet.y + bullet.h / 2, vx: bullet.vx, vy: bullet.vy });
         spawnParticles(bullet.x, bullet.y, palette.cyan, 7, 250, 0.35, 120);
         bullets.splice(index, 1);
         cancelled += 1;
@@ -6338,15 +6510,25 @@
 
     for (const enemy of enemies) {
       const distance = Math.hypot(enemy.x + enemy.w / 2 - centerX, enemy.y + enemy.h / 2 - centerY);
-      if (enemy.alive && distance <= 112) damageEnemy(enemy);
+      if (enemy.alive && distance <= 112) damageEnemy(enemy, { source: "burst" });
     }
 
-    if (cancelled > 0) {
+    const tripleParry = game.stage >= ACT_THREE_INDEX && cancelled >= BURST_PARRY_PROJECTILE_COUNT;
+    if (tripleParry) {
+      player.burstParryTimer = 0.72;
+      player.invincible = Math.max(player.invincible, 0.58);
+      player.buffTimer = Math.max(player.buffTimer, 5.2);
+      launchBurstParryCounters(centerX, centerY, removedProjectiles);
+      game.hint = `삼중 소거 패링 · 탄환 ${cancelled}개 제거 · 자동 반격 3발`;
+      game.hintTimer = 3;
+      spawnParticles(centerX, centerY, "#f3ffff", 34, 560, 0.66, 0);
+      sound.tone(820, 0.24, "triangle", 0.06, 0.42);
+    } else if (cancelled > 0) {
       player.buffTimer = 4.5;
       game.hint = `정밀 버스트 · 탄환 ${cancelled}개 소거 · 일본도 강화`;
       game.hintTimer = 2.4;
     }
-    game.shake = cancelled > 0 ? 18 : 10;
+    game.shake = tripleParry ? 22 : cancelled > 0 ? 18 : 10;
     spawnParticles(centerX, centerY, palette.cyan, 24, 420, 0.58, 180);
     sound.tone(cancelled > 0 ? 520 : 340, 0.22, "sine", 0.055, 0.55);
   }
@@ -6460,6 +6642,7 @@
     player.styleScore = Math.max(0, player.styleScore - (player.comboTimer > 0 ? 2.5 : 14) * dt);
     player.burstCooldown = Math.max(0, player.burstCooldown - dt);
     player.burstTimer = Math.max(0, player.burstTimer - dt);
+    player.burstParryTimer = Math.max(0, player.burstParryTimer - dt);
     player.buffTimer = Math.max(0, player.buffTimer - dt);
     player.shotgunCooldown = Math.max(0, player.shotgunCooldown - dt);
     player.recoilTimer = Math.max(0, player.recoilTimer - dt);
@@ -6833,6 +7016,9 @@
     enemy.anim += dt;
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
+    enemy.turretRecoil = Math.max(0, (enemy.turretRecoil || 0) - dt);
+    updateEnemyBurn(enemy, dt);
+    if (!enemy.alive) return;
     enemy.staggerHitTimer = Math.max(0, (enemy.staggerHitTimer || 0) - dt);
     if (enemy.staggerHitTimer <= 0) enemy.staggerHitCount = 0;
     if (enemy.type === "shield") {
@@ -6970,10 +7156,12 @@
 
     if (enemy.type === "turret") {
       if (distance < 920 && enemy.cooldown <= 0 && enemy.windup <= 0) {
-        enemy.windup = 0.72;
+        enemy.windup = TURRET_CHARGE_SECONDS;
+        enemy.turretChargeDuration = TURRET_CHARGE_SECONDS;
         enemy.cooldown = (3.05 / stagePressure) * formationCooldown;
         enemy.targetX = player.x + player.w / 2 + player.vx * 0.16;
         enemy.targetY = player.y + player.h / 2 + player.vy * 0.05;
+        sound.tone(145, 0.24, "sine", 0.024, 1.75);
       }
       if (enemy.windup > 0) {
         const before = enemy.windup;
@@ -7921,6 +8109,17 @@
         }
       }
 
+      if (bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer)) {
+        bullet.impactTimer -= dt;
+        if (bullet.impactTimer <= 0) {
+          bullet.x = bullet.lockedImpactX - bullet.w / 2;
+          bullet.y = bullet.lockedImpactY - bullet.h / 2;
+          explodeMortar(bullet);
+          bullets.splice(i, 1);
+          continue;
+        }
+      }
+
       bullet.life -= dt;
       let remove = bullet.life <= 0;
       let exploded = false;
@@ -7945,7 +8144,8 @@
         bullet.y += bullet.vy * stepTime;
         bullet.vy += (bullet.gravity || 0) * stepTime;
 
-        if (bullet.enemy && !bullet.harmless && overlaps(bullet, player)) {
+        const lockedMortarInFlight = bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer);
+        if (bullet.enemy && !bullet.harmless && !lockedMortarInFlight && overlaps(bullet, player)) {
           if (bullet.kind === "mortar") {
             explodeMortar(bullet);
             exploded = true;
@@ -7979,6 +8179,7 @@
         for (const platform of nearbyBulletPlatforms) {
           if (platform.hidden) continue;
           if (bullet.piercePlatforms) continue;
+          if (lockedMortarInFlight) continue;
           if (overlaps(bullet, platform)) {
             if (bullet.kind === "mortar") {
               explodeMortar(bullet);
@@ -8085,6 +8286,7 @@
     game.zoneTitle = Math.max(0, game.zoneTitle - dt);
     game.arenaTitle = Math.max(0, game.arenaTitle - dt);
     game.hintTimer = Math.max(0, game.hintTimer - dt);
+    game.stageAbilityNoticeTimer = Math.max(0, (game.stageAbilityNoticeTimer || 0) - dt);
     updateStory(dt);
     if (!game.burstUnlocked && player.x > 5200) {
       game.burstUnlocked = true;
@@ -8119,6 +8321,11 @@
     updateParticles(dt);
     updateCamera(dt);
     cullEnemiesOutsideVerticalView(dt);
+    enemyZoneAuditAccumulator += dt;
+    if (enemyZoneAuditAccumulator >= 0.45) {
+      enemyZoneAuditAccumulator = 0;
+      auditEnemyZoneContainment();
+    }
 
     const narrationStageIndex = getStageIndexAt(player.x);
     const narrationIdle = !game.story && game.storyQueue.length === 0;
@@ -8152,6 +8359,7 @@
     if (stageIndex !== game.stage) {
       game.stage = stageIndex;
       game.stageTitle = 4.4;
+      announceStageAbility(stageIndex);
     }
 
     if (player.x > 430 && player.x < 780 && game.hintTimer <= 0) {
@@ -8701,10 +8909,11 @@
     ctx.scale(facing, 1);
 
     const echoStyle = style === "echo";
+    const flameSword = !echoStyle && game.stage >= ACT_FOUR_INDEX;
     const bodyCyan = echoStyle ? "#a879ff" : palette.cyan;
     const bodyRed = echoStyle ? "#63ffc6" : palette.red;
     const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
-    const bodyBlade = echoStyle ? "#e8dcff" : "#b8f2ed";
+    const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -9034,7 +9243,11 @@
       ctx.fill();
 
       // 더 길고 완만하게 휜 외날과 등줄.
-      const bladeGlow = empowered ? bodyAmber : bodyBlade;
+      const bladeGlow = flameSword ? "#ffad42" : empowered ? bodyAmber : bodyBlade;
+      if (flameSword) {
+        ctx.shadowColor = "#ff5a2e";
+        ctx.shadowBlur = 12;
+      }
       ctx.fillStyle = bladeGlow;
       ctx.beginPath();
       ctx.moveTo(25, -2.4);
@@ -9042,6 +9255,22 @@
       ctx.quadraticCurveTo(69, -4.5, 25, 2.2);
       ctx.closePath();
       ctx.fill();
+      ctx.shadowBlur = 0;
+      if (flameSword) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = "rgba(255, 81, 38, 0.72)";
+        for (let flame = 0; flame < 5; flame += 1) {
+          const flameX = 34 + flame * 10;
+          const flameHeight = 6 + Math.sin(game.time * 19 + flame * 1.7) * 3;
+          ctx.beginPath();
+          ctx.moveTo(flameX - 4, -3);
+          ctx.lineTo(flameX, -8 - flameHeight);
+          ctx.lineTo(flameX + 5, -4);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+      }
       ctx.strokeStyle = palette.white;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -9060,6 +9289,7 @@
 
   function drawPlayer() {
     const empoweredSlash = player.buffTimer > 0;
+    const flameSword = game.stage >= ACT_FOUR_INDEX;
     if (Math.abs(player.vx) > 250) {
       ctx.save();
       ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.28)" : "rgba(101, 245, 234, 0.16)";
@@ -9126,12 +9356,12 @@
       ctx.beginPath();
       ctx.arc(0, 0, (84 + progress * 17) * slashScale, -2.35 + progress * 0.42, 0.92 + progress * 0.5);
       ctx.stroke();
-      ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.42)" : "rgba(101, 245, 234, 0.34)";
+      ctx.strokeStyle = flameSword ? "rgba(255, 112, 48, 0.5)" : empoweredSlash ? "rgba(255, 205, 112, 0.42)" : "rgba(101, 245, 234, 0.34)";
       ctx.lineWidth = player.chargedAttack ? 16 : 10;
       ctx.beginPath();
       ctx.arc(0, 0, (90 + progress * 18) * slashScale, -2.31 + progress * 0.4, 0.88 + progress * 0.48);
       ctx.stroke();
-      ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.72)" : "rgba(255, 73, 108, 0.5)";
+      ctx.strokeStyle = flameSword ? "rgba(255, 196, 78, 0.78)" : empoweredSlash ? "rgba(255, 205, 112, 0.72)" : "rgba(255, 73, 108, 0.5)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(0, 0, 112 * slashScale, -2.12 + progress * 0.32, 0.63 + progress * 0.4);
@@ -9160,6 +9390,27 @@
       ctx.beginPath();
       ctx.arc(player.x + player.w / 2, player.y + player.h / 2, radius - 9, 0, TAU);
       ctx.stroke();
+      ctx.restore();
+    }
+    if (player.burstParryTimer > 0) {
+      const alpha = clamp(player.burstParryTimer / 0.72, 0, 1);
+      const centerX = player.x + player.w / 2;
+      const centerY = player.y + player.h / 2;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(242, 255, 255, ${alpha})`;
+      ctx.lineWidth = 3;
+      for (let blade = 0; blade < 3; blade += 1) {
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(game.time * 5.5 + blade * TAU / 3);
+        ctx.beginPath();
+        ctx.moveTo(42, -13);
+        ctx.lineTo(78, 0);
+        ctx.lineTo(42, 13);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.restore();
     }
   }
@@ -9245,6 +9496,30 @@
       ctx.beginPath();
       ctx.arc(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.48, 18 + pulse * 7, 0, TAU);
       ctx.stroke();
+      ctx.restore();
+    } else if (enemy.type === "turret") {
+      const duration = Math.max(0.01, enemy.turretChargeDuration || TURRET_CHARGE_SECONDS);
+      const progress = clamp(1 - enemy.windup / duration, 0, 1);
+      const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * 58;
+      const muzzleY = enemy.y + enemy.h * 0.44;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = `rgba(255, 207, 98, ${0.32 + progress * 0.6})`;
+      ctx.lineWidth = 2 + progress * 2;
+      for (let ring = 0; ring < 3; ring += 1) {
+        ctx.beginPath();
+        ctx.arc(muzzleX, muzzleY, 30 - progress * 21 + ring * 7, 0, TAU);
+        ctx.stroke();
+      }
+      for (let round = 0; round < 5; round += 1) {
+        const armed = progress >= (round + 1) / 5;
+        ctx.fillStyle = armed ? "rgba(255, 244, 188, 0.95)" : "rgba(255, 207, 98, 0.24)";
+        ctx.fillRect(enemy.x + enemy.w / 2 - 31 + round * 14, enemy.y - 13, 9, 5);
+      }
+      ctx.fillStyle = `rgba(255, 207, 98, ${0.22 + progress * 0.65})`;
+      ctx.beginPath();
+      ctx.arc(muzzleX, muzzleY, 3 + progress * 7, 0, TAU);
+      ctx.fill();
       ctx.restore();
     } else if (enemy.type === "machinegun" && Number.isFinite(enemy.targetX)) {
       const sourceX = enemy.x + enemy.w / 2 + enemy.facing * 30;
@@ -9916,6 +10191,23 @@
   function drawEnemy(enemy) {
     if (!enemy.alive) return;
     drawEnemyTelegraph(enemy);
+    if ((enemy.burnTimer || 0) > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let flame = 0; flame < 5; flame += 1) {
+        const flameX = enemy.x + enemy.w * (0.16 + flame * 0.17);
+        const flameBaseY = enemy.y + enemy.h * (0.88 - (flame % 2) * 0.12);
+        const flameHeight = 12 + Math.sin(game.time * 22 + flame * 2.3) * 5;
+        ctx.fillStyle = flame % 2 ? "rgba(255, 190, 62, 0.72)" : "rgba(255, 76, 34, 0.68)";
+        ctx.beginPath();
+        ctx.moveTo(flameX - 6, flameBaseY);
+        ctx.lineTo(flameX, flameBaseY - flameHeight);
+        ctx.lineTo(flameX + 6, flameBaseY);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     if (enemy.type === "boss" && enemy.bossKind === "echo") {
       const echoPulse = 0.5 + Math.sin(game.time * 5.4) * 0.2;
       const echoCharge = enemy.bossAction === "chargeShot" && enemy.windup > 0
@@ -10128,6 +10420,7 @@
       const aimY = enemy.targetY ?? player.y + player.h / 2;
       const aimX = enemy.targetX ?? player.x + player.w / 2;
       const aimAngle = clamp(Math.atan2(aimY - (enemy.y + enemy.h * 0.42), Math.abs(aimX - (enemy.x + enemy.w / 2))), -0.62, 0.62);
+      const cannonRecoil = clamp((enemy.turretRecoil || 0) / 0.2, 0, 1) * 11;
       ctx.fillStyle = "#101820";
       ctx.fillRect(-25, 40, 50, 9);
       ctx.fillStyle = "#48535a";
@@ -10141,7 +10434,7 @@
       ctx.fillStyle = "#ffcf62";
       ctx.beginPath(); ctx.arc(2, 24, 4 + Math.sin(enemy.anim * 5) * 0.6, 0, TAU); ctx.fill();
       ctx.save();
-      ctx.translate(7, 23);
+      ctx.translate(7 - cannonRecoil, 23);
       ctx.rotate(aimAngle);
       ctx.fillStyle = "#1a2329";
       ctx.beginPath(); ctx.arc(3, 0, 14, 0, TAU); ctx.fill();
@@ -10940,13 +11233,13 @@
       ctx.restore();
       return;
     }
-    if (bullet.kind === "reflected-shotgun" || bullet.kind === "funnel-shot") {
+    if (bullet.kind === "reflected-shotgun" || bullet.kind === "funnel-shot" || bullet.kind === "burst-parry") {
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(Math.atan2(bullet.vy, bullet.vx));
       ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = `${bullet.color}48`;
-      ctx.fillRect(-26, -5, 38, 10);
+      ctx.fillRect(bullet.kind === "burst-parry" ? -34 : -26, -5, bullet.kind === "burst-parry" ? 48 : 38, 10);
       ctx.fillStyle = bullet.color;
       ctx.fillRect(-7, -2, 19, 4);
       ctx.restore();
@@ -11902,6 +12195,27 @@
 
     drawTutorialHud();
 
+    if (game.stageAbilityNotice && game.stageAbilityNoticeTimer > 0) {
+      const notice = game.stageAbilityNotice;
+      const alpha = clamp(Math.min(game.stageAbilityNoticeTimer * 1.8, (6.2 - game.stageAbilityNoticeTimer) * 2.6), 0, 1);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(3, 8, 15, 0.9)";
+      ctx.fillRect(W / 2 - 310, 184, 620, 70);
+      ctx.fillStyle = notice.color;
+      ctx.fillRect(W / 2 - 310, 184, 5, 70);
+      ctx.strokeStyle = `${notice.color}88`;
+      ctx.strokeRect(W / 2 - 309.5, 184.5, 619, 69);
+      ctx.textAlign = "center";
+      ctx.font = "900 18px 'Malgun Gothic', sans-serif";
+      ctx.fillStyle = "#f1ffff";
+      ctx.fillText(notice.title, W / 2, 196);
+      ctx.font = "800 11px 'Malgun Gothic', sans-serif";
+      ctx.fillStyle = notice.color;
+      ctx.fillText(notice.detail, W / 2, 228);
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.translate(7, 7);
     ctx.scale(0.84, 0.84);
@@ -11959,13 +12273,15 @@
     ctx.fillStyle = katanaReady ? "#d9ffff" : "#87969d";
     ctx.font = "700 10px 'Malgun Gothic', sans-serif";
     const chainLabel = player.slashChain > 0 && player.slashChainTimer > 0 ? ` · ${player.slashChain}연계` : "";
-    ctx.fillText(katanaReady ? `일본도 · 발도 준비${chainLabel}` : `일본도 · 납도 중${chainLabel}`, 232, 111);
+    const swordName = game.stage >= ACT_FOUR_INDEX ? "화염검" : "일본도";
+    ctx.fillText(katanaReady ? `${swordName} · 발도 준비${chainLabel}` : `${swordName} · 납도 중${chainLabel}`, 232, 111);
 
     const burstReady = game.burstUnlocked && player.burstCooldown <= 0;
     ctx.fillStyle = burstReady ? palette.cyan : "#31414d";
     ctx.fillRect(47, 140, 24, 9);
     ctx.fillStyle = burstReady ? "#dffffc" : "#75838c";
-    ctx.fillText(game.burstUnlocked ? (burstReady ? "E · 버스트 준비" : `버스트 ${player.burstCooldown.toFixed(1)}초`) : "버스트 잠김", 82, 136);
+    const burstSkillLabel = game.stage >= ACT_THREE_INDEX ? " · 3탄 패링" : "";
+    ctx.fillText(game.burstUnlocked ? (burstReady ? `E · 버스트 준비${burstSkillLabel}` : `버스트 ${player.burstCooldown.toFixed(1)}초`) : "버스트 잠김", 82, 136);
     if (player.buffTimer > 0) {
       ctx.fillStyle = palette.amber;
       ctx.fillText(`정밀 버스트 강화 ${player.buffTimer.toFixed(1)}초`, 207, 136);
@@ -12714,7 +13030,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "2.9.0",
+    version: "3.0.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12748,7 +13064,7 @@
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
     enemies: enemies.length,
-    enemyPlacementDensity: "artillery-tower-formations-v2.9.0",
+    enemyPlacementDensity: "artillery-tower-formations-v3.0.0",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
     stageCombatPressure: [...STAGE_COMBAT_PRESSURE],
     stageBulletPressure: [...STAGE_BULLET_PRESSURE],
@@ -12764,13 +13080,20 @@
     turretShieldHpRatio: 1.5,
     turretVolleyCount: 5,
     turretAimTelegraph: false,
+    turretPrefireLocalCharge: true,
+    turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
     mortarTurretCount: enemies.filter((enemy) => enemy.type === "mortarTurret").length,
     mortarTurretBaseHp: MORTAR_TURRET_BASE_HP,
     mortarTurretVolleyCount: MORTAR_TURRET_VOLLEY_COUNT,
     mortarTurretTerrainCollision: true,
+    mortarExactMarkedImpact: true,
+    mortarBallisticTargetLock: true,
     mortarTurretAdminSpawn: ADMIN_SPAWN_TYPES.has("mortarTurret"),
+    enemyHomeZoneNormalization: true,
+    enemyZoneAuditIntervalSeconds: 0.45,
+    enemiesOutsideHomeZone: enemies.filter((enemy) => enemy.alive && isEnemyOutsideHomeZone(enemy)).length,
     activeEnemies: getActiveEnemies().length,
     platforms: platforms.length,
     zoneTemplateCount: new Set(zones.map((zone) => zone.template)).size,
@@ -12823,6 +13146,7 @@
     midBossHealReward: false,
     gongmunSwordMotion: true,
     gongmunSwordWaves: true,
+    gongmunSwordWaveOrientation: "vertical-crescent",
     gongmunSimplifiedArmor: true,
     adminDirectCanvasTransform: true,
     adminTransformHandles: 8,
@@ -12851,6 +13175,15 @@
     mutantDebrisSlashClear: false,
     proxyMutationHealRatio: 0.25,
     parryEnabled: false,
+    burstTripleParryEnabled: true,
+    burstTripleParryAct: ACT_THREE_INDEX + 1,
+    burstTripleParryProjectileCount: BURST_PARRY_PROJECTILE_COUNT,
+    flameSwordEnabled: true,
+    flameSwordAct: ACT_FOUR_INDEX + 1,
+    flameSwordBurnSeconds: FLAME_SWORD_BURN_SECONDS,
+    flameSwordBurnInterval: FLAME_SWORD_BURN_INTERVAL,
+    flameSwordBurnDamage: FLAME_SWORD_BURN_DAMAGE,
+    stageAbilityAnnouncements: true,
     playerBulletReflection: false,
     echoParryEnabled: false,
     allDirectionBulletDestroy: false,
@@ -12910,7 +13243,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "2.9.0",
+    gameVersion: "3.0.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -12948,7 +13281,7 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
-    enemyPlacementDensity: "artillery-tower-formations-v2.9.0",
+    enemyPlacementDensity: "artillery-tower-formations-v3.0.0",
     enemyBaseCountByStage: "8,10,12,14,16",
     stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
     stageBulletPressure: STAGE_BULLET_PRESSURE.join(","),
@@ -12964,13 +13297,20 @@
     turretShieldHpRatio: "1.5",
     turretVolleyCount: "5",
     turretAimTelegraph: "false",
+    turretPrefireLocalCharge: "true",
+    turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
     mortarTurretCount: String(enemies.filter((enemy) => enemy.type === "mortarTurret").length),
     mortarTurretBaseHp: String(MORTAR_TURRET_BASE_HP),
     mortarTurretVolleyCount: String(MORTAR_TURRET_VOLLEY_COUNT),
     mortarTurretTerrainCollision: "true",
+    mortarExactMarkedImpact: "true",
+    mortarBallisticTargetLock: "true",
     mortarTurretAdminSpawn: String(ADMIN_SPAWN_TYPES.has("mortarTurret")),
+    enemyHomeZoneNormalization: "true",
+    enemyZoneAuditIntervalSeconds: "0.45",
+    enemiesOutsideHomeZone: String(enemies.filter((enemy) => enemy.alive && isEnemyOutsideHomeZone(enemy)).length),
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
@@ -13024,6 +13364,7 @@
     bossRewardDamagePerLevel: "0",
     gongmunSwordMotion: "true",
     gongmunSwordWaves: "true",
+    gongmunSwordWaveOrientation: "vertical-crescent",
     gongmunSimplifiedArmor: "true",
     adminDirectCanvasTransform: "true",
     adminTransformHandles: "8",
@@ -13031,6 +13372,15 @@
     mobileDedicatedAttackButtons: "true",
     mobileAttackAimAssist: "true",
     campaignSaveVersion: "2",
+    burstTripleParryEnabled: "true",
+    burstTripleParryAct: String(ACT_THREE_INDEX + 1),
+    burstTripleParryProjectileCount: String(BURST_PARRY_PROJECTILE_COUNT),
+    flameSwordEnabled: "true",
+    flameSwordAct: String(ACT_FOUR_INDEX + 1),
+    flameSwordBurnSeconds: String(FLAME_SWORD_BURN_SECONDS),
+    flameSwordBurnInterval: String(FLAME_SWORD_BURN_INTERVAL),
+    flameSwordBurnDamage: String(FLAME_SWORD_BURN_DAMAGE),
+    stageAbilityAnnouncements: "true",
     continueUsesCheckpointKey: "true",
     continueRollsBackCurrentZone: "true",
     checkpointSafetyPass: String(checkpoints.every((checkpoint) => {

@@ -23,7 +23,11 @@ function element(id = "") {
   };
 }
 
-const ctx = new Proxy({}, {
+const ctx = new Proxy({
+  createLinearGradient() { return { addColorStop() {} }; },
+  createRadialGradient() { return { addColorStop() {} }; },
+  measureText(value) { return { width: String(value || "").length * 10 }; },
+}, {
   get(target, property) {
     if (property in target) return target[property];
     return (...args) => undefined;
@@ -62,14 +66,15 @@ global.document = {
   createElement() { return element(); },
   addEventListener() {}, fullscreenElement: null, fullscreenEnabled: false,
 };
-global.requestAnimationFrame = () => 1;
+let animationCallback = null;
+global.requestAnimationFrame = (callback) => { animationCallback = callback; return 1; };
 global.cancelAnimationFrame = () => {};
 
 const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "2.9.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.0.0") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
@@ -117,7 +122,30 @@ if (gameSource.includes('enemy.type === "turret" && Number.isFinite(enemy.target
 if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || !diagnostics.mortarTurretAdminSpawn) {
   throw new Error(`mortar turret invalid: ${diagnostics.mortarTurretCount}/${diagnostics.mortarTurretVolleyCount}`);
 }
+if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZone !== 0 || diagnostics.enemyZoneAuditIntervalSeconds !== 0.45) {
+  throw new Error(`enemy zone containment invalid: ${diagnostics.enemiesOutsideHomeZone}`);
+}
+if (!diagnostics.mortarExactMarkedImpact || !diagnostics.mortarBallisticTargetLock || !/lockedImpactX:[\s\S]{0,180}impactTimer:/.test(gameSource)) {
+  throw new Error("mortar marked-position targeting is missing");
+}
+if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82) {
+  throw new Error(`turret prefire charge invalid: ${diagnostics.turretChargeSeconds}`);
+}
+if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {
+  throw new Error("act 3 triple-projectile burst parry is missing");
+}
+if (!diagnostics.flameSwordEnabled || diagnostics.flameSwordAct !== 4 || diagnostics.flameSwordBurnDamage !== 0.2 || !diagnostics.stageAbilityAnnouncements) {
+  throw new Error("act 4 flame sword progression is missing");
+}
+if (diagnostics.gongmunSwordWaveOrientation !== "vertical-crescent") {
+  throw new Error(`gongmun sword wave orientation invalid: ${diagnostics.gongmunSwordWaveOrientation}`);
+}
 document.getElementById("continue-button").click();
+for (let frame = 0; frame < 12; frame += 1) {
+  const callback = animationCallback;
+  animationCallback = null;
+  if (typeof callback === "function") callback(1000 + frame * 16.667);
+}
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 if (restored.activeCheckpointKey !== "2:12") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
 const migrated = JSON.parse(storage.get("moonlit-echo-campaign-v1"));
@@ -144,4 +172,10 @@ console.log(JSON.stringify({
   turretShotsPiercePlatforms: diagnostics.turretShotsPiercePlatforms,
   mortarTurretCount: diagnostics.mortarTurretCount,
   mortarTurretVolleyCount: diagnostics.mortarTurretVolleyCount,
+  enemiesOutsideHomeZone: diagnostics.enemiesOutsideHomeZone,
+  mortarExactMarkedImpact: diagnostics.mortarExactMarkedImpact,
+  turretChargeSeconds: diagnostics.turretChargeSeconds,
+  burstTripleParryAct: diagnostics.burstTripleParryAct,
+  flameSwordAct: diagnostics.flameSwordAct,
+  gongmunSwordWaveOrientation: diagnostics.gongmunSwordWaveOrientation,
 }));
