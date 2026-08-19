@@ -1133,6 +1133,8 @@
     shotgunCharge: 0,
     shotId: 0,
     recoilTimer: 0,
+    shotAimX: 1,
+    shotAimY: 0,
     wallLeft: false,
     wallRight: false,
     burstCooldown: 0,
@@ -3815,6 +3817,8 @@
       shotgunCharge: 0,
       shotId: 0,
       recoilTimer: 0,
+      shotAimX: 1,
+      shotAimY: 0,
       wallLeft: false,
       wallRight: false,
       burstCooldown: 0,
@@ -4785,6 +4789,8 @@
     player.shotgunCooldown = overcharged ? 0.36 : 0.27;
     player.shotgunReload = overcharged ? 1.02 : 0.78;
     player.recoilTimer = 0.18;
+    player.shotAimX = aim.x;
+    player.shotAimY = aim.y;
     if (overcharged) player.shotgunCharge = 0;
 
     const reactiveOracle = enemies.find((enemy) => {
@@ -6452,7 +6458,7 @@
 
   function launchBurstParryCounters(centerX, centerY, removedProjectiles) {
     const targets = getActiveEnemies()
-      .filter((enemy) => enemy.alive)
+      .filter((enemy) => enemy.alive && enemy.type !== "boss")
       .sort((first, second) => (
         Math.hypot(first.x + first.w / 2 - centerX, first.y + first.h / 2 - centerY)
         - Math.hypot(second.x + second.w / 2 - centerX, second.y + second.h / 2 - centerY)
@@ -6513,7 +6519,8 @@
       if (enemy.alive && distance <= 112) damageEnemy(enemy, { source: "burst" });
     }
 
-    const tripleParry = game.stage >= ACT_THREE_INDEX && cancelled >= BURST_PARRY_PROJECTILE_COUNT;
+    const bossFightActive = getActiveEnemies().some((enemy) => enemy.alive && enemy.type === "boss");
+    const tripleParry = !bossFightActive && game.stage >= ACT_THREE_INDEX && cancelled >= BURST_PARRY_PROJECTILE_COUNT;
     if (tripleParry) {
       player.burstParryTimer = 0.72;
       player.invincible = Math.max(player.invincible, 0.58);
@@ -7089,6 +7096,8 @@
     if (enemy.type === "runner") {
       const rushSpeed = (365 + enemy.stageIndex * 18) * enemySpeedScale;
       if (enemy.rushTimer > 0) {
+        const rushStartX = enemy.x;
+        const rushStartY = enemy.y;
         enemy.rushTimer = Math.max(0, enemy.rushTimer - dt);
         if (!hasGroundAhead(enemy, enemy.rushDirection, 34)) {
           enemy.rushTimer = 0;
@@ -7097,7 +7106,15 @@
           enemy.vx = enemy.rushDirection * rushSpeed;
         }
         moveEnemyPhysics(enemy, dt);
-        if (overlaps(player, enemy)) damagePlayer(1, enemy.x + enemy.w / 2);
+        // Sweep the entire travelled path and extend the leading edge. A final-position-only
+        // AABB could skip the player on leftward rushes between two simulation frames.
+        const leadingReach = 16;
+        const rushLeft = Math.min(rushStartX, enemy.x) - (enemy.rushDirection < 0 ? leadingReach : 0);
+        const rushRight = Math.max(rushStartX + enemy.w, enemy.x + enemy.w) + (enemy.rushDirection > 0 ? leadingReach : 0);
+        const rushTop = Math.min(rushStartY, enemy.y) + 2;
+        const rushBottom = Math.max(rushStartY + enemy.h, enemy.y + enemy.h);
+        const rushHitbox = { x: rushLeft, y: rushTop, w: rushRight - rushLeft, h: rushBottom - rushTop };
+        if (overlaps(player, rushHitbox)) damagePlayer(1, enemy.x + enemy.w / 2);
         return;
       }
       if (enemy.windup > 0) {
@@ -8919,28 +8936,47 @@
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
     const running = runBlend > 0.04;
     const walling = !player.grounded && (player.wallLeft || player.wallRight);
-    // Distance-driven 8-pose pixel animation: contact, compression, passing and lift.
-    // Holding each key pose for a few display frames keeps the silhouette crisp
-    // instead of making the limbs look like smoothly rotating sticks.
-    const runFrame = ((Math.floor(player.runCycle / (TAU / 8)) % 8) + 8) % 8;
-    const runStride = [0.82, 0.42, 0, -0.48, -0.84, -0.44, 0, 0.5];
-    const runBob = [0, 1.15, 2.25, 1.35, 0, 1.05, 2.05, 1.2];
+    const poseEase = (value) => value * value * (3 - value * 2);
+    const sampleLoop = (values, phase) => {
+      const base = Math.floor(phase);
+      const fraction = poseEase(phase - base);
+      const current = values[((base % values.length) + values.length) % values.length];
+      const next = values[((base + 1) % values.length + values.length) % values.length];
+      return lerp(current, next, fraction);
+    };
+    // Twelve designed poses are blended with eased in-betweens, then snapped at
+    // the joints. This preserves pixel clarity without the old paper-doll stepping.
+    const runPosePhase = player.runCycle / (TAU / 12);
+    const runFrame = ((Math.floor(runPosePhase) % 12) + 12) % 12;
+    const runStride = [0.78, 0.62, 0.36, 0.05, -0.3, -0.62, -0.8, -0.6, -0.32, 0.02, 0.38, 0.66];
+    const runBob = [0, 0.55, 1.45, 2.15, 1.8, 0.85, 0.05, 0.5, 1.35, 2.05, 1.7, 0.72];
     const idleFrame = Math.floor(game.time * 6) % 8;
     const idleBob = [0, 0, 0.45, 0.45, 0.45, 0, 0, 0];
-    const stride = runStride[runFrame];
+    const stride = sampleLoop(runStride, runPosePhase);
     const bob = running
-      ? runBob[runFrame] * (0.72 + runBlend * 0.58)
+      ? sampleLoop(runBob, runPosePhase) * (0.72 + runBlend * 0.58)
       : idleBob[idleFrame];
     const squashX = 1 + player.squash * 0.42;
     const squashY = 1 - player.squash * 0.52;
-    const lean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
     const attacking = player.attackTimer > 0;
     const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
+    const shooting = player.recoilTimer > 0;
+    const shotProgress = shooting ? 1 - player.recoilTimer / 0.18 : 1;
+    const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
+    const attackLunge = attacking
+      ? attackProgress < 0.22
+        ? -poseEase(attackProgress / 0.22) * 2.5
+        : attackProgress < 0.64
+          ? lerp(-2.5, 7.5, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(7.5, 0, poseEase((attackProgress - 0.64) / 0.36))
+      : 0;
+    const baseLean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
+    const actionLean = attacking ? lerp(-0.09, 0.18, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.1 * shotKick : 0;
     const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
 
-    ctx.translate(0, -bob);
+    ctx.translate(attackLunge - shotKick * 5, -bob + shotKick * 1.5);
     ctx.scale(squashX, squashY);
-    ctx.rotate(lean);
+    ctx.rotate(baseLean + actionLean);
 
     if (ghost) {
       ctx.fillStyle = bodyCyan;
@@ -9014,7 +9050,7 @@
       return { x: endX, y: endY, angle: lowerAngle };
     }
 
-    function legPose(frame, layer) {
+    function legPose(phase, layer) {
       if (walling) {
         return layer === "back"
           ? { upper: -0.72, knee: -0.88 }
@@ -9035,18 +9071,46 @@
           ? { upper: 0.42, knee: 0.88 }
           : { upper: -0.52, knee: -0.6 };
       }
+      if (shooting) {
+        return layer === "back"
+          ? { upper: -0.5 - shotKick * 0.12, knee: 0.34 + shotKick * 0.34 }
+          : { upper: 0.48, knee: 0.42 + shotKick * 0.22 };
+      }
+      if (attacking) {
+        if (attackProgress < 0.22) {
+          const t = poseEase(attackProgress / 0.22);
+          return layer === "back"
+            ? { upper: lerp(-0.08, -0.42, t), knee: lerp(0.2, 0.72, t) }
+            : { upper: lerp(0.08, 0.28, t), knee: lerp(0.18, 0.58, t) };
+        }
+        if (attackProgress < 0.64) {
+          const t = poseEase((attackProgress - 0.22) / 0.42);
+          return layer === "back"
+            ? { upper: lerp(-0.42, -0.68, t), knee: lerp(0.72, 0.86, t) }
+            : { upper: lerp(0.28, 0.76, t), knee: lerp(0.58, 0.18, t) };
+        }
+        const t = poseEase((attackProgress - 0.64) / 0.36);
+        return layer === "back"
+          ? { upper: lerp(-0.68, -0.04, t), knee: lerp(0.86, 0.16, t) }
+          : { upper: lerp(0.76, 0.04, t), knee: lerp(0.18, 0.16, t) };
+      }
       const runLegPoses = [
-        { upper: 0.72, knee: 0.18 },
-        { upper: 0.34, knee: 0.42 },
-        { upper: 0.02, knee: 0.92 },
-        { upper: -0.48, knee: 1.18 },
-        { upper: -0.7, knee: 0.22 },
-        { upper: -0.3, knee: 0.16 },
-        { upper: 0.08, knee: 0.5 },
-        { upper: 0.48, knee: 0.72 },
+        { upper: 0.7, knee: 0.16 }, { upper: 0.58, knee: 0.22 },
+        { upper: 0.36, knee: 0.5 }, { upper: 0.04, knee: 0.88 },
+        { upper: -0.3, knee: 1.12 }, { upper: -0.58, knee: 0.72 },
+        { upper: -0.7, knee: 0.2 }, { upper: -0.54, knee: 0.15 },
+        { upper: -0.3, knee: 0.2 }, { upper: 0.06, knee: 0.46 },
+        { upper: 0.38, knee: 0.7 }, { upper: 0.62, knee: 0.48 },
       ];
-      const poseIndex = layer === "back" ? (frame + 4) % 8 : frame;
-      const pose = runLegPoses[poseIndex];
+      const posePhase = phase + (layer === "back" ? 6 : 0);
+      const poseIndex = Math.floor(posePhase);
+      const poseT = poseEase(posePhase - Math.floor(posePhase));
+      const currentPose = runLegPoses[((poseIndex % 12) + 12) % 12];
+      const nextPose = runLegPoses[((poseIndex + 1) % 12 + 12) % 12];
+      const pose = {
+        upper: lerp(currentPose.upper, nextPose.upper, poseT),
+        knee: lerp(currentPose.knee, nextPose.knee, poseT),
+      };
       const landingBend = player.squash * 0.8;
       return {
         upper: pose.upper * runBlend + (layer === "back" ? -0.04 : 0.04) * (1 - runBlend),
@@ -9054,8 +9118,8 @@
       };
     }
 
-    const backPose = legPose(runFrame, "back");
-    const frontPose = legPose(runFrame, "front");
+    const backPose = legPose(runPosePhase, "back");
+    const frontPose = legPose(runPosePhase, "front");
     drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, "#0c1825", true);
     drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, "#172b3c", true);
 
@@ -9181,8 +9245,15 @@
     ctx.fillRect(-4, -18, 3, 2);
     ctx.fillRect(5, -18, 3, 2);
 
-    const rearArm = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
-    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, -0.42, "#152638", false, true);
+    const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
+    const rearArm = shooting
+      ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
+      : attacking
+        ? -0.34 - attackLunge * 0.025
+        : running
+          ? -stride * 0.58 * runBlend + 0.14
+          : 0.28;
+    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, "#152638", false, true);
 
     ctx.fillStyle = "#8da0aa";
     ctx.fillRect(-10, -57, 19, 16);
@@ -9241,31 +9312,39 @@
     ctx.fillRect(-10, -46, 2, 3);
 
     let armAngle = running ? stride * 0.5 : -0.15;
+    let bladeAngle = -1.1;
     if (!player.grounded) armAngle = -0.48;
+    if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
     if (attacking) {
-      const ease = (value) => value * value * (3 - value * 2);
       if (attackProgress < 0.2) {
-        armAngle = -0.48 + (-2.28 + 0.48) * ease(attackProgress / 0.2);
+        const t = poseEase(attackProgress / 0.2);
+        armAngle = lerp(-0.42, -1.18, t);
+        bladeAngle = lerp(-1.05, -2.05, t);
       } else if (attackProgress < 0.62) {
-        armAngle = -2.28 + 4.38 * ease((attackProgress - 0.2) / 0.42);
+        const t = poseEase((attackProgress - 0.2) / 0.42);
+        armAngle = lerp(-1.18, 1.3, t);
+        bladeAngle = lerp(-2.05, 0.92, t);
       } else {
-        armAngle = 2.1 + (-0.08 - 2.1) * ease((attackProgress - 0.62) / 0.38);
+        const t = poseEase((attackProgress - 0.62) / 0.38);
+        armAngle = lerp(1.3, -0.08, t);
+        bladeAngle = lerp(0.92, -0.16, t);
       }
       armAngle += player.attackDir.y * 0.72;
+      bladeAngle += player.attackDir.y * 0.9;
     }
 
-    drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0 : 0.38, "#294459", false, !attacking);
+    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, "#294459", false, !attacking);
     if (attacking) {
       ctx.save();
-      ctx.translate(10, -38);
-      ctx.rotate(armAngle);
+      ctx.translate(frontHand.x, frontHand.y);
+      ctx.rotate(bladeAngle);
 
       // 붉은 끈으로 감은 손잡이와 원형 코등이.
       ctx.fillStyle = "#10141d";
-      ctx.fillRect(7, -4, 15, 8);
+      ctx.fillRect(-7, -4, 18, 8);
       ctx.strokeStyle = empowered ? bodyAmber : bodyRed;
       ctx.lineWidth = 1;
-      for (let wrap = 9; wrap < 21; wrap += 4) {
+      for (let wrap = -5; wrap < 10; wrap += 4) {
         ctx.beginPath();
         ctx.moveTo(wrap, -4);
         ctx.lineTo(wrap + 3, 4);
@@ -9273,11 +9352,11 @@
       }
       ctx.fillStyle = "#b58b43";
       ctx.beginPath();
-      ctx.ellipse(23, 0, 3, 7, 0, 0, TAU);
+      ctx.ellipse(12, 0, 3, 7, 0, 0, TAU);
       ctx.fill();
       ctx.fillStyle = "#1b2833";
       ctx.beginPath();
-      ctx.ellipse(23, 0, 1.4, 5, 0, 0, TAU);
+      ctx.ellipse(12, 0, 1.4, 5, 0, 0, TAU);
       ctx.fill();
 
       // 더 길고 완만하게 휜 외날과 등줄.
@@ -9288,9 +9367,9 @@
       }
       ctx.fillStyle = bladeGlow;
       ctx.beginPath();
-      ctx.moveTo(25, -2.4);
-      ctx.quadraticCurveTo(56, -6.5, 82, -15);
-      ctx.quadraticCurveTo(69, -4.5, 25, 2.2);
+      ctx.moveTo(14, -2.4);
+      ctx.quadraticCurveTo(49, -6.5, 78, -15);
+      ctx.quadraticCurveTo(64, -4.5, 14, 2.2);
       ctx.closePath();
       ctx.fill();
       ctx.shadowBlur = 0;
@@ -9298,7 +9377,7 @@
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = "rgba(255, 81, 38, 0.72)";
         for (let flame = 0; flame < 5; flame += 1) {
-          const flameX = 34 + flame * 10;
+          const flameX = 25 + flame * 10;
           const flameHeight = 6 + Math.sin(game.time * 19 + flame * 1.7) * 3;
           ctx.beginPath();
           ctx.moveTo(flameX - 4, -3);
@@ -9312,14 +9391,70 @@
       ctx.strokeStyle = palette.white;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(27, -1.4);
-      ctx.quadraticCurveTo(58, -5.3, 80, -14);
+      ctx.moveTo(16, -1.4);
+      ctx.quadraticCurveTo(52, -5.3, 76, -14);
       ctx.stroke();
       ctx.strokeStyle = "#31586a";
       ctx.beginPath();
-      ctx.moveTo(26, 1.7);
-      ctx.quadraticCurveTo(60, -0.8, 75, -8);
+      ctx.moveTo(15, 1.7);
+      ctx.quadraticCurveTo(54, -0.8, 71, -8);
       ctx.stroke();
+      ctx.restore();
+    } else if (shooting) {
+      ctx.save();
+      const recoilOffset = shotKick * 7;
+      ctx.translate(frontHand.x - Math.cos(shotAimAngle) * recoilOffset, frontHand.y - Math.sin(shotAimAngle) * recoilOffset);
+      ctx.rotate(shotAimAngle);
+
+      // M-12 compact combat shotgun: stock, receiver, loading port, pump,
+      // twin barrel, sights and chamber indicator are separate pixel clusters.
+      ctx.fillStyle = "#070d15";
+      ctx.beginPath();
+      ctx.moveTo(-27, -5); ctx.lineTo(-9, -8); ctx.lineTo(-3, -5);
+      ctx.lineTo(-8, 5); ctx.lineTo(-25, 8); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#314754";
+      ctx.fillRect(-24, -3, 18, 7);
+      ctx.fillStyle = bodyRed;
+      ctx.fillRect(-21, -2, 4, 5);
+      ctx.fillStyle = "#0c1722";
+      ctx.fillRect(-7, -7, 24, 14);
+      ctx.fillStyle = "#4b6875";
+      ctx.fillRect(-4, -5, 18, 4);
+      ctx.fillStyle = "#81969d";
+      ctx.fillRect(1, -4, 9, 2);
+      ctx.fillStyle = "#050b12";
+      ctx.fillRect(0, 2, 10, 3);
+      ctx.fillStyle = bodyCyan;
+      ctx.fillRect(11, 2, 4, 3);
+      ctx.fillStyle = "#172631";
+      ctx.beginPath();
+      ctx.moveTo(-1, 7); ctx.lineTo(9, 7); ctx.lineTo(6, 17); ctx.lineTo(0, 15); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#81969d";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(6, 7, 4, 0.15, Math.PI - 0.15); ctx.stroke();
+      ctx.fillStyle = "#263c47";
+      ctx.fillRect(15, -6, 19, 12);
+      ctx.fillStyle = "#58727c";
+      for (let grip = 18; grip < 33; grip += 4) ctx.fillRect(grip, -5, 2, 10);
+      ctx.fillStyle = "#111c26";
+      ctx.fillRect(32, -5, 24, 4);
+      ctx.fillRect(32, 1, 24, 4);
+      ctx.fillStyle = "#78909a";
+      ctx.fillRect(34, -4, 20, 1);
+      ctx.fillRect(34, 2, 20, 1);
+      ctx.fillStyle = "#0a1017";
+      ctx.fillRect(54, -6, 5, 5);
+      ctx.fillRect(54, 1, 5, 5);
+      ctx.fillStyle = bodyAmber;
+      ctx.fillRect(6, -9, 3, 2);
+      ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : bodyCyan;
+      ctx.fillRect(12, -5, 2, 3);
+
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = clamp(player.recoilTimer * 9, 0, 1);
+      ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : palette.white;
+      ctx.beginPath();
+      ctx.moveTo(58, -10); ctx.lineTo(91, 0); ctx.lineTo(58, 10); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
     ctx.restore();
@@ -9348,35 +9483,6 @@
 
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
     if (!blink) drawPlayerBody(player.x, player.y, player.facing);
-
-    if (player.recoilTimer > 0) {
-      const aim = getPointerAim();
-      const centerX = player.x + player.w / 2;
-      const centerY = player.y + player.h * 0.46;
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(Math.atan2(aim.y, aim.x));
-      ctx.fillStyle = "#111923";
-      ctx.fillRect(2, -5, 38, 10);
-      ctx.fillStyle = "#506978";
-      ctx.fillRect(8, -3, 30, 3);
-      ctx.fillStyle = palette.red;
-      ctx.fillRect(0, -6, 7, 12);
-      ctx.fillStyle = "#182d3b";
-      ctx.fillRect(12, 5, 8, 13);
-      ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.cyan;
-      ctx.fillRect(33, -4, 7, 8);
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = clamp(player.recoilTimer * 9, 0, 1);
-      ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.white;
-      ctx.beginPath();
-      ctx.moveTo(40, -8);
-      ctx.lineTo(73, 0);
-      ctx.lineTo(40, 8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
 
     if (isAttackActive()) {
       const centerX = player.x + player.w / 2;
@@ -10273,6 +10379,9 @@
         attackDuration: player.attackDuration,
         attackDir: player.attackDir,
         chargedAttack: player.chargedAttack,
+        recoilTimer: player.recoilTimer,
+        shotAimX: player.shotAimX,
+        shotAimY: player.shotAimY,
       };
       const echoDrawingSword = ["echoSlash", "echoCounter", "echoDash"].includes(enemy.bossAction);
       Object.assign(player, {
@@ -10287,6 +10396,9 @@
         attackDuration: 0.4,
         attackDir: { x: enemy.facing, y: enemy.bossAction === "echoCounter" ? -0.24 : 0.08 },
         chargedAttack: enemy.bossAction === "echoCounter",
+        recoilTimer: enemy.bossAction === "chargeShot" && enemy.bossShotPattern === "echo-shotgun" ? Math.max(0.04, enemy.windup || 0.1) : 0,
+        shotAimX: enemy.facing,
+        shotAimY: 0,
       });
       ctx.save();
       ctx.globalAlpha = 0.28;
@@ -10311,14 +10423,6 @@
       drawPlayerBody(enemy.x, enemy.y, enemy.facing, enemy.hurt > 0 ? 0.92 : 1, false, "echo");
       ctx.restore();
 
-      if (enemy.bossAction === "chargeShot" && enemy.bossShotPattern === "echo-shotgun") {
-        ctx.save();
-        ctx.translate(enemy.x + enemy.w / 2 + enemy.facing * 13, enemy.y + 34);
-        ctx.scale(enemy.facing, 1);
-        ctx.fillStyle = "#241934"; ctx.fillRect(0, -5, 28, 10);
-        ctx.fillStyle = "#c9a7ff"; ctx.fillRect(19, -3, 19, 3); ctx.fillRect(19, 2, 19, 3);
-        ctx.restore();
-      }
       ctx.save();
       ctx.textAlign = "center";
       ctx.font = "700 10px monospace";
@@ -10336,9 +10440,17 @@
     const variant = hash(enemy.originX * 0.17 + enemy.maxHp);
     const damageRatio = 1 - enemy.hp / enemy.maxHp;
     const enemyGaitPhase = enemy.anim * (enemy.type === "runner" ? 10 : 6);
-    const enemyGaitFrame = ((Math.floor(enemyGaitPhase / (TAU / 8)) % 8) + 8) % 8;
     const enemyGaitPoses = [0.86, 0.48, 0, -0.5, -0.88, -0.46, 0, 0.52];
-    const locomotion = enemyGaitPoses[enemyGaitFrame];
+    const sampleEnemyGait = (phase) => {
+      const posePhase = phase / (TAU / enemyGaitPoses.length);
+      const base = Math.floor(posePhase);
+      const rawT = posePhase - base;
+      const t = rawT * rawT * (3 - rawT * 2);
+      const current = enemyGaitPoses[((base % enemyGaitPoses.length) + enemyGaitPoses.length) % enemyGaitPoses.length];
+      const next = enemyGaitPoses[((base + 1) % enemyGaitPoses.length + enemyGaitPoses.length) % enemyGaitPoses.length];
+      return lerp(current, next, t);
+    };
+    const locomotion = sampleEnemyGait(enemyGaitPhase);
     const movingRatio = clamp(Math.abs(enemy.vx) / 110, 0, 1);
     const bodyBob = enemy.type === "drone"
       ? Math.sin(enemy.anim * 3.4) * 2
@@ -10377,8 +10489,7 @@
     }
 
     function drawRobotLeg(hipX, hipY, phase, upperLength, lowerLength, width, accent, heavy = false) {
-      const gaitFrame = ((Math.floor(phase / (TAU / 8)) % 8) + 8) % 8;
-      const gait = enemyGaitPoses[gaitFrame];
+      const gait = sampleEnemyGait(phase);
       const strideAmount = (heavy ? 0.34 : 0.58) * movingRatio;
       const upperAngle = gait * strideAmount;
       const kneeLift = Math.max(0, gait) * movingRatio;
@@ -13080,7 +13191,7 @@
   buildLevel();
   levelReady = true;
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.1.0",
+    version: "3.2.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13122,6 +13233,8 @@
     sentryRoles: { runner: "charge", gunner: "single-shot", machinegun: "four-round-burst", turret: "five-parallel-wall-piercing-shot", mortarTurret: "triple-mortar-volley" },
     runnerDashPathTelegraph: false,
     runnerCompactChargeTelegraph: true,
+    runnerSweptRushHitbox: true,
+    runnerRushLeadingReach: 16,
     machinegunBurstRounds: SENTRY_BURST_ROUNDS,
     machinegunBurstInterval: SENTRY_BURST_INTERVAL,
     machinegunCount: enemies.filter((enemy) => enemy.type === "machinegun").length,
@@ -13133,11 +13246,16 @@
     turretPrefireLocalCharge: true,
     turretChargeDisplay: "muzzle-convergence",
     playerFrameBasedAnimation: true,
-    playerRunPoseCount: 8,
+    playerRunPoseCount: 12,
     playerAttackKeyPoseCount: 3,
     playerSecondaryMotion: true,
     enemyFrameBasedGait: true,
     pixelSnappedJoints: true,
+    poseInterpolation: "eased-pixel-snapped",
+    weaponsAttachedToHands: true,
+    swordFullBodyAnimation: true,
+    shotgunBodyRecoilAnimation: true,
+    detailedShotgunDesign: true,
     turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
@@ -13233,6 +13351,7 @@
     proxyMutationHealRatio: 0.25,
     parryEnabled: false,
     burstTripleParryEnabled: true,
+    bossBurstParryEnabled: false,
     burstTripleParryAct: ACT_THREE_INDEX + 1,
     burstTripleParryProjectileCount: BURST_PARRY_PROJECTILE_COUNT,
     flameSwordEnabled: true,
@@ -13300,7 +13419,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.1.0",
+    gameVersion: "3.2.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13346,6 +13465,8 @@
     sentryRoles: "runner:charge,gunner:single-shot,machinegun:four-round-burst,turret:five-parallel-wall-piercing-shot,mortarTurret:triple-mortar-volley",
     runnerDashPathTelegraph: "false",
     runnerCompactChargeTelegraph: "true",
+    runnerSweptRushHitbox: "true",
+    runnerRushLeadingReach: "16",
     machinegunBurstRounds: String(SENTRY_BURST_ROUNDS),
     machinegunBurstInterval: String(SENTRY_BURST_INTERVAL),
     machinegunCount: String(enemies.filter((enemy) => enemy.type === "machinegun").length),
@@ -13357,11 +13478,16 @@
     turretPrefireLocalCharge: "true",
     turretChargeDisplay: "muzzle-convergence",
     playerFrameBasedAnimation: "true",
-    playerRunPoseCount: "8",
+    playerRunPoseCount: "12",
     playerAttackKeyPoseCount: "3",
     playerSecondaryMotion: "true",
     enemyFrameBasedGait: "true",
     pixelSnappedJoints: "true",
+    poseInterpolation: "eased-pixel-snapped",
+    weaponsAttachedToHands: "true",
+    swordFullBodyAnimation: "true",
+    shotgunBodyRecoilAnimation: "true",
+    detailedShotgunDesign: "true",
     turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
@@ -13437,6 +13563,7 @@
     mobileAttackAimAssist: "true",
     campaignSaveVersion: "2",
     burstTripleParryEnabled: "true",
+    bossBurstParryEnabled: "false",
     burstTripleParryAct: String(ACT_THREE_INDEX + 1),
     burstTripleParryProjectileCount: String(BURST_PARRY_PROJECTILE_COUNT),
     flameSwordEnabled: "true",
