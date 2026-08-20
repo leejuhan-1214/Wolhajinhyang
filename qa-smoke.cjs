@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.5.1") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.5.2") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -102,6 +102,9 @@ if (diagnostics.bossArenaEdgeInset !== 64 || !diagnostics.bossMovementUsesFullAr
 }
 if (diagnostics.bossPatternDirector !== "adaptive-no-repeat" || !diagnostics.bossPhaseTwoFollowupCombos || diagnostics.bossPatternOrderCount !== 10 || diagnostics.weaverPatternVariants !== 5 || diagnostics.echoPatternVariants !== 6) {
   throw new Error("expanded boss pattern director is missing");
+}
+if (!diagnostics.bossVisualDetailPass || diagnostics.detailedBossVisualCount !== 10 || !diagnostics.weaverLayeredMaskDesign || !diagnostics.oracleSixWitnessMaskDesign || !diagnostics.proxyMutationVisualState) {
+  throw new Error("boss visual detail regression");
 }
 if (gameSource.includes("Math.max(homeArena.left, enemy.originX - 920)") || gameSource.includes("Math.min(homeArena.right, enemy.originX + 820)")) {
   throw new Error("legacy origin-centered invisible boss walls remain");

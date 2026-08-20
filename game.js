@@ -10337,12 +10337,176 @@
     return true;
   }
 
+  function drawBossSurfaceDetails(enemy, rawBossKind, accent, pulse, chargingShot) {
+    const flash = enemy.hurt > 0;
+    const ink = flash ? "#ffffff" : "#090d14";
+    const glow = 0.48 + pulse * 0.42;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    if (rawBossKind === "weaver") {
+      // 백면: 겹쳐 쓴 기억 가면, 칠지관, 봉인 직물과 부유 기억편을 한 실루엣으로 묶는다.
+      ctx.fillStyle = flash ? "#fff" : "#39264f";
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-18, 10);
+      for (let spike = -3; spike <= 3; spike += 1) {
+        const sx = spike * 7;
+        const sy = -7 - (3 - Math.abs(spike)) * 6;
+        ctx.lineTo(sx - 3, 7);
+        ctx.lineTo(sx, sy);
+        ctx.lineTo(sx + 3, 7);
+      }
+      ctx.lineTo(18, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fbf7ff";
+      ctx.beginPath();
+      ctx.moveTo(-13, 8); ctx.lineTo(0, 3); ctx.lineTo(13, 8); ctx.lineTo(10, 28);
+      ctx.lineTo(0, 35); ctx.lineTo(-10, 28); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#71508e";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-9, 14); ctx.quadraticCurveTo(-4, 10, -1, 16);
+      ctx.moveTo(9, 14); ctx.quadraticCurveTo(4, 10, 1, 16);
+      ctx.moveTo(0, 7); ctx.lineTo(0, 27); ctx.moveTo(-5, 29); ctx.lineTo(0, 32); ctx.lineTo(5, 29);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.arc(0, 19, 2.5 + pulse, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(215,160,255,${glow})`;
+      ctx.lineWidth = 1.5;
+      for (let seal = 0; seal < 6; seal += 1) {
+        const side = seal % 2 ? 1 : -1;
+        const row = Math.floor(seal / 2);
+        const sx = side * (31 + row * 10);
+        const sy = 25 + row * 18 + Math.sin(game.time * 1.8 + seal) * 5;
+        ctx.save(); ctx.translate(sx, sy); ctx.rotate(side * (0.2 + row * 0.08));
+        ctx.fillStyle = seal % 3 === 0 ? "#f1e8f6" : "#2b1c3d";
+        ctx.beginPath(); ctx.moveTo(-6, -9); ctx.lineTo(6, -9); ctx.lineTo(8, 5); ctx.lineTo(0, 11); ctx.lineTo(-8, 5); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = seal % 3 === 0 ? "#6e4c85" : accent; ctx.fillRect(-3, -2, 2, 2); ctx.fillRect(2, -2, 2, 2);
+        ctx.restore();
+      }
+      ctx.strokeStyle = "rgba(238,220,255,0.5)";
+      ctx.lineWidth = 1;
+      for (let thread = -2; thread <= 2; thread += 1) {
+        ctx.beginPath(); ctx.moveTo(thread * 7, 40); ctx.quadraticCurveTo(thread * 13, 57, thread * 10, 75); ctx.stroke();
+      }
+      ctx.fillStyle = accent;
+      for (let clasp = -2; clasp <= 2; clasp += 1) {
+        ctx.beginPath(); ctx.arc(clasp * 10, 50 + Math.abs(clasp) * 5, 2, 0, TAU); ctx.fill();
+      }
+      ctx.save(); ctx.translate(22, 20); ctx.rotate(game.time * 0.32);
+      ctx.strokeStyle = `rgba(255,255,255,${0.45 + pulse * 0.3})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(7, 5); ctx.lineTo(-7, 5); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+    } else if (rawBossKind === "oracle") {
+      // 육화: 여섯 증언을 상징하는 분할 가면과 심문용 탄도 장치를 겹쳐 보이게 한다.
+      ctx.strokeStyle = "#bfa4ff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 18, 20, -2.8, -0.35); ctx.stroke();
+      ctx.fillStyle = "rgba(255,107,156,0.38)"; ctx.fillRect(-12, 19, 10, 3);
+      ctx.fillStyle = "rgba(191,164,255,0.48)"; ctx.fillRect(2, 19, 10, 3);
+      ctx.strokeStyle = "rgba(232,227,239,0.58)";
+      ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, 34); ctx.moveTo(-15, 27); ctx.lineTo(15, 11); ctx.stroke();
+      for (let witness = 0; witness < 6; witness += 1) {
+        const angle = -2.75 + witness * 0.47;
+        const radius = 43 + (witness % 2) * 7;
+        const wx = Math.cos(angle) * radius;
+        const wy = 38 + Math.sin(angle) * 28 + Math.sin(game.time * 2 + witness) * 2;
+        ctx.fillStyle = witness % 2 ? "#4a306c" : "#ddd4eb";
+        ctx.beginPath(); ctx.moveTo(wx - 5, wy - 6); ctx.lineTo(wx + 5, wy - 6); ctx.lineTo(wx + 6, wy + 4); ctx.lineTo(wx, wy + 8); ctx.lineTo(wx - 6, wy + 4); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = witness % 2 ? accent : "#ff6b9c"; ctx.stroke();
+      }
+      ctx.fillStyle = "#34254b";
+      ctx.fillRect(-20, 42, 40, 8);
+      for (let chamber = 0; chamber < 6; chamber += 1) {
+        ctx.fillStyle = chamber % 2 ? "#ff6b9c" : accent;
+        ctx.fillRect(-18 + chamber * 6, 44, 4, 4);
+      }
+      ctx.strokeStyle = `rgba(191,164,255,${glow})`;
+      ctx.beginPath(); ctx.moveTo(-28, 36); ctx.lineTo(-16, 58); ctx.lineTo(-28, 73); ctx.moveTo(28, 36); ctx.lineTo(16, 58); ctx.lineTo(28, 73); ctx.stroke();
+      ctx.fillStyle = ink; ctx.fillRect(22, 31, 36, 9);
+      ctx.fillStyle = accent; ctx.fillRect(48, 33, 16, 5);
+    } else if (rawBossKind === "proxy") {
+      // 대역-13: 실험체 고정구, 약물관, 표본 라벨이 변이 전후에도 남는다.
+      const mutated = !!enemy.mutated;
+      ctx.strokeStyle = mutated ? "#8affab" : "#637b73";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-25, 25); ctx.lineTo(-34, 7); ctx.lineTo(-45, 12); ctx.lineTo(-39, 50);
+      ctx.moveTo(25, 25); ctx.lineTo(34, 7); ctx.lineTo(45, 12); ctx.lineTo(39, 50); ctx.stroke();
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = mutated ? "#214936" : "#2d4140";
+        ctx.fillRect(side * 34 - 5, 4, 10, 28);
+        ctx.fillStyle = mutated ? "#70ff9b" : side < 0 ? "#ce72ff" : accent;
+        ctx.fillRect(side * 34 - 3, 8, 6, mutated ? 10 : 17);
+        ctx.strokeStyle = side < 0 ? "#ce72ff" : accent;
+        ctx.beginPath(); ctx.moveTo(side * 34, 31); ctx.bezierCurveTo(side * 47, 42, side * 26, 51, side * 18, 62); ctx.stroke();
+      }
+      ctx.fillStyle = flash ? "#fff" : "#17221f";
+      ctx.fillRect(-13, 34, 26, 17);
+      ctx.strokeStyle = mutated ? "#8affab" : accent; ctx.strokeRect(-13, 34, 26, 17);
+      ctx.fillStyle = "#dff9e8"; ctx.fillRect(-9, 38, 13, 3); ctx.fillRect(-9, 44, 18, 2);
+      ctx.fillStyle = mutated ? "#ff496c" : accent; ctx.fillRect(7, 38, 3, 8);
+      if (mutated) {
+        ctx.strokeStyle = "rgba(176,255,194,0.68)";
+        for (let scar = -1; scar <= 1; scar += 1) {
+          ctx.beginPath(); ctx.moveTo(scar * 13 - 4, 18); ctx.lineTo(scar * 9 + 3, 27); ctx.lineTo(scar * 14 - 2, 38); ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(112,255,155,0.7)";
+        for (let drip = 0; drip < 4; drip += 1) ctx.fillRect(-21 + drip * 14, 72 + (drip % 2) * 4, 3, 9);
+      } else {
+        ctx.fillStyle = "#9bb7ae"; ctx.fillRect(-27, 54, 14, 9); ctx.fillStyle = accent; ctx.fillRect(-24, 57, 8, 2);
+        ctx.strokeStyle = "#7b8d89"; ctx.beginPath(); ctx.moveTo(0, 23); ctx.lineTo(0, 72); ctx.stroke();
+      }
+    } else if (rawBossKind === "warden") {
+      ctx.strokeStyle = "rgba(255,206,215,0.72)"; ctx.lineWidth = 1.5;
+      ctx.strokeRect(-12, 30, 24, 15); ctx.beginPath(); ctx.moveTo(-7, 34); ctx.lineTo(7, 34); ctx.moveTo(-7, 39); ctx.lineTo(4, 39); ctx.stroke();
+      ctx.fillStyle = accent; ctx.fillRect(-47, 51, 16, 3); ctx.fillRect(31, 51, 16, 3);
+      ctx.strokeStyle = accent; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, -12); ctx.lineTo(7, -18); ctx.stroke();
+    } else if (rawBossKind === "breaker") {
+      ctx.fillStyle = "#d9b85f";
+      for (let stripe = -3; stripe <= 3; stripe += 1) ctx.fillRect(stripe * 12 - 4, 58, 5, 4);
+      ctx.fillStyle = "#14110b"; ctx.fillRect(-20, 33, 40, 4);
+      ctx.fillStyle = accent; for (const bolt of [-32, -16, 16, 32]) { ctx.beginPath(); ctx.arc(bolt, 65, 2, 0, TAU); ctx.fill(); }
+    } else if (rawBossKind === "furnace") {
+      ctx.strokeStyle = `rgba(255,188,132,${glow})`; ctx.lineWidth = 2;
+      for (let vent = 0; vent < 3; vent += 1) { ctx.beginPath(); ctx.moveTo(-12, 36 + vent * 8); ctx.lineTo(12, 34 + vent * 8); ctx.stroke(); }
+      ctx.fillStyle = "#d5a182"; ctx.fillRect(-28, 16, 8, 12); ctx.fillRect(20, 16, 8, 12);
+      ctx.fillStyle = accent; ctx.fillRect(-26, 19, 4, 6); ctx.fillRect(22, 19, 4, 6);
+    } else if (rawBossKind === "hunter") {
+      ctx.strokeStyle = "rgba(255,221,192,0.7)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-17, 21); ctx.lineTo(15, 16); ctx.moveTo(-13, 47); ctx.lineTo(19, 43); ctx.stroke();
+      ctx.fillStyle = accent; for (let shell = 0; shell < 4; shell += 1) ctx.fillRect(-20 + shell * 8, 57, 4, 9);
+    } else if (rawBossKind === "revenant") {
+      ctx.strokeStyle = "rgba(230,239,241,0.62)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-16, 30); ctx.lineTo(0, 40); ctx.lineTo(16, 30); ctx.moveTo(-14, 55); ctx.lineTo(14, 55); ctx.stroke();
+      ctx.fillStyle = accent; ctx.fillRect(-3, 31, 6, 22); ctx.beginPath(); ctx.arc(0, 61, 3, 0, TAU); ctx.fill();
+    } else if (rawBossKind === "censor") {
+      ctx.strokeStyle = "rgba(211,160,255,0.58)"; ctx.lineWidth = 1.5;
+      for (let rune = -2; rune <= 2; rune += 1) { ctx.beginPath(); ctx.moveTo(rune * 9, 46); ctx.lineTo(rune * 7, 62); ctx.lineTo(rune * 10, 71); ctx.stroke(); }
+      ctx.fillStyle = accent; ctx.fillRect(-18, 38, 36, 3); ctx.fillRect(-2, 35, 4, 10);
+    }
+
+    if (chargingShot && !["weaver", "proxy"].includes(rawBossKind)) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.25 + pulse * 0.35})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 43, 28 + pulse * 4, -2.6, -0.55); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawDetailedBossCharacter(enemy, bossKind, accent, pulse, chargeProgress, chargingShot, rawBossKind = bossKind) {
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
     const fastMotion = Math.sin(enemy.anim * 10.5);
 
-    if (drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot)) return;
+    if (drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot)) {
+      drawBossSurfaceDetails(enemy, rawBossKind, accent, pulse, chargingShot);
+      return;
+    }
 
     if (bossKind === "warden") {
       // 저중심 무한궤도 포격 기체: 전차 하부와 인간형 포수 상부를 분리한다.
@@ -10578,6 +10742,8 @@
       }
     }
 
+    drawBossSurfaceDetails(enemy, rawBossKind, accent, pulse, chargingShot);
+
     if (chargingShot && bossKind !== "weaver" && rawBossKind !== "revenant") {
       const muzzleX = bossKind === "warden" ? 72 : 62;
       const muzzleY = bossKind === "warden" ? 50 : 42;
@@ -10677,6 +10843,32 @@
       ctx.save();
       if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
       drawPlayerBody(enemy.x, enemy.y, enemy.facing, enemy.hurt > 0 ? 0.92 : 1, false, "echo");
+      ctx.restore();
+
+      // 잔영의 분석 장치와 복제 프레임 표식은 플레이어와 같은 체형에서도 보스임을 구분해 준다.
+      ctx.save();
+      const echoCenterX = enemy.x + enemy.w / 2;
+      const echoCenterY = enemy.y + enemy.h * 0.46;
+      ctx.strokeStyle = `rgba(168,121,255,${0.34 + echoPulse * 0.38})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(echoCenterX, echoCenterY, 25 + echoPulse * 3, -2.7, -1.72);
+      ctx.arc(echoCenterX, echoCenterY, 25 + echoPulse * 3, -1.38, -0.35);
+      ctx.stroke();
+      for (const side of [-1, 1]) {
+        const nodeX = echoCenterX + side * 24;
+        const nodeY = echoCenterY - 2 + Math.sin(game.time * 3.2 + side) * 3;
+        ctx.fillStyle = side < 0 ? "#a879ff" : "#63ffc6";
+        ctx.beginPath();
+        ctx.moveTo(nodeX, nodeY - 5); ctx.lineTo(nodeX + 4, nodeY); ctx.lineTo(nodeX, nodeY + 5); ctx.lineTo(nodeX - 4, nodeY); ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(234,214,255,0.66)";
+        ctx.beginPath(); ctx.moveTo(nodeX - side * 4, nodeY); ctx.lineTo(echoCenterX + side * 12, echoCenterY + 5); ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(99,255,198,0.72)";
+      ctx.fillRect(echoCenterX - 11, enemy.y + enemy.h * 0.71, 22, 2);
+      ctx.fillStyle = "rgba(168,121,255,0.72)";
+      ctx.fillRect(echoCenterX - 11, enemy.y + enemy.h * 0.76, 14, 2);
       ctx.restore();
 
       ctx.save();
@@ -13683,7 +13875,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.5.1",
+    version: "3.5.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13889,6 +14081,11 @@
     bossPatternOrderCount: Object.keys(BOSS_PATTERN_ORDERS).length,
     weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
     echoPatternVariants: BOSS_DEFINITIONS.echo.patterns.length,
+    bossVisualDetailPass: true,
+    detailedBossVisualCount: Object.keys(BOSS_DEFINITIONS).length,
+    weaverLayeredMaskDesign: true,
+    oracleSixWitnessMaskDesign: true,
+    proxyMutationVisualState: true,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     zoneClearHealEnabled: false,
     embeddedRepairPickupsRemoved: true,
@@ -13939,7 +14136,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.5.1",
+    gameVersion: "3.5.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14151,6 +14348,11 @@
     bossPatternOrderCount: String(Object.keys(BOSS_PATTERN_ORDERS).length),
     weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
     echoPatternVariants: String(BOSS_DEFINITIONS.echo.patterns.length),
+    bossVisualDetailPass: "true",
+    detailedBossVisualCount: String(Object.keys(BOSS_DEFINITIONS).length),
+    weaverLayeredMaskDesign: "true",
+    oracleSixWitnessMaskDesign: "true",
+    proxyMutationVisualState: "true",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     zoneClearHealEnabled: "false",
     embeddedRepairPickupsRemoved: "true",
