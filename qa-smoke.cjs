@@ -43,7 +43,7 @@ const difficultyButtons = Object.entries(difficultyNames).map(([key, label]) => 
   const button = element(); button.dataset.difficulty = key; button.textContent = label; return button;
 });
 const storage = new Map([["moonlit-echo-campaign-v1", JSON.stringify({
-  version: 1, respawnStage: 2, respawnZone: 17, respawnCheckpointIndex: 17,
+  version: 2, zonesPerStage: 24, checkpointKey: "2:12", respawnStage: 2, respawnZone: 60, respawnCheckpointIndex: 60,
   difficulty: "cadet", defeatedEnemyIds: [], kills: 0,
 })]]);
 
@@ -74,7 +74,10 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.4.2") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.5.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
+  throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
+}
 if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향.hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
   throw new Error("HWPX story alignment diagnostics missing");
 }
@@ -101,11 +104,11 @@ if (/getZoneRemaining\(clearedZoneIndex\)[\s\S]{0,280}player\.hp\s*=/.test(gameS
   throw new Error("zone-clear healing is still present");
 }
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
-if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
+if (!continueText.includes("03-09")) throw new Error(`24-zone save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
   throw new Error("v2.6.0 feature diagnostics missing");
 }
-if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 100 || diagnostics.routeProfileCount < 40) {
+if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 65 || diagnostics.routeProfileCount < 30) {
   throw new Error(`layered route generation missing: ${diagnostics.layeredRouteZoneCount}/${diagnostics.routeProfileCount}`);
 }
 if (diagnostics.machinegunBurstRounds !== 4 || diagnostics.machinegunCount < 1) {
@@ -190,9 +193,9 @@ for (let frame = 0; frame < 12; frame += 1) {
   if (typeof callback === "function") callback(1000 + frame * 16.667);
 }
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
-if (restored.activeCheckpointKey !== "2:12") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
+if (restored.activeCheckpointKey !== "2:8") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
 const migrated = JSON.parse(storage.get("moonlit-echo-campaign-v1"));
-if (migrated.version !== 2 || migrated.checkpointKey !== "2:12") throw new Error("legacy save was not migrated to checkpoint-key v2");
+if (migrated.version !== 2 || migrated.zonesPerStage !== 16 || migrated.checkpointKey !== "2:8") throw new Error("24-zone save was not migrated to the 16-zone campaign");
 console.log(JSON.stringify({
   version: diagnostics.version,
   checkpointSafetyPass: diagnostics.checkpointSafetyPass,

@@ -64,11 +64,12 @@
   const W = 1280;
   const H = 720;
   const ZONE_W = 4000;
-  const ZONES_PER_STAGE = 24;
-  const MID_BOSS_ZONE_INDEX = 11;
+  const ZONES_PER_STAGE = 16;
+  const MID_BOSS_ZONE_INDEX = 7;
   const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
   const STAGE_COUNT = 5;
   const TOTAL_ZONE_COUNT = ZONES_PER_STAGE * STAGE_COUNT;
+  const STAGE_SECTION_COUNT = 4;
   const ZONE_WIDTH_STEP = 8;
   const ZONE_WIDTHS = Array.from({ length: TOTAL_ZONE_COUNT }, (_, index) => ZONE_W + index * ZONE_WIDTH_STEP);
   const ZONE_STARTS = [0];
@@ -129,6 +130,10 @@
     [2, 3, 3, 4],
     [3, 3, 4, 4],
   ]);
+  const getStageSection = (localZoneIndex) => Math.min(
+    STAGE_SECTION_COUNT - 1,
+    Math.floor(clamp(localZoneIndex, 0, ZONES_PER_STAGE - 1) * STAGE_SECTION_COUNT / ZONES_PER_STAGE),
+  );
   const HUNTER_REFLECT_BREAK_SECONDS = 2.2;
   const HUNTER_DASH_RANGE = 360;
   const SAVE_KEY = "moonlit-echo-campaign-v1";
@@ -220,11 +225,11 @@
   });
 
   const stageZoneNames = [
-    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐철 사냥터", "폐기물 심층", "노동자 숙소 잔해", "폭우 운송교", "기억 매립 구덩이", "감독 기록고", "감독관 격납고"],
-    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "탄도 시험장", "화염 터빈실", "반응 연료 저장고", "폐쇄 실험선", "노심 제어 회랑", "냉각 붕괴선", "용광 심장부"],
-    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "가면 심문정", "합창 연산실", "금서 분류고", "열아홉 제단", "증언 봉인실", "다중 진실 회랑", "직조 제단"],
-    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "삭제 집행장", "새벽 안테나군", "시민권 말소국", "기록 송출교", "최후 중계실", "증인 수배망", "최종 검열실"],
-    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "명명되지 않은 문", "거울의 핵"],
+    ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐철 사냥터", "노동자 숙소 잔해", "감독 기록고", "폭우 운송교", "기억 매립 구덩이", "폐기물 심층", "잔해 환승벽", "침수 정비선", "소각 명령고", "최후 검문교", "감독관 격납고"],
+    ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "탄도 시험장", "반응 연료 저장고", "폐쇄 실험선", "화염 터빈실", "노심 제어 회랑", "냉각 붕괴선", "증기 압착교", "용탕 우회관", "심부 연료선", "노심 방벽", "용광 심장부"],
+    ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "가면 심문정", "금서 분류고", "합창 연산실", "열아홉 제단", "증언 봉인실", "다중 진실 회랑", "부유 성가대", "기억 분기당", "허위 연대기실", "최후 성소", "직조 제단"],
+    ["지하 피난선", "도시 하부 궤도", "폭풍 외벽", "역송신 승강로", "중앙국 방화벽", "삭제 집행장", "시민권 말소국", "새벽 안테나군", "기록 송출교", "최후 중계실", "증인 수배망", "폭풍 전력교", "감찰 역송신로", "심야 중계망", "최종 방화벽", "최종 검열실"],
+    ["유리 매몰층", "역방향 훈련장", "복제 주거구", "선택 기록 미로", "원본 생명유지실", "원본 판정실", "쌍둥이 결투장", "대역 격리실", "무명 기억 정원", "법적 원본 금고", "두 사람의 회랑", "기억 역류층", "명명 보류실", "거울 분기핵", "명명되지 않은 문", "거울의 핵"],
   ];
   const stageZoneCodes = ["SCRAP", "FURNACE", "ARCHIVE", "DAWN", "MIRROR"];
   const STAGE_MAP_IDENTITIES = Object.freeze([
@@ -235,11 +240,11 @@
     "거울 단층 미궁",
   ]);
   const zoneTemplateRows = [
-    ["terrace", "wreckfield", "scrapCrane", "crusher", "bridge", "scrapCrane", "fork", "wreckfield", "chasm", "crusher", "cavern", "midboss", "scrapCrane", "chasm", "gauntlet", "wreckfield", "crusher", "scrapCrane", "bridge", "cavern", "zigzag", "vertical", "wreckfield", "boss"],
-    ["conveyor", "furnacePiston", "conveyor", "crusher", "furnacePiston", "gauntlet", "bridge", "conveyor", "furnacePiston", "spiral", "conveyor", "midboss", "crusher", "furnacePiston", "conveyor", "zigzag", "conveyor", "furnacePiston", "gauntlet", "chasm", "furnacePiston", "vertical", "crusher", "boss"],
-    ["cathedralNave", "archiveMaze", "cathedralNave", "bridge", "archiveMaze", "cathedralNave", "archiveMaze", "chasm", "cathedralNave", "gauntlet", "archiveMaze", "midboss", "cathedralNave", "vertical", "archiveMaze", "cathedralNave", "fork", "archiveMaze", "cathedralNave", "chasm", "gauntlet", "archiveMaze", "cathedralNave", "boss"],
-    ["antennaShaft", "towerClimb", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "towerClimb", "fork", "antennaShaft", "spiral", "towerClimb", "midboss", "antennaShaft", "towerClimb", "chasm", "antennaShaft", "gauntlet", "towerClimb", "antennaShaft", "fork", "spiral", "towerClimb", "antennaShaft", "boss"],
-    ["memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "cavern", "mirrorMaze", "memoryLabyrinth", "mirrorMaze", "fork", "memoryLabyrinth", "spiral", "mirrorMaze", "midboss", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "vertical", "mirrorMaze", "memoryLabyrinth", "fork", "chasm", "memoryLabyrinth", "mirrorMaze", "memoryLabyrinth", "boss"],
+    ["terrace", "wreckfield", "scrapCrane", "crusher", "bridge", "fork", "cavern", "midboss", "scrapCrane", "chasm", "gauntlet", "wreckfield", "crusher", "zigzag", "vertical", "boss"],
+    ["conveyor", "furnacePiston", "conveyor", "crusher", "gauntlet", "bridge", "spiral", "midboss", "furnacePiston", "crusher", "conveyor", "zigzag", "gauntlet", "chasm", "vertical", "boss"],
+    ["cathedralNave", "archiveMaze", "bridge", "cathedralNave", "archiveMaze", "chasm", "gauntlet", "midboss", "cathedralNave", "vertical", "archiveMaze", "fork", "cathedralNave", "chasm", "gauntlet", "boss"],
+    ["antennaShaft", "towerClimb", "gauntlet", "antennaShaft", "towerClimb", "fork", "spiral", "midboss", "antennaShaft", "towerClimb", "chasm", "gauntlet", "fork", "spiral", "towerClimb", "boss"],
+    ["memoryLabyrinth", "mirrorMaze", "cavern", "memoryLabyrinth", "mirrorMaze", "fork", "spiral", "midboss", "memoryLabyrinth", "mirrorMaze", "vertical", "fork", "chasm", "memoryLabyrinth", "mirrorMaze", "boss"],
   ];
   const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => {
     const globalIndex = stageIndex * ZONES_PER_STAGE + zoneIndex;
@@ -755,15 +760,17 @@
     return ZONE_STARTS[globalIndex] + ZONE_WIDTHS[globalIndex] * progress + offset;
   }
 
+  const PRIMARY_STORY_ZONE_INDICES = Object.freeze([2, 4, 6, 9, 12, 14]);
+  const EXTENDED_STORY_ZONE_INDICES = Object.freeze([3, 10, 13]);
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
     stageIndex,
-    x: getStageZonePosition(stageIndex, Math.min(ZONES_PER_STAGE - 1, (eventIndex + 1) * 2), 0, -620),
+    x: getStageZonePosition(stageIndex, PRIMARY_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2, 0, -620),
     lines,
   }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
     stageIndex,
-    x: getStageZonePosition(stageIndex, Math.min(ZONES_PER_STAGE - 1, eventIndex + 13), 0, -620),
+    x: getStageZonePosition(stageIndex, EXTENDED_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2, 0, -620),
     lines,
   })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
     id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
@@ -2744,7 +2751,7 @@
     const floorHeights = baseFloorHeights.map((row, stageIndex) => Array.from(
       { length: ZONES_PER_STAGE },
       (_, zoneIndex) => clamp(
-        row[(zoneIndex * 5 + Math.floor(zoneIndex / 6) + stageIndex) % row.length]
+        row[(zoneIndex * 5 + getStageSection(zoneIndex) + stageIndex) % row.length]
           + ((zoneIndex % 4) - 1) * 10,
         590,
         740,
@@ -2761,7 +2768,7 @@
       kind,
       Array.from(
         { length: ZONES_PER_STAGE },
-        (_, zoneIndex) => row[(zoneIndex * 5 + Math.floor(zoneIndex / 6)) % row.length],
+        (_, zoneIndex) => row[(zoneIndex * 5 + getStageSection(zoneIndex)) % row.length],
       ),
     ]));
     const enemyPools = [
@@ -2774,7 +2781,7 @@
 
     function addZoneEnemies(zone, floorY, spawnPoints) {
       const localZoneIndex = zone.localIndex;
-      const section = Math.min(3, Math.floor(localZoneIndex / 6));
+      const section = getStageSection(localZoneIndex);
       const points = [...spawnPoints];
       const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
       const stageBaseCounts = [8, 10, 12, 14, 16];
@@ -2848,7 +2855,7 @@
       if (zone.template === "tutorial" || zone.template === "boss" || zone.template === "midboss") return;
       const stageIndex = zone.stageIndex;
       const localZoneIndex = zone.localIndex;
-      const section = Math.min(3, Math.floor(localZoneIndex / 6));
+      const section = getStageSection(localZoneIndex);
       const requestedCount = ROUTE_TRANSITION_BUDGET_BY_STAGE[stageIndex][section];
       const alreadyVertical = ["chasm", "bridge", "vertical", "towerClimb", "antennaShaft", "cathedralNave"].includes(zone.template);
       const transitionCount = Math.max(1, requestedCount - (alreadyVertical ? 1 : 0));
@@ -2941,7 +2948,7 @@
       const globalIndex = zone.globalIndex;
       const localZoneIndex = zone.localIndex;
       const stageIndex = zone.stageIndex;
-      const section = Math.min(3, Math.floor(localZoneIndex / 6));
+      const section = getStageSection(localZoneIndex);
       const extension = zone.width - ZONE_W;
       const isArena = zone.template === "boss" || zone.template === "midboss";
       const isHongryeonArena = zone.template === "boss" && stageIndex === 1;
@@ -3164,7 +3171,7 @@
       const kind = platformKinds[zone.kind][localZoneIndex];
       const origin = zone.x;
       const spawns = [];
-      const depthVariant = Math.floor(localZoneIndex / 6);
+      const depthVariant = getStageSection(localZoneIndex);
 
       if (zone.template === "tutorial") {
         addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "training");
@@ -3660,15 +3667,20 @@
   function resolveCampaignCheckpointIndex(saved) {
     if (!saved || checkpoints.length === 0) return 0;
     const savedStageIndex = clamp(Number(saved.respawnStage) || 0, 0, stages.length - 1);
+    const savedZonesPerStage = Number.isInteger(saved.zonesPerStage) ? Math.max(1, saved.zonesPerStage) : null;
     if (typeof saved.checkpointKey === "string") {
-      const keyedIndex = checkpoints.findIndex((checkpoint) => checkpoint.checkpointKey === saved.checkpointKey);
+      const keyMatch = /^(\d+):(\d+)$/.exec(saved.checkpointKey);
+      const migratedCheckpointKey = keyMatch && savedZonesPerStage && savedZonesPerStage !== ZONES_PER_STAGE
+        ? `${clamp(Number(keyMatch[1]), 0, STAGE_COUNT - 1)}:${Math.round(clamp(Number(keyMatch[2]), 0, savedZonesPerStage - 1) / Math.max(1, savedZonesPerStage - 1) * (ZONES_PER_STAGE - 1))}`
+        : saved.checkpointKey;
+      const keyedIndex = checkpoints.findIndex((checkpoint) => checkpoint.checkpointKey === migratedCheckpointKey);
       if (keyedIndex >= 0) return keyedIndex;
     }
     if (Number.isInteger(saved.respawnZone)) {
       const zoneIndex = clamp(saved.respawnZone, 0, checkpoints.length - 1);
       if (zones[zoneIndex]?.stageIndex === savedStageIndex) return zoneIndex;
     }
-    const legacyZonesPerStage = Number.isInteger(saved.zonesPerStage) ? Math.max(1, saved.zonesPerStage) : 7;
+    const legacyZonesPerStage = savedZonesPerStage || 7;
     if (Number.isInteger(saved.respawnCheckpointIndex)) {
       const legacyLocalIndex = clamp(saved.respawnCheckpointIndex - savedStageIndex * legacyZonesPerStage, 0, legacyZonesPerStage - 1);
       const currentLocalIndex = legacyZonesPerStage === ZONES_PER_STAGE
@@ -3753,6 +3765,7 @@
     const savedCheckpointIndex = resolveCampaignCheckpointIndex(saved);
     const restartZoneIndex = getZoneIndexAt(checkpoints[savedCheckpointIndex]?.x || 0);
     const deadIds = new Set(saved.defeatedEnemyIds || []);
+    const migratedZoneLayout = Number.isInteger(saved.zonesPerStage) && saved.zonesPerStage !== ZONES_PER_STAGE;
     const legacyTutorialCompleted = (saved.respawnZone || 0) > 0
       || (saved.respawnX || 0) >= ZONE_W
       || deadIds.size > 0;
@@ -3769,23 +3782,36 @@
       : null;
     const legacySave = savedCountedIds === null;
     let legacyCountedKills = Math.min(Math.max(0, saved.kills || 0), deadIds.size);
+    let migratedCountedKills = Math.max(0, saved.kills || 0);
     for (const enemy of enemies) {
-      if (!deadIds.has(enemy.id)) continue;
       // 이어하기는 언제나 마지막 체크포인트부터 다시 시작한다. 그 구역 이후의 전투 기록은 롤백한다.
-      if (getZoneIndexAt(enemy.originX) >= restartZoneIndex) continue;
+      const beforeCheckpoint = getZoneIndexAt(enemy.originX) < restartZoneIndex;
+      if (!beforeCheckpoint || (!migratedZoneLayout && !deadIds.has(enemy.id))) continue;
       // v1.6.5 and older could cull the final boss during its cutscene.
-      if (legacySave && !enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
+      if (!migratedZoneLayout && legacySave && !enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
       if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo" && adminRemovedEnemyIds.has(enemy.id)) continue;
       enemy.alive = false;
       enemy.hp = 0;
-      enemy.countedKill = savedCountedIds ? savedCountedIds.has(enemy.id) : legacyCountedKills-- > 0;
+      enemy.countedKill = migratedZoneLayout
+        ? migratedCountedKills-- > 0
+        : savedCountedIds
+          ? savedCountedIds.has(enemy.id)
+          : legacyCountedKills-- > 0;
     }
-    for (const state of saved.roomStates || []) {
-      const room = combatRooms.find((candidate) => candidate.left === state.left);
-      if (!room) continue;
-      const beforeCheckpoint = getZoneIndexAt(room.left) < restartZoneIndex;
-      room.triggered = beforeCheckpoint && Boolean(state.triggered);
-      room.cleared = beforeCheckpoint && Boolean(state.cleared);
+    if (migratedZoneLayout) {
+      for (const room of combatRooms) {
+        const beforeCheckpoint = getZoneIndexAt(room.left) < restartZoneIndex;
+        room.triggered = beforeCheckpoint;
+        room.cleared = beforeCheckpoint;
+      }
+    } else {
+      for (const state of saved.roomStates || []) {
+        const room = combatRooms.find((candidate) => candidate.left === state.left);
+        if (!room) continue;
+        const beforeCheckpoint = getZoneIndexAt(room.left) < restartZoneIndex;
+        room.triggered = beforeCheckpoint && Boolean(state.triggered);
+        room.cleared = beforeCheckpoint && Boolean(state.cleared);
+      }
     }
     setRespawnCheckpoint(checkpoints[savedCheckpointIndex], savedCheckpointIndex);
     player.x = player.respawnX;
@@ -12460,7 +12486,7 @@
       ctx.fillStyle = "#ffe4a0";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
       ctx.fillText("A/D 좌우 · SPACE 상승 · SHIFT 하강 · 공중 정지 · 벽 통과 · 이동속도 2배", W / 2, 126);
-      ctx.fillText("L 전체 120구역 · 1~5 스테이지 · X 생성 · Z 적/회복템/도약판 영구 삭제 · R 신참", W / 2, 145);
+      ctx.fillText(`L 전체 ${TOTAL_ZONE_COUNT}구역 · 1~5 스테이지 · X 생성 · Z 적/회복템/도약판 영구 삭제 · R 신참`, W / 2, 145);
       ctx.textAlign = "left";
     } else if (game.adminCadetMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.92)";
@@ -13519,7 +13545,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.4.2",
+    version: "3.5.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13552,6 +13578,8 @@
     zonesPerStage: ZONES_PER_STAGE,
     midBossZone: MID_BOSS_ZONE_INDEX + 1,
     finalBossZone: BOSS_ZONE_INDEX + 1,
+    midBossArenaCount: zones.filter((zone) => zone.template === "midboss").length,
+    finalBossArenaCount: zones.filter((zone) => zone.template === "boss").length,
     enemies: enemies.length,
     enemyPlacementDensity: "artillery-tower-formations-v3.0.0",
     enemyBaseCountByStage: [8, 10, 12, 14, 16],
@@ -13763,7 +13791,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.4.2",
+    gameVersion: "3.5.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13856,6 +13884,8 @@
     zonesPerStage: String(ZONES_PER_STAGE),
     midBossZone: String(MID_BOSS_ZONE_INDEX + 1),
     finalBossZone: String(BOSS_ZONE_INDEX + 1),
+    midBossArenaCount: String(zones.filter((zone) => zone.template === "midboss").length),
+    finalBossArenaCount: String(zones.filter((zone) => zone.template === "boss").length),
     enemyCount: String(enemies.length),
     activeEnemyCount: String(getActiveEnemies().length),
     platformCount: String(platforms.length),
@@ -13896,7 +13926,7 @@
     shieldBreakSeconds: "3.2",
     shieldAttackCooldown: "2.15",
     bulwarkDamageMultiplier: "0.75",
-    adminZoneTeleport: "120",
+    adminZoneTeleport: String(TOTAL_ZONE_COUNT),
     adminNoclip: "true",
     adminFlightSpeed: String(INPUT_TUNING.moveSpeed * 2),
     jeokrinPermanentReflect: "true",
