@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.1") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -105,6 +105,16 @@ if (diagnostics.bossPatternDirector !== "adaptive-no-repeat" || !diagnostics.bos
 }
 if (diagnostics.bossCrisisPatternThreshold !== 0.35 || diagnostics.bossCrisisPatternCount !== 10 || !diagnostics.bossCrisisPatternTelegraph || diagnostics.bossCrisisCooldownRange.join(",") !== "5.68,6.8") {
   throw new Error("boss crisis pattern configuration invalid");
+}
+if (!diagnostics.bossIntroCombatGate || !diagnostics.bossIntroWaitsForDialogue || !diagnostics.bossDormantDamageLock || diagnostics.bossIntroCutsceneCount !== 10 || !diagnostics.cutsceneCompletionSavedAtEnd) {
+  throw new Error("boss intro dialogue gate configuration invalid");
+}
+const bossIntroIds = ["cutscene-midboss-1", "cutscene-midboss-2", "cutscene-midboss-3", "cutscene-midboss-4", "cutscene-midboss-5", "cutscene-warden", "cutscene-crimson", "cutscene-weaver", "cutscene-censor", "cutscene-echo"];
+if (!gameSource.includes("function holdBossUntilIntroEnds(enemy, dt, dx)") || bossIntroIds.some((id) => !gameSource.includes(id))) {
+  throw new Error("one or more boss intro gates are missing");
+}
+if (/function startCutscene\(event\)[\s\S]{0,180}cutsceneSeen\.add\(event\.id\)/.test(gameSource) || !gameSource.includes("game.cutsceneSeen.add(finishedScene.id)")) {
+  throw new Error("cutscenes are still marked complete before the final line");
 }
 const crisisPatterns = ["breaker-siege", "hunter-deadlock", "oracle-verdict", "revenant-overdrive", "proxy-quarantine", "warden-redline", "furnace-crimson-storm", "weaver-grand-ritual", "censor-blackout", "echo-mirror-assault"];
 if (!gameSource.includes("function startBossCrisisPattern(enemy, dx)") || crisisPatterns.some((pattern) => !gameSource.includes(pattern))) {

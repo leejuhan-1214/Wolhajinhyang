@@ -282,7 +282,7 @@
       hp: 27,
       size: [72, 98],
       accent: "#ff7b62",
-      patterns: ["공중 사련 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
+      patterns: ["공중 4연 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
     },
     weaver: {
       name: "기억 직조기 · 백면",
@@ -472,7 +472,7 @@
   const INTRO_STORY = [
     {
       speaker: "월식 예보 · D-07",
-      text: "칠 일 뒤 도시의 모든 시민 기록이 한 번에 덮어써진다. 중앙국은 이를 재난이 아닌 '월하진향 정상화'라고 명명했다.",
+      text: "칠 일 뒤 도시의 모든 시민 기록이 한 번에 덮어써진다. 중앙국은 이를 재난이 아닌 '월하잔향 정상화'라고 명명했다.",
       tone: "archive",
       duration: 5.8,
     },
@@ -549,10 +549,6 @@
       [
         { speaker: "노동자 합창", text: "우리가 흘린 피가 용탕의 온도를 맞췄고, 우리가 잊은 이름이 기계의 표적 목록이 되었다.", tone: "archive", duration: 6.0 },
         { speaker: "M-07 · 서린", text: "명단을 복구해 송신한다. 누구도 통계 숫자로만 남지 않게 하겠다.", tone: "operative", duration: 5.1 },
-      ],
-      [
-        { speaker: "용광 심장 · 홍련", text: "시설 정지 시 보존 중인 기억의 63퍼센트가 소실된다. 구원을 원한다면 나를 가동 상태로 유지하라.", tone: "hostile", duration: 6.0 },
-        { speaker: "M-07 · 서린", text: "네가 인질로 삼은 기억은 이미 고통받고 있다. 냉각망을 열고 전부 밖으로 옮긴다.", tone: "operative", duration: 5.4 },
       ],
     ],
     [
@@ -864,6 +860,17 @@
       ],
     },
     {
+      id: "cutscene-crimson",
+      x: stages[1].bossX - 820,
+      title: "장면 02-2 · 타오르는 인질",
+      location: "용광 심장부",
+      visual: "furnace",
+      shots: [
+        { speaker: "용광 심장 · 홍련", text: "시설 정지 시 보존 중인 기억의 63퍼센트가 소실된다. 구원을 원한다면 나를 가동 상태로 유지하라.", tone: "hostile", duration: 6.0 },
+        { speaker: "M-07 · 서린", text: "네가 인질로 삼은 기억은 이미 고통받고 있다. 냉각망을 열고 전부 밖으로 옮긴다.", tone: "operative", duration: 5.4 },
+      ],
+    },
+    {
       id: "cutscene-archive",
       x: stages[2].x + 120,
       title: "장면 03 · 열아홉 명의 서린",
@@ -1074,6 +1081,20 @@
   );
 
   CUTSCENE_EVENTS.sort((a, b) => a.x - b.x);
+  const CUTSCENE_EVENT_BY_ID = new Map(CUTSCENE_EVENTS.map((event) => [event.id, event]));
+
+  const BOSS_INTRO_CUTSCENE_IDS = Object.freeze({
+    breaker: "cutscene-midboss-1",
+    hunter: "cutscene-midboss-2",
+    oracle: "cutscene-midboss-3",
+    revenant: "cutscene-midboss-4",
+    proxy: "cutscene-midboss-5",
+    warden: "cutscene-warden",
+    furnace: "cutscene-crimson",
+    weaver: "cutscene-weaver",
+    censor: "cutscene-censor",
+    echo: "cutscene-echo",
+  });
 
   const palette = {
     skyTop: "#06101d",
@@ -3225,6 +3246,8 @@
       boss.followupPattern = null;
       boss.followupChainActive = false;
       boss.passivePanelCooldown = 4.8;
+      boss.introCutsceneId = BOSS_INTRO_CUTSCENE_IDS[bossKind] || null;
+      boss.combatStarted = false;
       if (getBossArchetype(bossKind) === "echo") boss.speed = isMidBoss ? 160 : 175;
       return boss;
     }
@@ -3455,7 +3478,7 @@
         const definition = BOSS_DEFINITIONS[stage.midBossKind];
         const midBoss = addEnemy("boss", stage.midBossX, floorY, 540);
         configureBossEntity(midBoss, stage.midBossKind, floorY, true);
-        addSign(origin + 2050, floorY - 104, `중간보스 · ${definition.name}`, "MID-STAGE TARGET");
+        addSign(origin + 2050, floorY - 104, `중간 보스 · ${definition.name}`, "MID-STAGE TARGET");
       } else {
         addBossArena(zone.stageIndex, origin, floorY, kind);
         const stage = stages[zone.stageIndex];
@@ -4817,7 +4840,6 @@
 
   function startCutscene(event) {
     if (!event || game.cutsceneSeen.has(event.id)) return;
-    game.cutsceneSeen.add(event.id);
     game.cutscene = event;
     game.cutsceneShotIndex = 0;
     game.cutsceneTimer = event.shots[0]?.duration || 5;
@@ -4830,7 +4852,6 @@
     player.vx = 0;
     player.attackTimer = 0;
     bullets.length = 0;
-    saveCampaign();
     sound.tone(118, 0.28, "sine", 0.035, 0.72);
   }
 
@@ -4840,6 +4861,7 @@
     game.cutsceneShotIndex += 1;
     const nextShot = game.cutscene.shots[game.cutsceneShotIndex];
     if (!nextShot) {
+      game.cutsceneSeen.add(finishedScene.id);
       game.cutscene = null;
       game.cutsceneShotIndex = 0;
       game.cutsceneTimer = 0;
@@ -4853,6 +4875,7 @@
         game.hint = "기록 장면 종료 · 작전 재개";
         game.hintTimer = 2.4;
       }
+      saveCampaign();
       sound.tone(360, 0.14, "sine", 0.022, 1.35);
       return;
     }
@@ -4889,6 +4912,49 @@
     if (pressed.has("Space") || pressed.has("Enter")) requestCutsceneAdvance();
     else if (game.cutsceneTimer <= 0) advanceCutscene();
     pressed.clear();
+  }
+
+  function getBossIntroCutsceneId(enemy) {
+    if (!enemy || enemy.type !== "boss") return null;
+    return enemy.introCutsceneId || BOSS_INTRO_CUTSCENE_IDS[enemy.bossKind] || null;
+  }
+
+  function isBossIntroLocked(enemy) {
+    if (!enemy || enemy.type !== "boss" || game.adminMode) return false;
+    if (enemy.combatStarted) return false;
+    const introCutsceneId = getBossIntroCutsceneId(enemy);
+    const introEvent = CUTSCENE_EVENT_BY_ID.get(introCutsceneId);
+    if (!introCutsceneId || !introEvent || player.x < introEvent.x || !game.cutsceneSeen.has(introCutsceneId)) return true;
+    return Boolean(game.cutscene || game.story || game.storyQueue.length > 0);
+  }
+
+  function holdBossUntilIntroEnds(enemy, dt, dx) {
+    if (!isBossIntroLocked(enemy)) {
+      if (!enemy.combatStarted) {
+        enemy.combatStarted = true;
+        enemy.cooldown = Math.max(enemy.cooldown, 0.78);
+        enemy.windup = 0;
+        enemy.bossAction = "idle";
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red, 22, 300, 0.52, 260);
+        sound.tone(92, 0.18, "sawtooth", 0.03, 1.45);
+      }
+      return false;
+    }
+
+    enemy.combatStarted = false;
+    enemy.windup = 0;
+    enemy.rushTimer = 0;
+    enemy.burstRemaining = 0;
+    enemy.burstInterval = 0;
+    enemy.bossAction = "idle";
+    enemy.bossShotPattern = null;
+    enemy.targetX = null;
+    enemy.targetY = null;
+    enemy.vx = moveToward(enemy.vx, 0, 760 * dt);
+    enemy.facing = dx >= 0 ? 1 : -1;
+    moveEnemyPhysics(enemy, dt);
+    constrainEnemyToLockdown(enemy);
+    return true;
   }
 
   function spawnParticles(x, y, color, count = 8, speed = 250, life = 0.45, gravity = 650) {
@@ -5207,6 +5273,11 @@
       return;
     }
 
+    if (isBossIntroLocked(enemy)) {
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, palette.cyan, 6, 150, 0.24, 0);
+      return;
+    }
+
     if (enemy.type === "boss" && enemy.bossKind === "hunter" && player.burstTimer > 0 && (enemy.reflectBreakTimer || 0) <= 0) {
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 12, 250, 0.34, 0);
       game.hint = "적린 · 산탄과 버스트 반사 · 일본도만 유효";
@@ -5307,6 +5378,11 @@
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
     if (enemy.hitShotId === bullet.shotId) return true;
+    if (isBossIntroLocked(enemy)) {
+      enemy.hitShotId = bullet.shotId;
+      spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, palette.cyan, 6, 150, 0.24, 0);
+      return true;
+    }
     if (enemy.type === "boss" && enemy.bossKind === "oracle" && enemy.pendingShotId === bullet.shotId) {
       // 치환 예고 중인 산탄은 육화에게 피해를 주지 않고 잠시 후 플레이어에게 역류한다.
       enemy.hitShotId = bullet.shotId;
@@ -5584,6 +5660,7 @@
       enemy.echoDecisionSerial = 0;
       enemy.echoMimicJumpCooldown = 0;
       enemy.passivePanelCooldown = 4.8;
+      enemy.combatStarted = false;
       enemy.summonCooldown = 6.5;
       enemy.summonCount = 0;
       enemy.barrierTimer = 0;
@@ -7385,6 +7462,8 @@
     const formationCooldown = formation?.id === "spotter" && enemy.type !== "drone" ? 0.72 : 1;
     const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed * stagePressure;
     enemy.facing = dx >= 0 ? 1 : -1;
+
+    if (enemy.type === "boss" && holdBossUntilIntroEnds(enemy, dt, dx)) return;
 
     if (enemy.hitStun > 0) {
       if (enemy.type === "drone") {
@@ -12973,8 +13052,8 @@
       ctx.fillText("ADMIN MODE // PASSIVE ENEMIES // SEALS BYPASSED", W / 2, 106);
       ctx.fillStyle = "#ffe4a0";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-      ctx.fillText("A/D 좌우 · SPACE 상승 · SHIFT 하강 · 공중 정지 · 벽 통과 · 이동속도 2배", W / 2, 126);
-      ctx.fillText(`L 전체 ${TOTAL_ZONE_COUNT}구역 · 1~5 스테이지 · X 생성 · Z 적/회복템/도약판 영구 삭제 · R 신참`, W / 2, 145);
+      ctx.fillText("A/D 좌우 · SPACE 상승 · SHIFT 하강 · 공중 정지 · 벽 통과 · 이동 속도 2배", W / 2, 126);
+      ctx.fillText(`L 전체 ${TOTAL_ZONE_COUNT}개 구역 · 1~5 스테이지 · X 생성 · Z 적/회복 아이템/도약 발판 영구 삭제 · R 신참`, W / 2, 145);
       ctx.textAlign = "left";
     } else if (game.adminCadetMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.92)";
@@ -14033,7 +14112,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.0",
+    version: "3.6.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14246,6 +14325,11 @@
     bossCrisisPatternCount: Object.keys(BOSS_CRISIS_PATTERNS).length,
     bossCrisisPatternTelegraph: true,
     bossCrisisCooldownRange: [5.68, 6.8],
+    bossIntroCombatGate: true,
+    bossIntroWaitsForDialogue: true,
+    bossDormantDamageLock: true,
+    bossIntroCutsceneCount: Object.keys(BOSS_INTRO_CUTSCENE_IDS).length,
+    cutsceneCompletionSavedAtEnd: true,
     weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
     echoPatternVariants: BOSS_DEFINITIONS.echo.patterns.length,
     bossVisualDetailPass: true,
@@ -14303,7 +14387,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.0",
+    gameVersion: "3.6.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14522,6 +14606,11 @@
     bossCrisisPatternCount: String(Object.keys(BOSS_CRISIS_PATTERNS).length),
     bossCrisisPatternTelegraph: "true",
     bossCrisisCooldownRange: "5.68,6.8",
+    bossIntroCombatGate: "true",
+    bossIntroWaitsForDialogue: "true",
+    bossDormantDamageLock: "true",
+    bossIntroCutsceneCount: String(Object.keys(BOSS_INTRO_CUTSCENE_IDS).length),
+    cutsceneCompletionSavedAtEnd: "true",
     weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
     echoPatternVariants: String(BOSS_DEFINITIONS.echo.patterns.length),
     bossVisualDetailPass: "true",
