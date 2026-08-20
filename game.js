@@ -105,6 +105,7 @@
   const MORTAR_TURRET_VOLLEY_COUNT = 3;
   const TURRET_CHARGE_SECONDS = 0.82;
   const TURRET_ROW_PROJECTILE_SPEED = 365;
+  const BOSS_ARENA_EDGE_INSET = 64;
   const ACT_THREE_INDEX = 2;
   const ACT_FOUR_INDEX = 3;
   const BURST_PARRY_PROJECTILE_COUNT = 3;
@@ -345,6 +346,40 @@
       patterns: ["맹독 플라스크", "변이 포션", "자가 투약", "변이 강타", "괴력 연격"],
     },
   };
+  const BOSS_PATTERN_ORDERS = Object.freeze({
+    breaker: [0, 2, 1, 3],
+    hunter: [0, 2, 3, 1, 4],
+    oracle: [0, 3, 1, 2],
+    revenant: [0, 2, 1, 3, 4],
+    proxy: [0, 2, 1, 4, 3],
+    warden: [0, 2, 4, 1, 3, 5],
+    furnace: [1, 0, 2, 3, 4],
+    weaver: [0, 3, 1, 2, 4],
+    censor: [0, 2, 1, 3, 4],
+    echo: [0, 2, 1, 3, 5, 4],
+  });
+  const BOSS_FOLLOWUP_PATTERNS = Object.freeze({
+    "warden-funnels": "warden-volley",
+    "warden-volley": "warden-air",
+    "warden-crossfire": "warden-suppress",
+    "warden-air": "warden-volley",
+    "furnace-mortar": "furnace-rifle",
+    "furnace-volley": "furnace-rifle",
+    "furnace-rifle": "furnace-mortar",
+    "hunter-shotgun": "hunter-rifle",
+    "hunter-rifle": "hunter-shotgun",
+    "weaver-fan": "weaver-lance",
+    "weaver-lance": "weaver-orbit",
+    "oracle-burst": "oracle-needle",
+    "oracle-cross": "oracle-ring",
+    "revenant-sword-wave": "revenant-shield-burst",
+    "revenant-triple-wave": "revenant-shield-burst",
+    "censor-volley": "censor-mortar",
+    "censor-mortar": "censor-air",
+    "proxy-potion": "proxy-toxic-ring",
+    "echo-shotgun": "echo-air",
+    "echo-air": "echo-burst",
+  });
 
   const STAGE_COMBAT_PRESSURE = [0.82, 0.94, 1.06, 1.18, 1.32];
   const STAGE_BULLET_PRESSURE = [0.88, 0.96, 1.03, 1.10, 1.16];
@@ -1330,7 +1365,7 @@
     return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive).length;
   }
 
-  function getBossArenaBounds(enemy, inset = 140) {
+  function getBossArenaBounds(enemy, inset = BOSS_ARENA_EDGE_INSET) {
     const stage = stages[enemy?.stageIndex] || stages[0];
     const fallbackZoneIndex = enemy?.isMidBoss ? MID_BOSS_ZONE_INDEX : BOSS_ZONE_INDEX;
     const homeZoneIndex = Number.isInteger(enemy?.homeZoneIndex)
@@ -1359,6 +1394,10 @@
       enemy.stageIndex = getStageIndexAt(anchorX);
     }
     return enemy.homeZoneIndex;
+  }
+
+  function bossIgnoresArenaPlatform(enemy, platform) {
+    return enemy?.type === "boss" && platform?.h <= 48;
   }
 
   function getEnemyLockdownBounds(enemy) {
@@ -1466,7 +1505,11 @@
   function ejectEnemyFromPlatforms(enemy) {
     let ejected = false;
     for (let pass = 0; pass < 4; pass += 1) {
-      const embedded = getNearbyPlatforms(enemy, 96).filter((platform) => !platform.hidden && overlaps(enemy, platform));
+      const embedded = getNearbyPlatforms(enemy, 96).filter((platform) => (
+        !platform.hidden
+        && !bossIgnoresArenaPlatform(enemy, platform)
+        && overlaps(enemy, platform)
+      ));
       if (embedded.length === 0) break;
       if (enemy.type === "boss") {
         const platform = embedded.reduce((best, candidate) => {
@@ -3160,6 +3203,11 @@
       boss.echoAnalysis = null;
       boss.echoDecisionSerial = 0;
       boss.echoMimicJumpCooldown = 0;
+      boss.patternSerial = 0;
+      boss.lastBossPhase = -1;
+      boss.followupTimer = 0;
+      boss.followupPattern = null;
+      boss.followupChainActive = false;
       boss.passivePanelCooldown = 4.8;
       if (getBossArchetype(bossKind) === "echo") boss.speed = isMidBoss ? 160 : 175;
       return boss;
@@ -6332,6 +6380,34 @@
     sound.tone(58, 0.26, "sawtooth", 0.065, 0.34);
   }
 
+  function selectBossPatternPhase(enemy, phaseCount, hpRatio, distance) {
+    const order = BOSS_PATTERN_ORDERS[enemy.bossKind] || Array.from({ length: phaseCount }, (_, index) => index);
+    const serial = enemy.patternSerial || 0;
+    const tacticalOffset = Math.floor(hash(
+      enemy.originX * 0.013
+      + serial * 7.31
+      + Math.floor((player.x + player.y) / 180) * 2.17,
+    ) * order.length);
+    let orderIndex = (serial + tacticalOffset + (hpRatio < 0.5 ? 1 : 0) + (distance < 260 ? 1 : 0)) % order.length;
+    let phase = order[orderIndex] % phaseCount;
+    for (let attempt = 0; attempt < order.length && phase === enemy.lastBossPhase; attempt += 1) {
+      orderIndex = (orderIndex + 1) % order.length;
+      phase = order[orderIndex] % phaseCount;
+    }
+    enemy.patternSerial = serial + 1;
+    enemy.lastBossPhase = phase;
+    enemy.bossPhase = phase;
+    return phase;
+  }
+
+  function queueBossPatternFollowup(enemy, releasedPattern) {
+    if (enemy.followupChainActive || enemy.hp / enemy.maxHp > 0.66 || (enemy.patternSerial || 0) % 2 !== 0) return;
+    const followupPattern = BOSS_FOLLOWUP_PATTERNS[releasedPattern];
+    if (!followupPattern) return;
+    enemy.followupPattern = followupPattern;
+    enemy.followupTimer = 0.48 + enemy.stageIndex * 0.025;
+  }
+
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
     const rank = enemy.stageIndex;
     const curve = getBossDifficultyCurve(rank);
@@ -6363,6 +6439,8 @@
   }
 
   function releaseBossChargedShot(enemy) {
+    const releasedPattern = enemy.bossShotPattern;
+    const completedFollowup = Boolean(enemy.followupChainActive);
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
       case "warden-funnels":
@@ -6370,6 +6448,10 @@
         break;
       case "warden-volley":
         [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        break;
+      case "warden-crossfire":
+        [-0.24, 0, 0.24].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        [-0.18, -0.06, 0.06, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
         break;
       case "warden-air":
         if (enemy.grounded) {
@@ -6549,6 +6631,8 @@
       0.52,
       120,
     );
+    if (completedFollowup) enemy.followupChainActive = false;
+    else queueBossPatternFollowup(enemy, releasedPattern);
     enemy.bossAction = null;
     enemy.bossShotPattern = null;
     enemy.bossChargeDuration = 0;
@@ -7015,7 +7099,7 @@
         blocked = true;
       }
       for (const platform of nearbyPlatforms) {
-        if (platform.hidden) continue;
+        if (platform.hidden || bossIgnoresArenaPlatform(enemy, platform)) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldX + enemy.w <= platform.x + 1 && enemy.vx > 0) enemy.x = platform.x - enemy.w;
         else if (oldX >= platform.x + platform.w - 1 && enemy.vx < 0) enemy.x = platform.x + platform.w;
@@ -7030,7 +7114,7 @@
       const oldBottom = oldY + enemy.h;
       enemy.y += enemy.vy * stepTime;
       for (const platform of nearbyPlatforms) {
-        if (platform.hidden) continue;
+        if (platform.hidden || bossIgnoresArenaPlatform(enemy, platform)) continue;
         if (!overlaps(enemy, platform)) continue;
         if (oldBottom <= platform.y + 2 && enemy.vy >= 0) {
           enemy.y = platform.y - enemy.h;
@@ -7640,6 +7724,17 @@
       }
     }
 
+    if ((enemy.followupTimer || 0) > 0) {
+      enemy.followupTimer = Math.max(0, enemy.followupTimer - dt);
+    }
+    if (enemy.followupTimer <= 0 && enemy.followupPattern && enemy.windup <= 0 && !enemy.bossAction && !retreating) {
+      const followupPattern = enemy.followupPattern;
+      enemy.followupPattern = null;
+      enemy.followupChainActive = true;
+      startBossChargedShot(enemy, followupPattern, dx, 0.46 + rank * 0.025);
+      enemy.cooldown = Math.max(enemy.cooldown, 0.9 * bossCurve.cooldown);
+    }
+
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
     if (retreating) {
@@ -7659,14 +7754,14 @@
       enemy.vx = Math.abs(dx) > stopRange
         ? moveToward(enemy.vx, Math.sign(dx || enemy.dashDirection || 1) * approachSpeed * bossCurve.mobility, 1050 * dt)
         : moveToward(enemy.vx, 0, 980 * dt);
-    } else if (distance < 760 && Math.abs(dx) > 115) {
+    } else if (Math.abs(dx) > 115) {
       enemy.vx = moveToward(enemy.vx, Math.sign(dx) * desiredSpeed, 360 * dt);
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
     }
-    const homeArena = getBossArenaBounds(enemy, 120);
-    const arenaLeft = Math.max(homeArena.left, enemy.originX - 920);
-    const arenaRight = Math.min(homeArena.right, enemy.originX + 820);
+    const homeArena = getBossArenaBounds(enemy);
+    const arenaLeft = homeArena.left;
+    const arenaRight = homeArena.right;
     if (kind === "weaver" && !chargingShot) {
       const hoverTarget = enemy.baseY - 185 + Math.sin(enemy.anim * 1.75) * 72;
       const hoverVelocity = clamp((hoverTarget - enemy.y) * 3.1, -330, 330);
@@ -7698,7 +7793,7 @@
 
     if (!retreating && enemy.cooldown <= 0 && distance < 900) {
       const phaseCount = definition.patterns.length;
-      enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
+      selectBossPatternPhase(enemy, phaseCount, hpRatio, distance);
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
 
       if (bossKind === "breaker") {
@@ -7820,9 +7915,12 @@
         if (enemy.bossPhase === 0) {
           startBossChargedShot(enemy, "warden-funnels", dx, 0.72);
           enemy.cooldown = 2.05 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
-        } else if (enemy.bossPhase === 1 || enemy.bossPhase === 2) {
+        } else if (enemy.bossPhase === 1) {
           startBossChargedShot(enemy, "warden-volley", dx, 0.68);
           enemy.cooldown = 1.9 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
+        } else if (enemy.bossPhase === 2) {
+          startBossChargedShot(enemy, "warden-crossfire", dx, 0.78);
+          enemy.cooldown = 2.15 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else if (enemy.bossPhase === 3) {
           enemy.windup = 0.72;
           enemy.bossAction = "dash";
@@ -7870,6 +7968,9 @@
           const teleportX = clamp(player.x - Math.sign(dx || 1) * 310, arenaLeft + 80, arenaRight - 80);
           summonMagicSigil(enemy, "teleport", teleportX, enemy.baseY - 285, 0.54);
           enemy.cooldown = 1.75 * recovery;
+        } else if (enemy.bossPhase === 3) {
+          startBossChargedShot(enemy, "weaver-lance", dx, 0.72);
+          enemy.cooldown = 2.05 * recovery;
         } else {
           startBossChargedShot(enemy, "weaver-orbit", dx, 1.02);
           enemy.cooldown = 2.5 * recovery;
@@ -7899,18 +8000,18 @@
         const adaptiveChoice = enemy.adaptivePhase && serial % 3 === 0
           ? Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0]
           : null;
-        const phase = serial % 7;
-        if ((adaptiveChoice === "rush" || adaptiveChoice === "air") || phase === 0 || phase === 4) {
+        const phase = enemy.bossPhase;
+        if (adaptiveChoice === "rush" || phase === 0) {
           enemy.windup = 0.4;
           enemy.bossAction = "echoDash";
           enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
           enemy.dashRange = Math.min(820, Math.max(260, Math.abs(dx) + 90));
           enemy.cooldown = 1.28 * recovery;
-        } else if (adaptiveChoice === "shotgun" || phase === 2) {
+        } else if (adaptiveChoice === "shotgun" || phase === 1) {
           startBossChargedShot(enemy, "echo-shotgun", dx, 0.46);
           enemy.cooldown = 1.42 * recovery;
-        } else if (phase === 1 || phase === 5) {
-          startBossChargedShot(enemy, "echo-shotgun", dx, 0.48);
+        } else if (adaptiveChoice === "air" || phase === 2) {
+          startBossChargedShot(enemy, "echo-air", dx, 0.5);
           enemy.cooldown = 1.38 * recovery;
         } else if (phase === 3) {
           enemy.windup = 0.42;
@@ -7919,9 +8020,15 @@
           enemy.dashRange = 590;
           if (enemy.grounded) enemy.vy = -360;
           enemy.cooldown = 1.36 * recovery;
-        } else {
+        } else if (phase === 4) {
           startBossChargedShot(enemy, "echo-burst", dx, 0.82);
           enemy.cooldown = 1.75 * recovery;
+        } else {
+          enemy.windup = 0.38;
+          enemy.bossAction = "echoCounter";
+          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+          enemy.dashRange = 520;
+          enemy.cooldown = 1.48 * recovery;
         }
       }
       enemy.cooldown = Math.max(0.48, enemy.cooldown * bossCurve.cooldown);
@@ -11801,6 +11908,36 @@
     ctx.strokeRect(x - 9, 198, 18, 422);
   }
 
+  function drawBossArenaLimits(left, right) {
+    const pulse = 0.48 + Math.sin(game.time * 5.5) * 0.16;
+    for (const enemy of enemies) {
+      if (!enemy.alive || enemy.type !== "boss") continue;
+      const arena = getBossArenaBounds(enemy);
+      if (arena.right < left - 80 || arena.left > right + 80) continue;
+      const floorY = (Number.isFinite(enemy.baseY) ? enemy.baseY : enemy.y) + enemy.h;
+      const topY = Math.max(28, floorY - 620);
+      ctx.save();
+      for (const boundaryX of [arena.left, arena.right]) {
+        ctx.fillStyle = "rgba(7, 14, 22, 0.86)";
+        ctx.fillRect(boundaryX - 7, topY, 14, floorY - topY);
+        ctx.fillStyle = `rgba(255, 73, 108, ${0.18 + pulse * 0.18})`;
+        ctx.fillRect(boundaryX - 3, topY + 8, 6, floorY - topY - 8);
+        ctx.strokeStyle = `rgba(255, 205, 112, ${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 12]);
+        ctx.beginPath();
+        ctx.moveTo(boundaryX, topY + 12);
+        ctx.lineTo(boundaryX, floorY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = palette.amber;
+        ctx.fillRect(boundaryX - 11, topY, 22, 7);
+        ctx.fillRect(boundaryX - 13, floorY - 9, 26, 9);
+      }
+      ctx.restore();
+    }
+  }
+
   function drawBossArenaBackdrop(left, right) {
     const floorByStage = [650, 680, 670, 660, 670];
     for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
@@ -12025,6 +12162,7 @@
         if (getZoneRemaining(zoneIndex) > 0) drawCombatSeal(boundary);
       }
     }
+    drawBossArenaLimits(left, right);
     for (const stage of stages) {
       if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.adminMode || game.defeatedBosses.has(stage.bossKind));
     }
@@ -13545,7 +13683,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.5.0",
+    version: "3.5.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13741,6 +13879,16 @@
     bossPlatformAxisSeparation: true,
     bossArenaVerticalGuard: true,
     bossHardTeleportContainment: false,
+    bossArenaEdgeInset: BOSS_ARENA_EDGE_INSET,
+    bossMovementUsesFullArena: true,
+    bossFullArenaPursuit: true,
+    bossVisibleArenaLimits: true,
+    bossThinPlatformPassThrough: true,
+    bossPatternDirector: "adaptive-no-repeat",
+    bossPhaseTwoFollowupCombos: true,
+    bossPatternOrderCount: Object.keys(BOSS_PATTERN_ORDERS).length,
+    weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
+    echoPatternVariants: BOSS_DEFINITIONS.echo.patterns.length,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
     zoneClearHealEnabled: false,
     embeddedRepairPickupsRemoved: true,
@@ -13791,7 +13939,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.5.0",
+    gameVersion: "3.5.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13993,6 +14141,16 @@
     bossPlatformAxisSeparation: "true",
     bossArenaVerticalGuard: "true",
     bossHardTeleportContainment: "false",
+    bossArenaEdgeInset: String(BOSS_ARENA_EDGE_INSET),
+    bossMovementUsesFullArena: "true",
+    bossFullArenaPursuit: "true",
+    bossVisibleArenaLimits: "true",
+    bossThinPlatformPassThrough: "true",
+    bossPatternDirector: "adaptive-no-repeat",
+    bossPhaseTwoFollowupCombos: "true",
+    bossPatternOrderCount: String(Object.keys(BOSS_PATTERN_ORDERS).length),
+    weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
+    echoPatternVariants: String(BOSS_DEFINITIONS.echo.patterns.length),
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
     zoneClearHealEnabled: "false",
     embeddedRepairPickupsRemoved: "true",
