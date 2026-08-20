@@ -380,6 +380,18 @@
     "echo-shotgun": "echo-air",
     "echo-air": "echo-burst",
   });
+  const BOSS_CRISIS_PATTERNS = Object.freeze({
+    breaker: { pattern: "breaker-siege", duration: 1.18, recovery: 3.7 },
+    hunter: { pattern: "hunter-deadlock", duration: 0.94, recovery: 3.25 },
+    oracle: { pattern: "oracle-verdict", duration: 1.08, recovery: 3.45 },
+    revenant: { pattern: "revenant-overdrive", duration: 1.02, recovery: 3.4 },
+    proxy: { pattern: "proxy-quarantine", duration: 1.18, recovery: 3.65 },
+    warden: { pattern: "warden-redline", duration: 1.22, recovery: 3.8 },
+    furnace: { pattern: "furnace-crimson-storm", duration: 1.26, recovery: 3.85 },
+    weaver: { pattern: "weaver-grand-ritual", duration: 1.18, recovery: 3.75 },
+    censor: { pattern: "censor-blackout", duration: 1.12, recovery: 3.55 },
+    echo: { pattern: "echo-mirror-assault", duration: 0.84, recovery: 3.15 },
+  });
 
   const STAGE_COMBAT_PRESSURE = [0.82, 0.94, 1.06, 1.18, 1.32];
   const STAGE_BULLET_PRESSURE = [0.88, 0.96, 1.03, 1.10, 1.16];
@@ -1965,6 +1977,8 @@
       pendingRetreatDelay: 0,
       pendingRetreatDirection: 0,
       hitStun: 0,
+      crisisPatternCooldown: 0,
+      crisisPatternCount: 0,
       hurt: 0,
       anim: hash(x) * 5,
       hitAttackId: -1,
@@ -5517,6 +5531,8 @@
       enemy.pendingRetreatDelay = 0;
       enemy.pendingRetreatDirection = 0;
       enemy.hitStun = 0;
+      enemy.crisisPatternCooldown = 0;
+      enemy.crisisPatternCount = 0;
       enemy.bossAction = null;
       enemy.bossShotPattern = null;
       enemy.bossChargeDuration = 0;
@@ -5545,6 +5561,8 @@
       enemy.cooldown = 0.65 + hash(enemy.originX) * 0.9;
       enemy.hurt = 0;
       enemy.hitStun = 0;
+      enemy.crisisPatternCooldown = 0;
+      enemy.crisisPatternCount = 0;
       enemy.bossPhase = 0;
       enemy.bossJumpCooldown = 0;
       enemy.halfPhaseTriggered = false;
@@ -6430,6 +6448,22 @@
     enemy.followupTimer = 0.48 + enemy.stageIndex * 0.025;
   }
 
+  function startBossCrisisPattern(enemy, dx) {
+    const crisis = BOSS_CRISIS_PATTERNS[enemy.bossKind];
+    if (!crisis) return false;
+    startBossChargedShot(enemy, crisis.pattern, dx, crisis.duration);
+    enemy.crisisPatternCount = (enemy.crisisPatternCount || 0) + 1;
+    enemy.crisisPatternCooldown = 6.8 - Math.min(1.6, enemy.stageIndex * 0.28);
+    enemy.cooldown = crisis.recovery;
+    enemy.followupPattern = null;
+    enemy.followupTimer = 0;
+    enemy.followupChainActive = false;
+    game.flash = Math.max(game.flash, 0.13);
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.44, BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red, 42, 520, crisis.duration, 0);
+    sound.tone(72 + enemy.stageIndex * 18, crisis.duration * 0.82, "sawtooth", 0.038, 2.05);
+    return true;
+  }
+
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
     const rank = enemy.stageIndex;
     const curve = getBossDifficultyCurve(rank);
@@ -6453,8 +6487,8 @@
       duration,
       0,
     );
-    if (pattern === "warden-core" || pattern === "breaker-laser") {
-      sound.beamCharge(duration, pattern === "breaker-laser" ? "breaker" : "warden");
+    if (pattern === "warden-core" || pattern === "breaker-laser" || pattern === "breaker-siege") {
+      sound.beamCharge(duration, pattern === "warden-core" ? "warden" : "breaker");
     } else {
       sound.tone(105 + rank * 22, duration * 0.7, "sawtooth", 0.018, 1.7);
     }
@@ -6491,6 +6525,11 @@
       case "breaker-laser":
         fireWardenBeam(enemy, target, { length: 1350, thickness: 64, duration: 0.52, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
         break;
+      case "breaker-siege":
+        fireWardenBeam(enemy, target, { length: 1450, thickness: 52, duration: 0.48, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
+        [-0.2, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        [-0.28, -0.1, 0.1, 0.28].forEach((spread) => fireBullet(enemy, 390, spread, "phase", target));
+        break;
       case "furnace-mortar":
         [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         fireFurnaceRedBurst(enemy, target, 5, 0.06, 425);
@@ -6511,6 +6550,11 @@
         fireFurnaceRedBurst(enemy, target, 8, 0.018, 400);
         spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#ffb064", 16, 310, 0.36, 80);
         break;
+      case "furnace-crimson-storm":
+        launchRainCore(enemy);
+        [-430, -215, 0, 215, 430].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        fireFurnaceRedBurst(enemy, target, 11, 0.047, 455);
+        break;
       case "hunter-shotgun":
         [-0.19, -0.095, 0, 0.095, 0.19].forEach((spread, index) => (
           fireBullet(enemy, 470 + index * 16, spread, "standard", target)
@@ -6523,6 +6567,13 @@
           fireBullet(enemy, 610 + index * 35, spread, "phase", target)
         ));
         spawnParticles(enemy.x + enemy.w / 2 + enemy.facing * 38, enemy.y + enemy.h * 0.38, "#a6f7ff", 14, 310, 0.32, 50);
+        break;
+      case "hunter-deadlock":
+        [-0.28, -0.18, -0.09, 0, 0.09, 0.18, 0.28].forEach((spread, index) => (
+          fireBullet(enemy, 440 + (index % 2) * 70, spread, index % 2 ? "phase" : "standard", target)
+        ));
+        for (let index = 0; index < 8; index += 1) fireBullet(enemy, 315, index * TAU / 8, "standard", target);
+        enemy.reflectTimer = Math.max(enemy.reflectTimer || 0, 0.9);
         break;
       case "weaver-lance":
         [-220, 0, 220].forEach((offset, index) => summonMagicSigil(
@@ -6554,6 +6605,20 @@
           );
         }
         break;
+      case "weaver-grand-ritual":
+        for (let index = 0; index < 9; index += 1) {
+          const angle = -Math.PI * 0.92 + index * Math.PI * 1.84 / 8;
+          const radiusX = index % 2 ? 360 : 245;
+          const radiusY = index % 2 ? 205 : 135;
+          summonMagicSigil(
+            enemy,
+            "fireball",
+            enemy.targetX + Math.cos(angle) * radiusX,
+            enemy.targetY + Math.sin(angle) * radiusY,
+            0.42 + index * 0.085,
+          );
+        }
+        break;
       case "oracle-burst":
         [-0.2, -0.1, 0, 0.1, 0.2].forEach((spread) => fireBullet(enemy, 455, spread, "standard", target));
         break;
@@ -6569,6 +6634,14 @@
         for (let index = 0; index < 12; index += 1) {
           fireBullet(enemy, 350 + (index % 2) * 55, index * TAU / 12, "standard", target);
         }
+        break;
+      case "oracle-verdict":
+        swapBossWithPlayer(enemy, { grantInvincibility: true, shake: 18 });
+        const verdictTarget = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
+        for (let index = 0; index < 14; index += 1) {
+          fireBullet(enemy, 330 + (index % 3) * 45, index * TAU / 14 + 0.08, index % 3 === 0 ? "phase" : "standard", verdictTarget);
+        }
+        [-0.075, 0, 0.075].forEach((spread) => fireBullet(enemy, 610, spread, "phase", verdictTarget));
         break;
       case "censor-volley":
         for (let index = -4; index <= 4; index += 1) {
@@ -6592,6 +6665,12 @@
           fireBullet(enemy, 465, index * 0.078, index % 2 === 0 ? "phase" : "standard", target);
         }
         [-330, -110, 110, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
+        break;
+      case "censor-blackout":
+        for (let index = -6; index <= 6; index += 1) {
+          fireBullet(enemy, 455 + (Math.abs(index) % 2) * 55, index * 0.072, index % 2 === 0 ? "phase" : "standard", target);
+        }
+        [-440, -220, 0, 220, 440].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "revenant-shield-burst":
         fireRevenantShieldBurst(enemy, target, enemy.shieldOverdrive ? 5 : 3, 0.09, 550);
@@ -6622,6 +6701,18 @@
       case "proxy-flask-rain":
         [-420, -280, -140, 0, 140, 280, 420].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index + 1, offset));
         break;
+      case "proxy-quarantine":
+        [-480, -360, -240, -120, 0, 120, 240, 360, 480].forEach((offset, index) => throwPotion(enemy, enemy.targetX, index + 1, offset));
+        [-1, 1].forEach((side) => firePointBullet(
+          enemy.x + enemy.w / 2,
+          enemy.y + enemy.h - 12,
+          { x: enemy.x + side * 720, y: enemy.y + enemy.h - 12 },
+          430,
+          0,
+          "mutant-shockwave",
+          "#78ff8b",
+        ));
+        break;
       case "echo-shotgun":
         for (let index = -2; index <= 2; index += 1) {
           fireBullet(enemy, 460 - Math.abs(index) * 26, index * 0.12, index === 0 ? "phase" : "standard", target);
@@ -6638,6 +6729,17 @@
         for (let index = 0; index < 10; index += 1) {
           fireBullet(enemy, 310 + (index % 2) * 70, index * TAU / 10, index % 3 === 0 ? "phase" : "standard", target);
         }
+        break;
+      case "warden-redline":
+        launchBossFunnels(enemy, 4);
+        [-0.3, -0.1, 0.1, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        [-0.2, 0, 0.2].forEach((spread) => fireBullet(enemy, 455, spread, "phase", target));
+        break;
+      case "echo-mirror-assault":
+        for (let index = 0; index < 12; index += 1) {
+          fireBullet(enemy, 320 + (index % 2) * 65, index * TAU / 12, index % 3 === 0 ? "phase" : "standard", target);
+        }
+        [-0.24, -0.12, 0, 0.12, 0.24].forEach((spread) => fireBullet(enemy, 500, spread, "phase", target));
         break;
       default:
         fireBullet(enemy, 390, 0, "standard", target);
@@ -7553,6 +7655,7 @@
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
     enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
+    enemy.crisisPatternCooldown = Math.max(0, (enemy.crisisPatternCooldown || 0) - dt);
 
     if ((enemy.pendingRetreatDelay || 0) > 0) {
       enemy.pendingRetreatDelay = Math.max(0, enemy.pendingRetreatDelay - dt);
@@ -7831,6 +7934,20 @@
       enemy.vx = Math.min(0, enemy.vx);
     }
     constrainBossToArenaVertical(enemy);
+
+    if (
+      !retreating
+      && hpRatio <= 0.35
+      && enemy.crisisPatternCooldown <= 0
+      && enemy.cooldown <= 0
+      && enemy.windup <= 0
+      && !enemy.bossAction
+      && distance < 900
+      && startBossCrisisPattern(enemy, dx)
+    ) {
+      enemy.cooldown = Math.max(0.82, enemy.cooldown * bossCurve.cooldown);
+      return;
+    }
 
     if (!retreating && enemy.cooldown <= 0 && distance < 900) {
       const phaseCount = definition.patterns.length;
@@ -13916,7 +14033,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.5.3",
+    version: "3.6.0",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14125,6 +14242,10 @@
     bossPatternDirector: "adaptive-no-repeat",
     bossPhaseTwoFollowupCombos: true,
     bossPatternOrderCount: Object.keys(BOSS_PATTERN_ORDERS).length,
+    bossCrisisPatternThreshold: 0.35,
+    bossCrisisPatternCount: Object.keys(BOSS_CRISIS_PATTERNS).length,
+    bossCrisisPatternTelegraph: true,
+    bossCrisisCooldownRange: [5.68, 6.8],
     weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
     echoPatternVariants: BOSS_DEFINITIONS.echo.patterns.length,
     bossVisualDetailPass: true,
@@ -14182,7 +14303,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.5.3",
+    gameVersion: "3.6.0",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14397,6 +14518,10 @@
     bossPatternDirector: "adaptive-no-repeat",
     bossPhaseTwoFollowupCombos: "true",
     bossPatternOrderCount: String(Object.keys(BOSS_PATTERN_ORDERS).length),
+    bossCrisisPatternThreshold: "0.35",
+    bossCrisisPatternCount: String(Object.keys(BOSS_CRISIS_PATTERNS).length),
+    bossCrisisPatternTelegraph: "true",
+    bossCrisisCooldownRange: "5.68,6.8",
     weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
     echoPatternVariants: String(BOSS_DEFINITIONS.echo.patterns.length),
     bossVisualDetailPass: "true",

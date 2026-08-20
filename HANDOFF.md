@@ -2,7 +2,7 @@
 
 ## 현재 상태
 
-- 버전: `3.5.3`
+- 버전: `3.6.0`
 - 공개 사이트: https://leejuhan-1214.github.io/Wolhajinhyang/
 - GitHub 저장소: https://github.com/leejuhan-1214/Wolhajinhyang
 - 구성: HTML/CSS/JavaScript 기반 브라우저 게임
