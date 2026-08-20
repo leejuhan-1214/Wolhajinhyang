@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.5.2") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.5.3") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -97,7 +97,7 @@ if (diagnostics.normalEnemyRepairDropChance !== 0 || diagnostics.zoneClearHealEn
 if (!diagnostics.bossRetreatPreservesAttack || !diagnostics.bossPlatformAxisSeparation || !diagnostics.bossArenaVerticalGuard || diagnostics.bossHardTeleportContainment) {
   throw new Error("boss movement recovery can still interrupt attacks or hard-teleport");
 }
-if (diagnostics.bossArenaEdgeInset !== 64 || !diagnostics.bossMovementUsesFullArena || !diagnostics.bossFullArenaPursuit || !diagnostics.bossVisibleArenaLimits || !diagnostics.bossThinPlatformPassThrough) {
+if (diagnostics.bossArenaEdgeInset !== 64 || !diagnostics.bossMovementUsesFullArena || !diagnostics.bossFullArenaPursuit || !diagnostics.bossVisibleArenaLimits || !diagnostics.bossUsesStrictHomeArenaBounds || !diagnostics.bossBoundaryHopDisabled || !diagnostics.bossThinPlatformPassThrough) {
   throw new Error("boss arena still contains invisible movement blockers");
 }
 if (diagnostics.bossPatternDirector !== "adaptive-no-repeat" || !diagnostics.bossPhaseTwoFollowupCombos || diagnostics.bossPatternOrderCount !== 10 || diagnostics.weaverPatternVariants !== 5 || diagnostics.echoPatternVariants !== 6) {
@@ -111,6 +111,9 @@ if (gameSource.includes("Math.max(homeArena.left, enemy.originX - 920)") || game
 }
 if (!gameSource.includes("bossIgnoresArenaPlatform(enemy, platform)") || !gameSource.includes("selectBossPatternPhase(enemy, phaseCount, hpRatio, distance)") || !gameSource.includes("queueBossPatternFollowup(enemy, releasedPattern)")) {
   throw new Error("boss movement or pattern implementation missing");
+}
+if (!gameSource.includes('if (enemy.type === "boss") return getBossArenaBounds(enemy);') || !gameSource.includes("blocked && !blockedByArena")) {
+  throw new Error("strict boss home-arena containment missing");
 }
 if (!gameSource.includes("enemy.pendingRetreatDelay = enemy.windup + 0.22") || !gameSource.includes("constrainBossToArenaVertical(enemy)") || !gameSource.includes('if (correction.axis === "x")')) {
   throw new Error("boss retreat or platform collision implementation missing");
@@ -147,8 +150,11 @@ if (!diagnostics.gongmunSwordMotion || !diagnostics.gongmunSwordWaves || !diagno
 if (!diagnostics.doctorFlaskSlashClear || !diagnostics.doctorPoisonGasSlashClear || diagnostics.mutantDebrisSlashClear || diagnostics.proxyMutationHealRatio !== 0.25) {
   throw new Error("doctor hazard and mutation rules invalid");
 }
-if (diagnostics.enemyHitInterruptsFire || diagnostics.bossRetreatEveryHits !== 2) {
-  throw new Error("enemy fire must continue on hit while two-hit boss retreat remains enabled");
+if (!diagnostics.enemyHitInterruptsFire || diagnostics.normalEnemyHitStunSeconds !== 0.24 || diagnostics.bossHitStunSeconds !== 0.13 || !diagnostics.bossHitPausesAttack || diagnostics.bossRetreatEveryHits !== 2) {
+  throw new Error("enemy hit-stun or two-hit boss retreat configuration invalid");
+}
+if (!gameSource.includes("function applyEnemyHitStun(enemy, duration)") || !gameSource.includes("if (enemy.hitStun > 0)")) {
+  throw new Error("enemy hit-stun implementation missing");
 }
 if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.wardenPanelShotsPerUnit !== 5 || diagnostics.wardenPanelShotInterval !== 0.32 || diagnostics.wardenAttackRecoveryScale !== 0.78) {
   throw new Error(`warden frequency tuning invalid: ${diagnostics.wardenPanelPassiveCooldowns}/${diagnostics.wardenPanelShotsPerUnit}/${diagnostics.wardenAttackRecoveryScale}`);

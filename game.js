@@ -1402,6 +1402,7 @@
 
   function getEnemyLockdownBounds(enemy) {
     const homeZoneIndex = normalizeEnemyHomeZone(enemy);
+    if (enemy.type === "boss") return getBossArenaBounds(enemy);
     const zone = zones[homeZoneIndex] || zones[getZoneIndexAt(enemy.x)] || zones[0];
     let left = zone.x + 48;
     let right = zone.end - 48;
@@ -1963,6 +1964,7 @@
       pendingRetreatTimer: 0,
       pendingRetreatDelay: 0,
       pendingRetreatDirection: 0,
+      hitStun: 0,
       hurt: 0,
       anim: hash(x) * 5,
       hitAttackId: -1,
@@ -5166,6 +5168,22 @@
     if (enemy.hp <= 0) killEnemy(enemy);
   }
 
+  function applyEnemyHitStun(enemy, duration) {
+    if (!enemy.alive) return;
+    enemy.hitStun = Math.max(enemy.hitStun || 0, duration);
+    enemy.vx *= enemy.type === "boss" ? 0.52 : 0.32;
+    if (enemy.type === "boss") return;
+
+    // 일반 적은 피격 순간 진행 중이던 사격·돌진·근접 공격을 확실히 취소한다.
+    enemy.windup = 0;
+    enemy.rushTimer = 0;
+    enemy.burstRemaining = 0;
+    enemy.burstInterval = 0;
+    enemy.targetX = null;
+    enemy.targetY = null;
+    enemy.cooldown = Math.max(enemy.cooldown, duration + 0.34);
+  }
+
   function damageEnemy(enemy, { source = "slash" } = {}) {
     if (!enemy.alive || enemy.hitAttackId === player.attackId) return;
     enemy.hitAttackId = player.attackId;
@@ -5244,6 +5262,7 @@
     enemy.hp -= dealtDamage;
     if (source === "slash" && game.stage >= ACT_FOUR_INDEX && enemy.hp > 0) igniteEnemyWithFlameSword(enemy);
     enemy.hurt = 0.18;
+    applyEnemyHitStun(enemy, enemy.type === "boss" ? 0.13 : 0.24);
     registerBossRetreatHit(enemy);
     if (!isStationaryTurret(enemy)) enemy.vx += player.attackDir.x * (enemy.type === "boss" ? 80 : 250);
     game.shake = enemy.type === "boss" ? 8 : chainFinisher ? 16 : 11;
@@ -5316,6 +5335,7 @@
     if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.75;
     enemy.hp -= shotgunDamage;
     enemy.hurt = 0.22;
+    applyEnemyHitStun(enemy, enemy.type === "boss" ? 0.11 : 0.2);
     registerBossRetreatHit(enemy);
     if (!isStationaryTurret(enemy)) enemy.vx += Math.sign(bullet.vx) * (enemy.type === "boss" ? 90 : bullet.piercing ? 520 : 310);
     game.shake = Math.max(game.shake, bullet.piercing ? 24 : 14);
@@ -5496,6 +5516,7 @@
       enemy.pendingRetreatTimer = 0;
       enemy.pendingRetreatDelay = 0;
       enemy.pendingRetreatDirection = 0;
+      enemy.hitStun = 0;
       enemy.bossAction = null;
       enemy.bossShotPattern = null;
       enemy.bossChargeDuration = 0;
@@ -5523,6 +5544,7 @@
       enemy.grounded = false;
       enemy.cooldown = 0.65 + hash(enemy.originX) * 0.9;
       enemy.hurt = 0;
+      enemy.hitStun = 0;
       enemy.bossPhase = 0;
       enemy.bossJumpCooldown = 0;
       enemy.halfPhaseTriggered = false;
@@ -7089,6 +7111,7 @@
     const steps = Math.max(1, Math.ceil(Math.max(Math.abs(enemy.vx * dt), Math.abs(enemy.vy * dt)) / 7));
     const stepTime = dt / steps;
     let blocked = false;
+    let blockedByArena = false;
     const nearbyPlatforms = getNearbyPlatforms(enemy, 150 + Math.abs(enemy.vx * dt));
 
     for (let step = 0; step < steps; step += 1) {
@@ -7097,6 +7120,7 @@
       if (enemy.x < lockdownBounds.left || enemy.x + enemy.w > lockdownBounds.right) {
         constrainEnemyToLockdown(enemy, lockdownBounds);
         blocked = true;
+        blockedByArena = true;
       }
       for (const platform of nearbyPlatforms) {
         if (platform.hidden || bossIgnoresArenaPlatform(enemy, platform)) continue;
@@ -7141,13 +7165,17 @@
     constrainEnemyToLockdown(enemy, lockdownBounds);
     ejectEnemyFromPlatforms(enemy);
     constrainBossToArenaVertical(enemy);
-    if (blocked) {
+    if (blocked && !blockedByArena) {
       enemy.stuckTimer = (enemy.stuckTimer || 0) + dt;
       if (enemy.stuckTimer > 0.16 && enemy.grounded) {
         enemy.vy = -390;
         enemy.vx = -enemy.facing * 110;
         enemy.stuckTimer = 0;
       }
+    } else if (blockedByArena) {
+      // 보이는 봉쇄선은 넘지 않되, 경계 접촉을 장애물 끼임으로 오인해 갑자기 점프하지 않는다.
+      enemy.stuckTimer = 0;
+      enemy.vx = 0;
     } else {
       enemy.stuckTimer = Math.max(0, (enemy.stuckTimer || 0) - dt * 2);
     }
@@ -7207,6 +7235,7 @@
     enemy.anim += dt;
     enemy.cooldown -= dt;
     enemy.hurt = Math.max(0, enemy.hurt - dt);
+    enemy.hitStun = Math.max(0, (enemy.hitStun || 0) - dt);
     enemy.turretRecoil = Math.max(0, (enemy.turretRecoil || 0) - dt);
     updateEnemyBurn(enemy, dt);
     if (!enemy.alive) return;
@@ -7254,6 +7283,18 @@
     const formationCooldown = formation?.id === "spotter" && enemy.type !== "drone" ? 0.72 : 1;
     const enemySpeedScale = difficultySettings[game.difficulty].enemySpeed * stagePressure;
     enemy.facing = dx >= 0 ? 1 : -1;
+
+    if (enemy.hitStun > 0) {
+      if (enemy.type === "drone") {
+        enemy.vx = moveToward(enemy.vx, 0, 840 * dt);
+        enemy.y = enemy.baseY + Math.sin(enemy.anim * 2.2) * 18;
+        constrainEnemyToLockdown(enemy);
+      } else {
+        enemy.vx = moveToward(enemy.vx, 0, (enemy.type === "boss" ? 430 : 760) * dt);
+        moveEnemyPhysics(enemy, dt);
+      }
+      return;
+    }
 
     if (enemy.type === "drone") {
       const previousDroneX = enemy.x;
@@ -13875,7 +13916,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.5.2",
+    version: "3.5.3",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14065,7 +14106,10 @@
     playerStepUpRequiresClearance: true,
     manualRespawnKeyEnabled: false,
     adminRModeToggle: true,
-    enemyHitInterruptsFire: false,
+    enemyHitInterruptsFire: true,
+    normalEnemyHitStunSeconds: 0.24,
+    bossHitStunSeconds: 0.13,
+    bossHitPausesAttack: true,
     bossRetreatEveryHits: 2,
     bossRetreatPreservesAttack: true,
     bossPlatformAxisSeparation: true,
@@ -14075,6 +14119,8 @@
     bossMovementUsesFullArena: true,
     bossFullArenaPursuit: true,
     bossVisibleArenaLimits: true,
+    bossUsesStrictHomeArenaBounds: true,
+    bossBoundaryHopDisabled: true,
     bossThinPlatformPassThrough: true,
     bossPatternDirector: "adaptive-no-repeat",
     bossPhaseTwoFollowupCombos: true,
@@ -14136,7 +14182,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.5.2",
+    gameVersion: "3.5.3",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14332,7 +14378,10 @@
     playerStepUpRequiresClearance: "true",
     manualRespawnKeyEnabled: "false",
     adminRModeToggle: "true",
-    enemyHitInterruptsFire: "false",
+    enemyHitInterruptsFire: "true",
+    normalEnemyHitStunSeconds: "0.24",
+    bossHitStunSeconds: "0.13",
+    bossHitPausesAttack: "true",
     bossRetreatEveryHits: "2",
     bossRetreatPreservesAttack: "true",
     bossPlatformAxisSeparation: "true",
@@ -14342,6 +14391,8 @@
     bossMovementUsesFullArena: "true",
     bossFullArenaPursuit: "true",
     bossVisibleArenaLimits: "true",
+    bossUsesStrictHomeArenaBounds: "true",
+    bossBoundaryHopDisabled: "true",
     bossThinPlatformPassThrough: "true",
     bossPatternDirector: "adaptive-no-repeat",
     bossPhaseTwoFollowupCombos: "true",
