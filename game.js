@@ -103,6 +103,7 @@
   const MORTAR_TURRET_BASE_HP = TURRET_BASE_HP + 2;
   const MORTAR_TURRET_VOLLEY_COUNT = 3;
   const TURRET_CHARGE_SECONDS = 0.82;
+  const TURRET_ROW_PROJECTILE_SPEED = 365;
   const ACT_THREE_INDEX = 2;
   const ACT_FOUR_INDEX = 3;
   const BURST_PARRY_PROJECTILE_COUNT = 3;
@@ -5584,7 +5585,7 @@
     const targetX = enemy.targetX ?? player.x + player.w / 2;
     const targetY = enemy.targetY ?? player.y + player.h / 2;
     const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
-    const speed = 455 * difficultySettings[game.difficulty].bulletSpeed * (STAGE_BULLET_PRESSURE[enemy.stageIndex] || 1);
+    const speed = TURRET_ROW_PROJECTILE_SPEED * difficultySettings[game.difficulty].bulletSpeed * (STAGE_BULLET_PRESSURE[enemy.stageIndex] || 1);
     for (let lane = -2; lane <= 2; lane += 1) {
       const laneOffset = lane * 14;
       bullets.push({
@@ -5625,7 +5626,7 @@
     );
   }
 
-  function fireMortar(enemy, lockedTargetX = null, lockedTargetY = null, silent = false) {
+  function fireMortar(enemy, lockedTargetX = null, lockedTargetY = null, silent = false, terrainCollision = false) {
     const sourceX = enemy.x + enemy.w / 2;
     const sourceY = enemy.y + 12;
     const targetX = lockedTargetX ?? player.x + player.w / 2 + player.vx * 0.32;
@@ -5649,6 +5650,7 @@
       lockedImpactX: targetX,
       lockedImpactY: targetY,
       impactTimer: flightTime,
+      terrainCollision,
       color: "#ff6f75",
     });
     if (!silent) sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
@@ -5659,7 +5661,7 @@
     const spread = 135;
     for (let shell = 0; shell < MORTAR_TURRET_VOLLEY_COUNT; shell += 1) {
       const targetOffset = (shell - (MORTAR_TURRET_VOLLEY_COUNT - 1) / 2) * spread;
-      fireMortar(enemy, centerTargetX + targetOffset, enemy.targetY, true);
+      fireMortar(enemy, centerTargetX + targetOffset, enemy.targetY, true, true);
     }
     const muzzleX = enemy.x + enemy.w / 2;
     const muzzleY = enemy.y + 8;
@@ -8268,7 +8270,7 @@
         for (const platform of nearbyBulletPlatforms) {
           if (platform.hidden) continue;
           if (bullet.piercePlatforms) continue;
-          if (lockedMortarInFlight) continue;
+          if (lockedMortarInFlight && !bullet.terrainCollision) continue;
           if (overlaps(bullet, platform)) {
             if (bullet.kind === "mortar") {
               explodeMortar(bullet);
@@ -13517,7 +13519,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.4.1",
+    version: "3.4.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13591,10 +13593,12 @@
     turretChargeSeconds: TURRET_CHARGE_SECONDS,
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
+    turretRowProjectileSpeed: TURRET_ROW_PROJECTILE_SPEED,
     mortarTurretCount: enemies.filter((enemy) => enemy.type === "mortarTurret").length,
     mortarTurretBaseHp: MORTAR_TURRET_BASE_HP,
     mortarTurretVolleyCount: MORTAR_TURRET_VOLLEY_COUNT,
     mortarTurretTerrainCollision: true,
+    mortarTurretShotsPierceWalls: false,
     mortarExactMarkedImpact: true,
     mortarBallisticTargetLock: true,
     mortarTurretAdminSpawn: ADMIN_SPAWN_TYPES.has("mortarTurret"),
@@ -13759,7 +13763,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.4.1",
+    gameVersion: "3.4.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13837,10 +13841,12 @@
     turretChargeSeconds: String(TURRET_CHARGE_SECONDS),
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
+    turretRowProjectileSpeed: String(TURRET_ROW_PROJECTILE_SPEED),
     mortarTurretCount: String(enemies.filter((enemy) => enemy.type === "mortarTurret").length),
     mortarTurretBaseHp: String(MORTAR_TURRET_BASE_HP),
     mortarTurretVolleyCount: String(MORTAR_TURRET_VOLLEY_COUNT),
     mortarTurretTerrainCollision: "true",
+    mortarTurretShotsPierceWalls: "false",
     mortarExactMarkedImpact: "true",
     mortarBallisticTargetLock: "true",
     mortarTurretAdminSpawn: String(ADMIN_SPAWN_TYPES.has("mortarTurret")),

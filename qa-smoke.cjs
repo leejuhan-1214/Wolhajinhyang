@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.4.1") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.4.2") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향.hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
   throw new Error("HWPX story alignment diagnostics missing");
 }
@@ -138,14 +138,17 @@ if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.w
 if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
   throw new Error(`player step-up tuning invalid: ${diagnostics.playerGroundSeamStepHeight}/${diagnostics.playerPlatformStepHeight}`);
 }
-if (diagnostics.turretAimTelegraph || !diagnostics.turretCannonMuzzle || !diagnostics.turretShotsPiercePlatforms) {
+if (diagnostics.turretAimTelegraph || !diagnostics.turretCannonMuzzle || !diagnostics.turretShotsPiercePlatforms || diagnostics.turretRowProjectileSpeed !== 365) {
   throw new Error("five-row turret presentation or wall-piercing rule invalid");
 }
 if (gameSource.includes('enemy.type === "turret" && Number.isFinite(enemy.targetX)') || !/kind:\s*"turret-row"[\s\S]{0,180}piercePlatforms:\s*true/.test(gameSource)) {
   throw new Error("five-row turret still exposes an aim line or lacks platform piercing");
 }
-if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || !diagnostics.mortarTurretAdminSpawn) {
+if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || diagnostics.mortarTurretShotsPierceWalls || !diagnostics.mortarTurretAdminSpawn) {
   throw new Error(`mortar turret invalid: ${diagnostics.mortarTurretCount}/${diagnostics.mortarTurretVolleyCount}`);
+}
+if (!/fireMortar\(enemy, centerTargetX \+ targetOffset, enemy\.targetY, true, true\)/.test(gameSource) || !gameSource.includes("lockedMortarInFlight && !bullet.terrainCollision")) {
+  throw new Error("triple mortar shells can still pass through terrain");
 }
 if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZone !== 0 || diagnostics.enemyZoneAuditIntervalSeconds !== 0.45) {
   throw new Error(`enemy zone containment invalid: ${diagnostics.enemiesOutsideHomeZone}`);
