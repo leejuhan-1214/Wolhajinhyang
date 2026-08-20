@@ -1383,6 +1383,30 @@
     return bounds;
   }
 
+  function constrainBossToArenaVertical(enemy) {
+    if (enemy.type !== "boss") return false;
+    const floorY = Number.isFinite(enemy.baseY)
+      ? enemy.baseY
+      : Number.isFinite(enemy.spawnY)
+        ? enemy.spawnY
+        : enemy.y;
+    if (!Number.isFinite(floorY)) return false;
+    const ceilingY = Math.max(18, floorY - 620);
+    let corrected = false;
+    if (enemy.y < ceilingY) {
+      enemy.y = ceilingY;
+      enemy.vy = Math.max(0, enemy.vy || 0);
+      corrected = true;
+    }
+    if (enemy.y > floorY) {
+      enemy.y = floorY;
+      enemy.vy = 0;
+      enemy.grounded = true;
+      corrected = true;
+    }
+    return corrected;
+  }
+
   function isEnemyOutsideHomeZone(enemy, margin = 0) {
     const bounds = getEnemyLockdownBounds(enemy);
     return !Number.isFinite(enemy.x)
@@ -1396,6 +1420,12 @@
       if (!enemy.alive) continue;
       const bounds = getEnemyLockdownBounds(enemy);
       if (!isEnemyOutsideHomeZone(enemy, 0)) continue;
+      if (enemy.type === "boss") {
+        constrainEnemyToLockdown(enemy, bounds);
+        constrainBossToArenaVertical(enemy);
+        corrected += 1;
+        continue;
+      }
       const farOutside = enemy.x < bounds.left - 180 || enemy.x + enemy.w > bounds.right + 180;
       if (farOutside) {
         const homeX = Number.isFinite(enemy.spawnX) ? enemy.spawnX : bounds.left;
@@ -1430,6 +1460,34 @@
     for (let pass = 0; pass < 4; pass += 1) {
       const embedded = getNearbyPlatforms(enemy, 96).filter((platform) => !platform.hidden && overlaps(enemy, platform));
       if (embedded.length === 0) break;
+      if (enemy.type === "boss") {
+        const platform = embedded.reduce((best, candidate) => {
+          const depth = Math.min(
+            enemy.x + enemy.w - candidate.x,
+            candidate.x + candidate.w - enemy.x,
+            enemy.y + enemy.h - candidate.y,
+            candidate.y + candidate.h - enemy.y,
+          );
+          return !best || depth < best.depth ? { platform: candidate, depth } : best;
+        }, null)?.platform;
+        if (!platform) break;
+        const correction = [
+          { axis: "x", amount: -(enemy.x + enemy.w - platform.x) },
+          { axis: "x", amount: platform.x + platform.w - enemy.x },
+          { axis: "y", amount: -(enemy.y + enemy.h - platform.y) },
+          { axis: "y", amount: platform.y + platform.h - enemy.y },
+        ].sort((a, b) => Math.abs(a.amount) - Math.abs(b.amount))[0];
+        if (correction.axis === "x") {
+          enemy.x += correction.amount;
+          enemy.vx = 0;
+        } else {
+          enemy.y += correction.amount;
+          enemy.vy = 0;
+          if (correction.amount < 0) enemy.grounded = true;
+        }
+        ejected = true;
+        continue;
+      }
       const nearestSurface = Math.min(...embedded.map((platform) => platform.y));
       enemy.y = nearestSurface - enemy.h - 1;
       enemy.vy = Math.min(0, enemy.vy || 0);
@@ -1461,6 +1519,7 @@
       normalizeEnemyHomeZone(enemy);
       constrainEnemyToLockdown(enemy);
       ejectEnemyFromPlatforms(enemy);
+      constrainBossToArenaVertical(enemy);
       if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
         recoverEnemyToHome(enemy);
       } else if (enemy.y > WORLD_H + 100) {
@@ -1850,6 +1909,9 @@
       staggerHitTimer: 0,
       retreatTimer: 0,
       retreatDirection: 0,
+      pendingRetreatTimer: 0,
+      pendingRetreatDelay: 0,
+      pendingRetreatDirection: 0,
       hurt: 0,
       anim: hash(x) * 5,
       hitAttackId: -1,
@@ -4985,8 +5047,15 @@
     enemy.staggerHitTimer = 0.9;
     if (enemy.staggerHitCount < 2) return;
     enemy.staggerHitCount = 0;
-    enemy.retreatTimer = 0.48;
-    enemy.retreatDirection = Math.sign((enemy.x + enemy.w / 2) - (player.x + player.w / 2)) || -enemy.facing || -1;
+    const retreatDirection = Math.sign((enemy.x + enemy.w / 2) - (player.x + player.w / 2)) || -enemy.facing || -1;
+    if (enemy.windup > 0 && enemy.bossAction) {
+      enemy.pendingRetreatTimer = 0.48;
+      enemy.pendingRetreatDelay = enemy.windup + 0.22;
+      enemy.pendingRetreatDirection = retreatDirection;
+    } else {
+      enemy.retreatTimer = 0.48;
+      enemy.retreatDirection = retreatDirection;
+    }
     enemy.cooldown = Math.max(enemy.cooldown, 1.05);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.55, "#d9edf0", 14, 300, 0.4, 120);
   }
@@ -5227,7 +5296,6 @@
     if (getZoneRemaining(clearedZoneIndex) === 0 && enemy.type !== "boss") {
       game.hint = `${zones[clearedZoneIndex].name} 확보 · 다음 구역 개방`;
       game.hintTimer = 3.2;
-      player.hp = Math.min(player.maxHp, player.hp + 1);
       if (deathIsNearPlayer) spawnParticles(deathCenterX, deathCenterY, palette.cyan, 24, 360, 0.7, 420);
       saveCampaign();
       if (deathIsNearPlayer) sound.checkpoint();
@@ -5350,6 +5418,9 @@
       enemy.staggerHitTimer = 0;
       enemy.retreatTimer = 0;
       enemy.retreatDirection = 0;
+      enemy.pendingRetreatTimer = 0;
+      enemy.pendingRetreatDelay = 0;
+      enemy.pendingRetreatDirection = 0;
       enemy.bossAction = null;
       enemy.bossShotPattern = null;
       enemy.bossChargeDuration = 0;
@@ -6957,6 +7028,7 @@
     enemy.x = clamp(enemy.x, 0, WORLD_W - enemy.w);
     constrainEnemyToLockdown(enemy, lockdownBounds);
     ejectEnemyFromPlatforms(enemy);
+    constrainBossToArenaVertical(enemy);
     if (blocked) {
       enemy.stuckTimer = (enemy.stuckTimer || 0) + dt;
       if (enemy.stuckTimer > 0.16 && enemy.grounded) {
@@ -7329,19 +7401,19 @@
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
     enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
 
-    if ((enemy.retreatTimer || 0) > 0) {
+    if ((enemy.pendingRetreatDelay || 0) > 0) {
+      enemy.pendingRetreatDelay = Math.max(0, enemy.pendingRetreatDelay - dt);
+    }
+    if ((enemy.pendingRetreatTimer || 0) > 0 && (enemy.pendingRetreatDelay || 0) <= 0) {
+      enemy.retreatTimer = Math.max(enemy.retreatTimer || 0, enemy.pendingRetreatTimer);
+      enemy.retreatDirection = enemy.pendingRetreatDirection || -enemy.facing || -1;
+      enemy.pendingRetreatTimer = 0;
+      enemy.pendingRetreatDirection = 0;
+    }
+
+    const retreating = (enemy.retreatTimer || 0) > 0;
+    if (retreating) {
       enemy.retreatTimer = Math.max(0, enemy.retreatTimer - dt);
-      if (enemy.bossAction !== "selfInject") {
-        enemy.windup = 0;
-        enemy.bossAction = null;
-        enemy.bossShotPattern = null;
-      }
-      enemy.vx = (enemy.retreatDirection || -enemy.facing || -1) * (350 + rank * 24) * bossCurve.mobility;
-      if (enemy.grounded && !hasGroundAhead(enemy, Math.sign(enemy.vx), 38)) enemy.vy = -420;
-      moveEnemyPhysics(enemy, dt);
-      const retreatArena = getBossArenaBounds(enemy, 120);
-      enemy.x = clamp(enemy.x, retreatArena.left, retreatArena.right - enemy.w);
-      return;
     }
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
@@ -7542,7 +7614,10 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
-    if (chargingShot) {
+    if (retreating) {
+      const retreatSpeed = (350 + rank * 24) * bossCurve.mobility;
+      enemy.vx = moveToward(enemy.vx, (enemy.retreatDirection || -enemy.facing || -1) * retreatSpeed, 1180 * dt);
+    } else if (chargingShot) {
       const beamRetreatBoost = bossKind === "warden" && enemy.bossShotPattern === "warden-core"
         ? 2.25
         : bossKind === "breaker" && enemy.bossShotPattern === "breaker-laser"
@@ -7591,12 +7666,9 @@
       enemy.x = arenaRight - enemy.w;
       enemy.vx = Math.min(0, enemy.vx);
     }
-    if (enemy.y > enemy.baseY + enemy.h + 260) {
-      recoverEnemyToHome(enemy);
-      return;
-    }
+    constrainBossToArenaVertical(enemy);
 
-    if (enemy.cooldown <= 0 && distance < 900) {
+    if (!retreating && enemy.cooldown <= 0 && distance < 900) {
       const phaseCount = definition.patterns.length;
       enemy.bossPhase = (enemy.bossPhase + 1) % phaseCount;
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
@@ -13445,7 +13517,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.4.0",
+    version: "3.4.1",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13633,7 +13705,12 @@
     adminRModeToggle: true,
     enemyHitInterruptsFire: false,
     bossRetreatEveryHits: 2,
+    bossRetreatPreservesAttack: true,
+    bossPlatformAxisSeparation: true,
+    bossArenaVerticalGuard: true,
+    bossHardTeleportContainment: false,
     normalEnemyRepairDropChance: NORMAL_ENEMY_REPAIR_DROP_CHANCE,
+    zoneClearHealEnabled: false,
     embeddedRepairPickupsRemoved: true,
     hunterReflectBreakSeconds: HUNTER_REFLECT_BREAK_SECONDS,
     hunterDashTelegraphRange: HUNTER_DASH_RANGE,
@@ -13682,7 +13759,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.4.0",
+    gameVersion: "3.4.1",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -13876,7 +13953,12 @@
     adminRModeToggle: "true",
     enemyHitInterruptsFire: "false",
     bossRetreatEveryHits: "2",
+    bossRetreatPreservesAttack: "true",
+    bossPlatformAxisSeparation: "true",
+    bossArenaVerticalGuard: "true",
+    bossHardTeleportContainment: "false",
     normalEnemyRepairDropChance: String(NORMAL_ENEMY_REPAIR_DROP_CHANCE),
+    zoneClearHealEnabled: "false",
     embeddedRepairPickupsRemoved: "true",
     hunterReflectBreakSeconds: String(HUNTER_REFLECT_BREAK_SECONDS),
     hunterDashTelegraphRange: String(HUNTER_DASH_RANGE),

@@ -74,7 +74,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.4.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.4.1") throw new Error(`wrong version ${diagnostics.version}`);
 if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향.hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
   throw new Error("HWPX story alignment diagnostics missing");
 }
@@ -88,8 +88,17 @@ const requiredDocumentStoryLines = [
 if (storyDialogueEntries.length !== 216 || requiredDocumentStoryLines.some((line) => !gameSource.includes(line))) {
   throw new Error(`HWPX story text mismatch: ${storyDialogueEntries.length}/216`);
 }
-if (diagnostics.normalEnemyRepairDropChance !== 0 || diagnostics.bossRewardsEnabled || diagnostics.midBossHealReward) {
+if (diagnostics.normalEnemyRepairDropChance !== 0 || diagnostics.zoneClearHealEnabled || diagnostics.bossRewardsEnabled || diagnostics.midBossHealReward) {
   throw new Error("enemy defeat healing rewards must remain disabled");
+}
+if (!diagnostics.bossRetreatPreservesAttack || !diagnostics.bossPlatformAxisSeparation || !diagnostics.bossArenaVerticalGuard || diagnostics.bossHardTeleportContainment) {
+  throw new Error("boss movement recovery can still interrupt attacks or hard-teleport");
+}
+if (!gameSource.includes("enemy.pendingRetreatDelay = enemy.windup + 0.22") || !gameSource.includes("constrainBossToArenaVertical(enemy)") || !gameSource.includes('if (correction.axis === "x")')) {
+  throw new Error("boss retreat or platform collision implementation missing");
+}
+if (/getZoneRemaining\(clearedZoneIndex\)[\s\S]{0,280}player\.hp\s*=/.test(gameSource)) {
+  throw new Error("zone-clear healing is still present");
 }
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
 if (!continueText.includes("03-13")) throw new Error(`legacy save resolved incorrectly: ${continueText}`);
