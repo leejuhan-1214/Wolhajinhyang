@@ -5103,8 +5103,12 @@
       player.slashChain = 0;
     }
 
-    const chainDuration = player.slashChain === 3 ? 0.25 : player.slashChain === 2 ? 0.2 : 0.18;
-    player.attackDuration = player.grounded ? chainDuration : 0.23;
+    // Keep each draw readable for more than a single pose.  The previous
+    // timings were fast enough that the anticipation and follow-through often
+    // disappeared between display frames, making the character look as though
+    // a sword image had simply been pasted onto the idle pose.
+    const chainDuration = player.slashChain === 3 ? 0.29 : player.slashChain === 2 ? 0.25 : 0.22;
+    player.attackDuration = player.grounded ? chainDuration : 0.26;
 
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
@@ -9375,6 +9379,13 @@
     const bodyRed = echoStyle ? "#63ffc6" : palette.red;
     const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
     const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
+    // 서린의 설정상 제복은 흰색이다.  밝은 외피, 회색 관절복, 검은
+    // 장비대와 붉은 결속띠를 분리해 작은 인게임 크기에서도 제복의
+    // 층과 봉제가 읽히도록 한다. 잔영은 기존의 자색 계열을 유지한다.
+    const uniformLight = echoStyle ? "#d8caff" : "#edf3f1";
+    const uniformMid = echoStyle ? "#76639a" : "#aebdc0";
+    const uniformShadow = echoStyle ? "#33264f" : "#71858e";
+    const uniformJoint = echoStyle ? "#1a132c" : "#24333e";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -9407,20 +9418,26 @@
     const shooting = player.recoilTimer > 0;
     const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
     const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
-    const attackLunge = attacking
+    const attackTravel = attacking
       ? attackProgress < 0.22
-        ? -poseEase(attackProgress / 0.22) * 4.5
+        ? -poseEase(attackProgress / 0.22) * 7
         : attackProgress < 0.64
-          ? lerp(-4.5, 14, poseEase((attackProgress - 0.22) / 0.42))
-          : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
+          ? lerp(-7, 21, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(21, 0, poseEase((attackProgress - 0.64) / 0.36))
       : 0;
+    const attackLunge = attackTravel * (attacking ? Math.max(0.32, Math.abs(player.attackDir.x)) : 1);
     const attackImpact = attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
+    const actionPose = attacking ? Math.sin(clamp(attackProgress, 0, 1) * Math.PI) : shooting ? shotKick : 0;
+    const actionSink = attacking ? attackImpact * 3.8 : shooting ? shotKick * 2.4 : 0;
     const baseLean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
-    const actionLean = attacking ? lerp(-0.14, 0.28, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.2 * shotKick : 0;
+    const actionLean = attacking ? lerp(-0.22, 0.36, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.28 * shotKick : 0;
     const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
 
-    ctx.translate(attackLunge - shotKick * 11, -bob + shotKick * 3 - attackImpact * 2.5);
-    ctx.scale(squashX * (1 + attackImpact * 0.055), squashY * (1 - attackImpact * 0.035));
+    ctx.translate(attackLunge - shotKick * 16, -bob + shotKick * 4 - attackImpact * 3.5 + actionSink);
+    ctx.scale(
+      squashX * (1 + attackImpact * 0.075 - actionPose * 0.035),
+      squashY * (1 - attackImpact * 0.055 + actionPose * 0.025),
+    );
     ctx.rotate(baseLean + actionLean);
 
     if (ghost) {
@@ -9518,8 +9535,8 @@
       }
       if (shooting) {
         return layer === "back"
-          ? { upper: -0.66 - shotKick * 0.16, knee: 0.42 + shotKick * 0.46 }
-          : { upper: 0.62, knee: 0.34 + shotKick * 0.28 };
+          ? { upper: -0.78 - shotKick * 0.22, knee: 0.58 + shotKick * 0.52 }
+          : { upper: 0.76, knee: 0.46 + shotKick * 0.32 };
       }
       if (attacking) {
         if (attackProgress < 0.22) {
@@ -9531,8 +9548,8 @@
         if (attackProgress < 0.64) {
           const t = poseEase((attackProgress - 0.22) / 0.42);
           return layer === "back"
-            ? { upper: lerp(-0.42, -0.68, t), knee: lerp(0.72, 0.86, t) }
-            : { upper: lerp(0.28, 0.76, t), knee: lerp(0.58, 0.18, t) };
+            ? { upper: lerp(-0.42, -0.82, t), knee: lerp(0.72, 0.98, t) }
+            : { upper: lerp(0.28, 0.92, t), knee: lerp(0.58, 0.12, t) };
         }
         const t = poseEase((attackProgress - 0.64) / 0.36);
         return layer === "back"
@@ -9565,8 +9582,8 @@
 
     const backPose = legPose(runPosePhase, "back");
     const frontPose = legPose(runPosePhase, "front");
-    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, "#0c1825", true);
-    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, "#172b3c", true);
+    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformShadow, true);
+    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformMid, true);
 
     // 등에 고정된 전술 신호 장치와 작은 안테나.
     ctx.fillStyle = "#0a131f";
@@ -9624,7 +9641,7 @@
     ctx.fill();
     ctx.restore();
 
-    ctx.fillStyle = "#111d2c";
+    ctx.fillStyle = uniformLight;
     ctx.beginPath();
     ctx.moveTo(-11, -43);
     ctx.lineTo(10, -43);
@@ -9634,9 +9651,9 @@
     ctx.lineTo(-15, -30);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#29475a";
+    ctx.fillStyle = uniformMid;
     ctx.fillRect(-10, -38, 5, 17);
-    ctx.fillStyle = "#3d6072";
+    ctx.fillStyle = uniformShadow;
     ctx.beginPath();
     ctx.moveTo(-15, -40);
     ctx.lineTo(-7, -44);
@@ -9645,7 +9662,7 @@
     ctx.lineTo(-15, -34);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#172431";
+    ctx.fillStyle = uniformJoint;
     ctx.fillRect(-10, -22, 22, 5);
     ctx.fillStyle = empowered ? bodyAmber : bodyRed;
     ctx.fillRect(-12, -24, 25, 3);
@@ -9657,6 +9674,22 @@
     ctx.fillRect(-4, -22, 13, 2);
     ctx.fillStyle = bodyRed;
     ctx.fillRect(9, -36, 3, 15);
+    // 흰 제복의 겹침선, 흉부 방탄판, 어깨 계급 패치.
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.beginPath();
+    ctx.moveTo(-3, -41);
+    ctx.lineTo(8, -38);
+    ctx.lineTo(7, -29);
+    ctx.lineTo(-2, -26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = uniformShadow;
+    ctx.fillRect(-13, -39, 5, 3);
+    ctx.fillStyle = bodyRed;
+    ctx.fillRect(-12, -38, 3, 2);
+    ctx.fillStyle = uniformJoint;
+    ctx.fillRect(4, -35, 5, 2);
+    ctx.fillRect(-2, -28, 8, 2);
     ctx.strokeStyle = "rgba(143, 210, 216, 0.38)";
     ctx.beginPath();
     ctx.moveTo(-3, -38);
@@ -9704,8 +9737,22 @@
         : running
           ? -stride * 0.58 * runBlend + 0.14
           : 0.28;
-    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, "#152638", false, true);
+    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, uniformShadow, false, true);
 
+    // The head follows the hips and shoulders instead of remaining glued to
+    // the idle pose.  This small counter-motion is what gives the thumbnail's
+    // silhouette its sense of weight without turning the side-view sprite into
+    // a different character.
+    const headTilt = attacking
+      ? lerp(-0.12, 0.2, poseEase(clamp(attackProgress / 0.7, 0, 1)))
+      : shooting
+        ? -0.16 * shotKick
+        : running
+          ? stride * 0.035
+          : 0;
+    ctx.save();
+    ctx.translate(attacking ? -2 + attackImpact * 3 : shooting ? -shotKick * 4 : 0, actionPose * 1.5);
+    ctx.rotate(headTilt);
     ctx.fillStyle = "#8da0aa";
     ctx.fillRect(-10, -57, 19, 16);
     ctx.fillStyle = "#354a58";
@@ -9761,6 +9808,7 @@
     ctx.fillRect(-12, -49, 2, 2);
     ctx.fillStyle = "#506873";
     ctx.fillRect(-10, -46, 2, 3);
+    ctx.restore();
 
     let armAngle = running ? stride * 0.5 : -0.15;
     let bladeAngle = -1.1;
@@ -9769,22 +9817,22 @@
     if (attacking) {
       if (attackProgress < 0.2) {
         const t = poseEase(attackProgress / 0.2);
-        armAngle = lerp(-0.42, -1.18, t);
-        bladeAngle = lerp(-1.05, -2.05, t);
+        armAngle = lerp(-0.42, -1.34, t);
+        bladeAngle = lerp(-1.05, -2.2, t);
       } else if (attackProgress < 0.62) {
         const t = poseEase((attackProgress - 0.2) / 0.42);
-        armAngle = lerp(-1.18, 1.3, t);
-        bladeAngle = lerp(-2.05, 0.92, t);
+        armAngle = lerp(-1.34, 1.48, t);
+        bladeAngle = lerp(-2.2, 1.02, t);
       } else {
         const t = poseEase((attackProgress - 0.62) / 0.38);
-        armAngle = lerp(1.3, -0.08, t);
-        bladeAngle = lerp(0.92, -0.16, t);
+        armAngle = lerp(1.48, -0.08, t);
+        bladeAngle = lerp(1.02, -0.16, t);
       }
       armAngle += player.attackDir.y * 0.72;
       bladeAngle += player.attackDir.y * 0.9;
     }
 
-    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, "#294459", false, !attacking);
+    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, uniformMid, false, !attacking);
     if (attacking) {
       ctx.save();
       ctx.translate(frontHand.x, frontHand.y);
@@ -14112,7 +14160,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.1",
+    version: "3.6.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14387,7 +14435,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.1",
+    gameVersion: "3.6.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
