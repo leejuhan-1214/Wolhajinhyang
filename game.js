@@ -9379,13 +9379,14 @@
     const bodyRed = echoStyle ? "#63ffc6" : palette.red;
     const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
     const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
-    // 서린의 설정상 제복은 흰색이다.  밝은 외피, 회색 관절복, 검은
-    // 장비대와 붉은 결속띠를 분리해 작은 인게임 크기에서도 제복의
-    // 층과 봉제가 읽히도록 한다. 잔영은 기존의 자색 계열을 유지한다.
-    const uniformLight = echoStyle ? "#d8caff" : "#edf3f1";
-    const uniformMid = echoStyle ? "#76639a" : "#aebdc0";
-    const uniformShadow = echoStyle ? "#33264f" : "#71858e";
-    const uniformJoint = echoStyle ? "#1a132c" : "#24333e";
+    // 서린은 기존의 어두운 전투복으로 돌아가고, 이야기에서 기억되는
+    // 흰 망토를 그 위에 걸친다. 잔영은 자색 복제 프레임을 유지한다.
+    const uniformLight = echoStyle ? "#d8caff" : "#111d2c";
+    const uniformMid = echoStyle ? "#76639a" : "#29475a";
+    const uniformShadow = echoStyle ? "#33264f" : "#3d6072";
+    const uniformJoint = echoStyle ? "#1a132c" : "#172431";
+    const uniformBack = echoStyle ? "#2a1e43" : "#0c1825";
+    const uniformFront = echoStyle ? "#49376e" : "#172b3c";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -9580,10 +9581,60 @@
       };
     }
 
+    // 망토는 단순히 몸통에 붙은 삼각형이 아니라 네 개의 천 구간으로
+    // 나뉘어 속도, 수직 이동, 베기 관성, 샷건 반동을 각각 따라간다.
+    // 작은 인게임 크기에서도 흰 실루엣과 접힌 음영이 읽히도록 외곽을
+    // 밝게, 안쪽 주름을 청회색으로 분리한다.
+    const capeVelocity = clamp((player.vx * facing) / 360, -0.55, 1);
+    const capeAirLift = clamp(-player.vy / 680, -0.75, 0.82);
+    const capeSnap = attackImpact * 0.92 + shotKick * 0.78;
+    const capeWave = Math.sin(game.time * 8.4 + player.runCycle * 0.7) * (1.2 + speedRatio * 2.2);
+    const capeReach = 25 + Math.max(0, capeVelocity) * 17 + capeSnap * 10;
+    const capeLift = capeAirLift * 12 - Math.max(0, capeVelocity) * 8 - capeSnap * 7;
+    const capeAnchorX = -10;
+    const capeAnchorY = -42;
+    const capeTailX = capeAnchorX - capeReach;
+    const capeTailY = -7 + capeLift + capeWave;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = echoStyle ? "rgba(168,121,255,0.88)" : "rgba(238,247,244,0.94)";
+    ctx.lineWidth = 2;
+    ctx.fillStyle = echoStyle ? "#382752" : "#eef4f1";
+    ctx.beginPath();
+    ctx.moveTo(capeAnchorX - 4, capeAnchorY + 1);
+    ctx.quadraticCurveTo(capeTailX * 0.72, -39 + capeLift * 0.36 - capeWave * 0.2, capeTailX, capeTailY - 14);
+    ctx.quadraticCurveTo(capeTailX + 7, capeTailY - 3, capeTailX + 2, capeTailY + 8);
+    ctx.quadraticCurveTo(capeTailX + 16, capeTailY + 3, -9, -22);
+    ctx.lineTo(-6, -39);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = echoStyle ? "rgba(120,83,163,0.88)" : "rgba(141,161,168,0.86)";
+    for (let fold = 0; fold < 3; fold += 1) {
+      const foldT = (fold + 1) / 4;
+      const foldX = lerp(capeAnchorX - 3, capeTailX + 4, foldT);
+      const foldY = lerp(capeAnchorY + 4, capeTailY + 3, foldT) + Math.sin(game.time * 7 + fold) * 1.4;
+      ctx.beginPath();
+      ctx.moveTo(capeAnchorX - 1 + fold, capeAnchorY + 5 + fold * 2);
+      ctx.quadraticCurveTo(foldX + 8, foldY - 8, capeTailX + 5 + fold * 4, capeTailY + 3 - fold * 3);
+      ctx.lineWidth = fold === 1 ? 2 : 1;
+      ctx.strokeStyle = echoStyle ? "rgba(190,168,235,0.5)" : "rgba(91,116,126,0.58)";
+      ctx.stroke();
+    }
+    // 달리거나 공중에서 방향을 꺾을 때 끝단이 한 박자 늦게 갈라진다.
+    ctx.fillStyle = echoStyle ? "#7a5ca2" : "#cbd8d6";
+    ctx.beginPath();
+    ctx.moveTo(capeTailX, capeTailY - 13);
+    ctx.lineTo(capeTailX - 7 - speedRatio * 5, capeTailY - 7 + capeWave * 0.35);
+    ctx.lineTo(capeTailX + 2, capeTailY - 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
     const backPose = legPose(runPosePhase, "back");
     const frontPose = legPose(runPosePhase, "front");
-    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformShadow, true);
-    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformMid, true);
+    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
+    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformFront, true);
 
     // 등에 고정된 전술 신호 장치와 작은 안테나.
     ctx.fillStyle = "#0a131f";
@@ -9674,8 +9725,8 @@
     ctx.fillRect(-4, -22, 13, 2);
     ctx.fillStyle = bodyRed;
     ctx.fillRect(9, -36, 3, 15);
-    // 흰 제복의 겹침선, 흉부 방탄판, 어깨 계급 패치.
-    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    // 기존 전투복의 겹침선, 흉부 방탄판, 어깨 계급 패치.
+    ctx.fillStyle = echoStyle ? "#bca7ef" : "#213645";
     ctx.beginPath();
     ctx.moveTo(-3, -41);
     ctx.lineTo(8, -38);
@@ -9700,6 +9751,17 @@
     ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
     ctx.beginPath();
     ctx.arc(2, -31, 2.4, 0, TAU);
+    ctx.fill();
+
+    // 망토 고정쇠와 이중 견장. 천의 시작점이 몸통에 실제로 매달려
+    // 있다는 인상을 주고, 달릴 때에도 망토가 목에서 분리돼 보이지 않는다.
+    ctx.fillStyle = echoStyle ? "#d8caff" : "#f4faf6";
+    ctx.fillRect(-13, -43, 8, 5);
+    ctx.fillStyle = echoStyle ? bodyCyan : "#91a9b0";
+    ctx.fillRect(-11, -42, 4, 2);
+    ctx.fillStyle = bodyRed;
+    ctx.beginPath();
+    ctx.arc(-7, -40, 2.2, 0, TAU);
     ctx.fill();
 
     // Pixel-scale fabric seams, fasteners, and field gear keep the human silhouette readable.
@@ -10783,10 +10845,101 @@
     ctx.restore();
   }
 
+  function drawBossCinematicMotionLayer(enemy, rawBossKind, accent, pulse) {
+    const travel = clamp((enemy.vx * enemy.facing) / 420, -0.7, 1);
+    const action = enemy.windup > 0 ? 0.5 + Math.sin(enemy.anim * 15) * 0.5 : 0;
+    const wave = Math.sin(game.time * 6.2 + enemy.anim * 0.9);
+    const backReach = 24 + Math.max(0, travel) * 24 + action * 9;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    if (["warden", "breaker", "furnace"].includes(rawBossKind)) {
+      // 대형 기계 보스는 망토 대신 추력, 현가장치, 냉각판이 관성에 반응한다.
+      for (const side of [-1, 1]) {
+        const y = rawBossKind === "breaker" ? 70 : 58 + side * 13;
+        ctx.strokeStyle = `rgba(255,255,255,${0.13 + pulse * 0.12})`;
+        ctx.lineWidth = 2 + action * 2;
+        ctx.beginPath();
+        ctx.moveTo(-side * 18, y);
+        ctx.lineTo(-side * (39 + backReach * 0.35), y + wave * 4);
+        ctx.stroke();
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = 0.2 + pulse * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(-side * 22, y + 4);
+        ctx.lineTo(-side * (44 + backReach * 0.4), y + 12 + wave * 5);
+        ctx.lineTo(-side * 29, y + 9);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      for (let vent = 0; vent < 3; vent += 1) {
+        ctx.save();
+        ctx.translate(-22 + vent * 22, 20 + (vent % 2) * 10);
+        ctx.rotate(-0.2 - travel * 0.12 + wave * 0.025);
+        ctx.fillStyle = vent % 2 ? "#4b5e66" : "#263943";
+        ctx.fillRect(-3, -12, 6, 18 + action * 7);
+        ctx.fillStyle = accent;
+        ctx.fillRect(-2, -13, 4, 3);
+        ctx.restore();
+      }
+    } else {
+      // 인간형·술식형 보스는 각자의 망토, 의복, 봉인띠가 서로 다른
+      // 길이와 박자로 움직여 정지한 컷아웃처럼 보이지 않게 한다.
+      const clothPalette = {
+        hunter: ["#6b352b", "#ffc08c"],
+        oracle: ["#2d2147", "#bfa4ff"],
+        revenant: ["#343e47", "#d9e3e6"],
+        proxy: [enemy.mutated ? "#2d6043" : "#d9e3dc", "#70ff9b"],
+        weaver: ["#281b3c", "#d7a0ff"],
+        censor: ["#100b1a", "#8b4dff"],
+      }[rawBossKind] || ["#24172d", accent];
+      const strips = rawBossKind === "oracle" || rawBossKind === "weaver" ? 5 : rawBossKind === "censor" ? 4 : 3;
+      for (let strip = 0; strip < strips; strip += 1) {
+        const row = strip - (strips - 1) / 2;
+        const anchorX = -10 + row * 7;
+        const anchorY = rawBossKind === "revenant" ? 50 : 42 + Math.abs(row) * 3;
+        const reach = backReach + strip * 4 + (rawBossKind === "weaver" ? 15 : 0);
+        const tipX = anchorX - reach;
+        const tipY = 73 + row * 4 + wave * (4 + strip * 0.8) - travel * 7;
+        ctx.fillStyle = strip % 2 ? clothPalette[0] : clothPalette[1];
+        ctx.globalAlpha = strip % 2 ? 0.76 : 0.9;
+        ctx.beginPath();
+        ctx.moveTo(anchorX - 3, anchorY);
+        ctx.quadraticCurveTo(anchorX - reach * 0.48, anchorY + 9 - wave * 4, tipX, tipY - 5);
+        ctx.lineTo(tipX - 4 - Math.abs(row), tipY + 4);
+        ctx.quadraticCurveTo(anchorX - reach * 0.35, anchorY + 18 + wave * 3, anchorX + 3, anchorY + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = strip % 2 ? clothPalette[1] : "rgba(238,246,247,0.62)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 공격 준비가 끝나는 순간 장갑 이음새에서 짧은 동세선을 만든다.
+    if (action > 0.18) {
+      ctx.strokeStyle = accent;
+      ctx.globalAlpha = 0.22 + action * 0.35;
+      ctx.lineWidth = 2;
+      for (let streak = 0; streak < 3; streak += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-18 - streak * 7, 17 + streak * 18);
+        ctx.lineTo(-33 - streak * 10 - action * 12, 15 + streak * 18 + wave * 3);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   function drawDetailedBossCharacter(enemy, bossKind, accent, pulse, chargeProgress, chargingShot, rawBossKind = bossKind) {
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
     const fastMotion = Math.sin(enemy.anim * 10.5);
+
+    drawBossCinematicMotionLayer(enemy, rawBossKind, accent, pulse);
 
     if (drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot)) {
       drawBossSurfaceDetails(enemy, rawBossKind, accent, pulse, chargingShot);
@@ -11201,6 +11354,24 @@
     ctx.scale(enemy.facing, 1);
     if (enemy.type === "drone") ctx.rotate(Math.sin(enemy.anim * 2.8) * 0.08);
     else ctx.rotate(clamp(enemy.vx * enemy.facing / 900, -0.08, 0.1));
+    // 모든 적이 같은 정지 자세 위에 무기만 붙어 보이지 않도록 전투
+    // 상태를 전신에 전달한다. 예열 때는 뒤로 힘을 모으고, 발사 직후에는
+    // 상체가 반동하며, 피격 순간에는 실루엣 전체가 짧게 비틀린다.
+    const cinematicWindup = enemy.windup > 0 ? 0.5 + Math.sin(enemy.anim * 18) * 0.5 : 0;
+    const cinematicRecoil = enemy.burstRemaining > 0 || (enemy.turretRecoil || 0) > 0
+      ? 0.5 + Math.sin(enemy.anim * 31) * 0.5
+      : 0;
+    const cinematicFlinch = clamp((enemy.hurt || 0) / 0.24, 0, 1);
+    const cinematicHeavy = ["shield", "turret", "mortarTurret", "boss"].includes(enemy.type) ? 0.58 : 1;
+    ctx.translate(
+      -cinematicWindup * 3.5 * cinematicHeavy - cinematicRecoil * 5.5 * cinematicHeavy - cinematicFlinch * 4,
+      cinematicWindup * 1.6 + cinematicFlinch * 1.8,
+    );
+    ctx.rotate(-cinematicWindup * 0.055 * cinematicHeavy + cinematicRecoil * 0.07 * cinematicHeavy - cinematicFlinch * 0.09);
+    ctx.scale(
+      1 - cinematicWindup * 0.025 + cinematicRecoil * 0.045,
+      1 + cinematicWindup * 0.035 - cinematicRecoil * 0.025,
+    );
     if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
 
     function drawRobotSegment(x1, y1, x2, y2, width, shell, accent) {
@@ -11257,6 +11428,97 @@
       ctx.fillRect(Math.round(footX - 1), Math.round(footY - 1), heavy ? 13 : 9, 3);
       ctx.fillStyle = accent;
       ctx.fillRect(Math.round(footX + (heavy ? 10 : 7)), Math.round(footY), 3, 2);
+    }
+
+    function drawCinematicEnemyRig() {
+      const rigAccent = enemy.type === "mortar" || enemy.type === "mortarTurret"
+        ? "#ff8066"
+        : enemy.type === "shield" || enemy.type === "turret"
+          ? palette.amber
+          : enemy.type === "piercer"
+            ? "#79dfff"
+            : enemy.type === "machinegun"
+              ? "#ff8066"
+              : palette.cyan;
+      const servo = Math.sin(enemy.anim * 6.5) * movingRatio;
+      const action = Math.max(cinematicWindup, cinematicRecoil);
+      ctx.save();
+      ctx.lineJoin = "round";
+      if (enemy.type === "drone") {
+        // 분리된 안정익과 회전 관절이 비행 방향에 한 박자 늦게 반응한다.
+        for (const side of [-1, 1]) {
+          ctx.save();
+          ctx.translate(side * 21, 14);
+          ctx.rotate(side * (0.24 + servo * 0.18));
+          ctx.fillStyle = "#526977";
+          ctx.beginPath();
+          ctx.moveTo(0, -4); ctx.lineTo(side * 18, -9); ctx.lineTo(side * 22, 1); ctx.lineTo(0, 5); ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = rigAccent;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (enemy.type === "turret" || enemy.type === "mortarTurret") {
+        // 고정 포대도 발사 때 지지 피스톤이 내려가며 차체가 눌린다.
+        const pistonY = 42 + action * 5;
+        for (const side of [-1, 1]) {
+          ctx.strokeStyle = "#aebdc1";
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(side * 19, 35); ctx.lineTo(side * 28, pistonY + 10); ctx.stroke();
+          ctx.fillStyle = rigAccent;
+          ctx.fillRect(side * 28 - 3, pistonY + 7, 6, 5);
+        }
+      } else if (enemy.type === "shield") {
+        // 방패와 몸통을 잇는 가동 피스톤, 어깨 덮개, 충격 흡수 케이블.
+        ctx.fillStyle = "#52636c";
+        ctx.beginPath(); ctx.moveTo(9, 20); ctx.lineTo(25, 19); ctx.lineTo(30, 29); ctx.lineTo(14, 32); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = rigAccent;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(13, 29); ctx.lineTo(26 + cinematicWindup * 6, 39); ctx.stroke();
+        ctx.strokeStyle = "rgba(220,235,237,0.48)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-14, 31); ctx.bezierCurveTo(-25, 34 + servo * 3, -21, 50, -9, 55); ctx.stroke();
+      } else if (["gunner", "machinegun", "piercer", "mortar"].includes(enemy.type)) {
+        // 총기의 무게가 팔과 탄띠에 전달되도록 앞팔 링크와 탄약 공급선을 분리한다.
+        ctx.strokeStyle = "#657985";
+        ctx.lineWidth = enemy.type === "machinegun" || enemy.type === "mortar" ? 6 : 4;
+        ctx.beginPath(); ctx.moveTo(5, 24); ctx.lineTo(18 - cinematicRecoil * 5, 31); ctx.stroke();
+        ctx.strokeStyle = rigAccent;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(-10, 34); ctx.bezierCurveTo(1, 49 + servo * 3, 20, 47, 31, 36); ctx.stroke();
+        for (let link = 0; link < 5; link += 1) {
+          ctx.save(); ctx.translate(-4 + link * 7, 43 + Math.sin(enemy.anim * 6 + link) * 2);
+          ctx.rotate(0.28 + servo * 0.08);
+          ctx.strokeStyle = link % 2 ? "#becace" : rigAccent;
+          ctx.strokeRect(-2, -1, 5, 3);
+          ctx.restore();
+        }
+      } else {
+        // 돌격 감시병은 등쪽 안정익과 전완 칼날이 달리기 관성에 맞춰 열린다.
+        for (const side of [-1, 1]) {
+          ctx.save();
+          ctx.translate(-10, 25 + side * 5);
+          ctx.rotate(side * (0.35 + movingRatio * 0.22 + servo * 0.08));
+          ctx.fillStyle = side < 0 ? "#263c49" : "#3e5c69";
+          ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(-17 - movingRatio * 8, -5); ctx.lineTo(-11, 4); ctx.lineTo(0, 4); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = rigAccent; ctx.lineWidth = 1; ctx.stroke();
+          ctx.restore();
+        }
+        ctx.strokeStyle = "rgba(190,224,227,0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(14, 28); ctx.lineTo(34 + movingRatio * 8, 30 - servo * 3); ctx.stroke();
+      }
+
+      // 썸네일의 강한 림라이트를 작은 도트 크기에서도 읽히는 두 줄로 축약한다.
+      if (enemy.type !== "drone") {
+        ctx.strokeStyle = `rgba(230,247,246,${0.18 + action * 0.2})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-14, 17); ctx.lineTo(-6, 12); ctx.lineTo(9, 15); ctx.stroke();
+        ctx.fillStyle = rigAccent;
+        ctx.fillRect(-3, 18, 7, 2);
+      }
+      ctx.restore();
     }
 
     if (enemy.type === "drone") {
@@ -11914,6 +12176,8 @@
       ctx.fillRect(31, -0.5, 8, 1);
       ctx.restore();
     }
+
+    drawCinematicEnemyRig();
 
     // 모든 기체에 공통으로 보이는 조립선, 일련번호, 누적 손상 자국.
     if (enemy.type !== "drone") {
@@ -13474,6 +13738,9 @@
       ? enemies.find((enemy) => enemy.type === "boss" && enemy.bossKind === entry.key)
       : enemies.find((enemy) => enemy.type === entry.key);
     if (!source) return null;
+    const previewPhase = game.time * (boss ? 2.4 : entry.key === "runner" ? 5.2 : 3.6) + hash(source.originX) * TAU;
+    const previewVelocity = Math.sin(previewPhase * 0.62) * (boss ? 105 : entry.key === "shield" ? 46 : 88);
+    const previewRecoil = Math.sin(previewPhase * 1.8) > 0.72;
     return {
       ...source,
       x: -source.w / 2,
@@ -13481,18 +13748,20 @@
       baseY: -source.h / 2,
       spawnX: -source.w / 2,
       spawnY: -source.h / 2,
-      vx: 0,
+      vx: previewVelocity,
       vy: 0,
       facing: 1,
       grounded: true,
       alive: true,
       hp: source.maxHp,
       hurt: 0,
-      anim: 1.37,
+      anim: previewPhase,
       windup: 0,
       rushTimer: 0,
       bossAction: "idle",
       bossShotPattern: null,
+      burstRemaining: previewRecoil ? 2 : 0,
+      turretRecoil: previewRecoil ? 0.16 : 0,
       reflectTimer: entry.key === "hunter" ? 1 : 0,
       reflectBreakTimer: 0,
       barrierTimer: entry.key === "censor" ? 1 : 0,
@@ -14160,7 +14429,11 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.2",
+    version: "3.6.3",
+    playerDynamicWhiteCape: true,
+    playerOriginalDarkUniform: true,
+    cinematicEnemyRigTypes: 8,
+    cinematicBossMotionKinds: 10,
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14435,7 +14708,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.2",
+    gameVersion: "3.6.3",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
