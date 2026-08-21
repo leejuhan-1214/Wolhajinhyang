@@ -206,6 +206,9 @@ if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !==
 if (!diagnostics.playerFrameBasedAnimation || diagnostics.playerRunPoseCount !== 12 || diagnostics.playerAttackKeyPoseCount !== 3 || !diagnostics.playerSecondaryMotion || !diagnostics.enemyFrameBasedGait || !diagnostics.pixelSnappedJoints) {
   throw new Error("frame-based pixel character animation diagnostics missing");
 }
+if (!diagnostics.playerOriginalBlackDesignRestored || !diagnostics.playerStaticUniformCoat || !diagnostics.playerWhiteUniformCoat || diagnostics.playerUniformCoatFlutter) {
+  throw new Error("original black player design or static uniform coat is missing");
+}
 if (diagnostics.poseInterpolation !== "eased-pixel-snapped" || !diagnostics.weaponsAttachedToHands || !diagnostics.swordFullBodyAnimation || !diagnostics.shotgunBodyRecoilAnimation || !diagnostics.detailedShotgunDesign) {
   throw new Error("smooth combat pose or detailed weapon rendering missing");
 }

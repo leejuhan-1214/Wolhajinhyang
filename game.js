@@ -522,7 +522,7 @@
       ],
       [
         { speaker: "잔향 · 새봄", text: "언니는 나를 두고 도망친 게 아니야. 문을 열려고 다시 올라갔다가 흰 제복 사람들에게 잡혔어.", tone: "archive", duration: 5.6 },
-        { speaker: "M-07 · 서린", text: "내가 입고 있는 제복도 흰색이군. 도담, 내가 여기서 무엇을 했지?", tone: "operative", duration: 5.1 },
+        { speaker: "M-07 · 서린", text: "내가 걸친 제복 외투도 흰색이군. 도담, 내가 여기서 무엇을 했지?", tone: "operative", duration: 5.1 },
       ],
       [
         { speaker: "폐기장 감독관 · 철각", text: "감찰관 한서린. 과거 접근 권한은 폐기되었다. 명령대로 돌아가면 현재 신분은 보존된다.", tone: "hostile", duration: 5.8 },
@@ -9394,16 +9394,16 @@
     const bodyRed = echoStyle ? "#63ffc6" : palette.red;
     const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
     const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
-    // 서린은 설정에 맞춰 흰 제복을 입는다. 잔영의 기존 색은 유지해
-    // 마지막 결투에서 두 캐릭터가 즉시 구분되도록 한다.
-    const uniformBack = echoStyle ? "#0c1825" : "#71858e";
-    const uniformFront = echoStyle ? "#172b3c" : "#aebdc0";
-    const uniformTorso = echoStyle ? "#111d2c" : "#edf3f1";
-    const uniformPanel = echoStyle ? "#29475a" : "#aebdc0";
-    const uniformShoulder = echoStyle ? "#3d6072" : "#71858e";
-    const uniformJoint = echoStyle ? "#172431" : "#24333e";
-    const uniformRearArm = echoStyle ? "#152638" : "#71858e";
-    const uniformFrontArm = echoStyle ? "#294459" : "#aebdc0";
+    // 처음 디자인의 검은 전투복 색을 복원한다. 잔영은 몸체 색 대신
+    // 발광 색으로 구분되므로 원래의 어두운 실루엣을 함께 유지한다.
+    const uniformBack = "#0c1825";
+    const uniformFront = "#172b3c";
+    const uniformTorso = "#111d2c";
+    const uniformPanel = "#29475a";
+    const uniformShoulder = "#3d6072";
+    const uniformJoint = "#172431";
+    const uniformRearArm = "#152638";
+    const uniformFrontArm = "#294459";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -9592,6 +9592,33 @@
       };
     }
 
+    // 어깨에 고정된 제복형 외투. 실루엣은 긴 망토처럼 보이지만
+    // game.time, 속도, 달리기 위상을 사용하지 않아 절대 펄럭이지 않는다.
+    if (!echoStyle) {
+      ctx.fillStyle = "#d6e0df";
+      ctx.beginPath();
+      ctx.moveTo(-13, -43);
+      ctx.lineTo(13, -43);
+      ctx.lineTo(18, -3);
+      ctx.lineTo(-18, -3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#f1f5f2";
+      ctx.beginPath();
+      ctx.moveTo(-9, -40);
+      ctx.lineTo(9, -40);
+      ctx.lineTo(13, -7);
+      ctx.lineTo(-13, -7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#aebdc0";
+      ctx.fillRect(-8, -38, 4, 28);
+      ctx.fillStyle = "#ff496c";
+      ctx.fillRect(10, -37, 2, 30);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(-12, -42, 24, 3);
+    }
+
     const backPose = legPose(runPosePhase, "back");
     const frontPose = legPose(runPosePhase, "front");
     drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
@@ -9686,25 +9713,6 @@
     ctx.fillRect(-4, -22, 13, 2);
     ctx.fillStyle = bodyRed;
     ctx.fillRect(9, -36, 3, 15);
-    if (!echoStyle) {
-      // 흰 외피의 겹침선과 작은 계급 패치만 더해 기존의 단순한 도트
-      // 실루엣을 해치지 않으면서 제복임을 읽을 수 있게 한다.
-      ctx.fillStyle = "rgba(255,255,255,0.82)";
-      ctx.beginPath();
-      ctx.moveTo(-3, -41);
-      ctx.lineTo(8, -38);
-      ctx.lineTo(7, -29);
-      ctx.lineTo(-2, -26);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = uniformShoulder;
-      ctx.fillRect(-13, -39, 5, 3);
-      ctx.fillStyle = bodyRed;
-      ctx.fillRect(-12, -38, 3, 2);
-      ctx.fillStyle = uniformJoint;
-      ctx.fillRect(4, -35, 5, 2);
-      ctx.fillRect(-2, -28, 8, 2);
-    }
     ctx.strokeStyle = "rgba(143, 210, 216, 0.38)";
     ctx.beginPath();
     ctx.moveTo(-3, -38);
@@ -14227,6 +14235,10 @@
     playerRunPoseCount: 12,
     playerAttackKeyPoseCount: 3,
     playerSecondaryMotion: true,
+    playerOriginalBlackDesignRestored: true,
+    playerStaticUniformCoat: true,
+    playerWhiteUniformCoat: true,
+    playerUniformCoatFlutter: false,
     enemyFrameBasedGait: true,
     pixelSnappedJoints: true,
     poseInterpolation: "eased-pixel-snapped",
@@ -14510,6 +14522,10 @@
     playerRunPoseCount: "12",
     playerAttackKeyPoseCount: "3",
     playerSecondaryMotion: "true",
+    playerOriginalBlackDesignRestored: "true",
+    playerStaticUniformCoat: "true",
+    playerWhiteUniformCoat: "true",
+    playerUniformCoatFlutter: "false",
     enemyFrameBasedGait: "true",
     pixelSnappedJoints: "true",
     poseInterpolation: "eased-pixel-snapped",
