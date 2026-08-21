@@ -2154,6 +2154,17 @@
     }
   }
 
+  function refreshAdminRemovedEnemies() {
+    const persistedIds = readAdminRemovedEnemies();
+    for (const id of persistedIds) adminRemovedEnemyIds.add(id);
+    return adminRemovedEnemyIds;
+  }
+
+  function isAdminRemovedEnemy(enemyOrId) {
+    const id = typeof enemyOrId === "string" ? enemyOrId : enemyOrId?.id;
+    return typeof id === "string" && adminRemovedEnemyIds.has(id);
+  }
+
   function readAdminRemovedObjects() {
     try {
       const raw = window.localStorage?.getItem(ADMIN_REMOVED_OBJECTS_KEY);
@@ -2423,6 +2434,13 @@
   }
 
   function restoreAdminSpawnedEnemies() {
+    // 관리자 생성 적도 삭제 표식이 남아 있으면 생성 목록이 오래된 탭이나
+    // 저장 충돌로 되살아나지 못하게 복원 단계에서 먼저 차단한다.
+    const retainedRecords = adminSpawnedEnemyData.filter((record) => !isAdminRemovedEnemy(record.id));
+    if (retainedRecords.length !== adminSpawnedEnemyData.length) {
+      adminSpawnedEnemyData = retainedRecords;
+      persistAdminSpawnedEnemies();
+    }
     for (const record of adminSpawnedEnemyData) {
       const rawX = Number(record.x);
       const rawY = Number(record.y);
@@ -2469,9 +2487,7 @@
 
   function applyAdminRemovedEnemyData() {
     for (const enemy of enemies) {
-      if (!adminRemovedEnemyIds.has(enemy.id)) continue;
-      // Never let old administrator deletion data remove the story's final duel.
-      if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
+      if (!isAdminRemovedEnemy(enemy)) continue;
       enemy.alive = false;
       enemy.hp = 0;
       enemy.countedKill = false;
@@ -2480,9 +2496,8 @@
 
   function syncAdminRemovedBossState() {
     for (const enemy of enemies) {
-      if (enemy.type !== "boss" || !adminRemovedEnemyIds.has(enemy.id)) continue;
+      if (enemy.type !== "boss" || !isAdminRemovedEnemy(enemy)) continue;
       const kind = enemy.bossKind || stages[enemy.stageIndex]?.bossKind;
-      if (!enemy.adminSpawned && kind === "echo") continue;
       if (kind) game.defeatedBosses.add(kind);
     }
     game.stageBossDefeated = game.defeatedBosses.has("warden");
@@ -2803,6 +2818,7 @@
   }
 
   function buildLevel() {
+    refreshAdminRemovedEnemies();
     enemyZoneAuditAccumulator = 0;
     platformSerial = 0;
     hazardSerial = 0;
@@ -3876,7 +3892,6 @@
       if (!beforeCheckpoint || (!migratedZoneLayout && !deadIds.has(enemy.id))) continue;
       // v1.6.5 and older could cull the final boss during its cutscene.
       if (!migratedZoneLayout && legacySave && !enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo") continue;
-      if (!enemy.adminSpawned && enemy.type === "boss" && enemy.bossKind === "echo" && adminRemovedEnemyIds.has(enemy.id)) continue;
       enemy.alive = false;
       enemy.hp = 0;
       enemy.countedKill = migratedZoneLayout
@@ -5128,11 +5143,12 @@
 
   function eraseEnemyData(enemy) {
     if (!enemy?.alive || !game.adminMode) return false;
+    // 기본 배치/관리자 생성 여부와 관계없이 먼저 영구 삭제 표식을 남긴다.
+    // 생성 적은 생성 목록까지 정리하지만, 표식도 유지해 재시작 복원을 이중 차단한다.
+    adminRemovedEnemyIds.add(enemy.id);
+    persistAdminRemovedEnemies();
     if (enemy.adminSpawned) {
       removeAdminSpawnedEnemyData(enemy.id);
-    } else {
-      adminRemovedEnemyIds.add(enemy.id);
-      persistAdminRemovedEnemies();
     }
     killEnemy(enemy, { countKill: false });
     game.hint = enemy.adminSpawned
@@ -5615,7 +5631,7 @@
       enemy.bossChargeDirection = 0;
       enemy.targetX = null;
       enemy.targetY = null;
-      if (!enemy.adminSpawned && adminRemovedEnemyIds.has(enemy.id)) {
+      if (isAdminRemovedEnemy(enemy)) {
         enemy.alive = false;
         enemy.hp = 0;
         enemy.countedKill = false;
@@ -14319,6 +14335,13 @@
     bossDashTelegraphs: true,
     bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
+    adminDeletionTombstonesPersisted: true,
+    adminDeletionCoversSpawnedEnemies: true,
+    adminDeletionReloadGuard: true,
+    adminDeletionRestartGuard: true,
+    adminRemovedEnemyCount: adminRemovedEnemyIds.size,
+    adminRemovedEnemyAliveCount: enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length,
+    adminSpawnedEnemyRecordCount: adminSpawnedEnemyData.length,
     bossRewardsEnabled: false,
     midBossHealReward: false,
     gongmunSwordMotion: true,
@@ -14606,6 +14629,13 @@
     adminZoneTeleport: String(TOTAL_ZONE_COUNT),
     adminNoclip: "true",
     adminFlightSpeed: String(INPUT_TUNING.moveSpeed * 2),
+    adminDeletionTombstonesPersisted: "true",
+    adminDeletionCoversSpawnedEnemies: "true",
+    adminDeletionReloadGuard: "true",
+    adminDeletionRestartGuard: "true",
+    adminRemovedEnemyCount: String(adminRemovedEnemyIds.size),
+    adminRemovedEnemyAliveCount: String(enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length),
+    adminSpawnedEnemyRecordCount: String(adminSpawnedEnemyData.length),
     jeokrinPermanentReflect: "true",
     yukhwaShotgunSwap: "true",
     bossRewardsEnabled: "false",

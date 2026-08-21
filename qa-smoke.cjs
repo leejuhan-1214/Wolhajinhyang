@@ -45,7 +45,12 @@ const difficultyButtons = Object.entries(difficultyNames).map(([key, label]) => 
 const storage = new Map([["moonlit-echo-campaign-v1", JSON.stringify({
   version: 2, zonesPerStage: 24, checkpointKey: "2:12", respawnStage: 2, respawnZone: 60, respawnCheckpointIndex: 60,
   difficulty: "cadet", defeatedEnemyIds: [], kills: 0,
-})]]);
+})], ["moonlit-echo-admin-removed-enemies-v1", JSON.stringify([
+  "admin-spawn:qa-persist:1:0:runner",
+])], ["moonlit-echo-admin-spawned-enemies-v1", JSON.stringify([{
+  id: "admin-spawn:qa-persist:1:0:runner", type: "runner", x: 4800, y: 620,
+  stageIndex: 0, homeZoneIndex: 1, range: 220,
+}])]]);
 
 global.window = global;
 global.localStorage = {
@@ -146,6 +151,14 @@ if (!continueText.includes("03-09")) throw new Error(`24-zone save resolved inco
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
   throw new Error("v2.6.0 feature diagnostics missing");
 }
+if (!diagnostics.adminDeletionTombstonesPersisted || !diagnostics.adminDeletionCoversSpawnedEnemies || !diagnostics.adminDeletionReloadGuard || !diagnostics.adminDeletionRestartGuard) {
+  throw new Error("administrator enemy deletion persistence guards missing");
+}
+if (diagnostics.adminRemovedEnemyCount !== 1 || diagnostics.adminRemovedEnemyAliveCount !== 0 || diagnostics.adminSpawnedEnemyRecordCount !== 0) {
+  throw new Error(`administrator deletion tombstone failed: ${diagnostics.adminRemovedEnemyCount}/${diagnostics.adminRemovedEnemyAliveCount}/${diagnostics.adminSpawnedEnemyRecordCount}`);
+}
+const persistedAdminSpawns = JSON.parse(storage.get("moonlit-echo-admin-spawned-enemies-v1") || "[]");
+if (persistedAdminSpawns.length !== 0) throw new Error("deleted administrator-spawned enemy was restored");
 if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 65 || diagnostics.routeProfileCount < 30) {
   throw new Error(`layered route generation missing: ${diagnostics.layeredRouteZoneCount}/${diagnostics.routeProfileCount}`);
 }
