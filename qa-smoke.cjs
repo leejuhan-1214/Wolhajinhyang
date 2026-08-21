@@ -109,6 +109,9 @@ if (diagnostics.bossCrisisPatternThreshold !== 0.35 || diagnostics.bossCrisisPat
 if (!diagnostics.bossIntroCombatGate || !diagnostics.bossIntroWaitsForDialogue || !diagnostics.bossDormantDamageLock || diagnostics.bossIntroCutsceneCount !== 10 || !diagnostics.cutsceneCompletionSavedAtEnd) {
   throw new Error("boss intro dialogue gate configuration invalid");
 }
+if (!diagnostics.bossHudVisibleFromZoneEntry || !diagnostics.bossHudPersistsAcrossArena || !gameSource.includes("enemy.homeZoneIndex === game.zone")) {
+  throw new Error("boss HUD is not tied to the full boss zone");
+}
 const bossIntroIds = ["cutscene-midboss-1", "cutscene-midboss-2", "cutscene-midboss-3", "cutscene-midboss-4", "cutscene-midboss-5", "cutscene-warden", "cutscene-crimson", "cutscene-weaver", "cutscene-censor", "cutscene-echo"];
 if (!gameSource.includes("function holdBossUntilIntroEnds(enemy, dt, dx)") || bossIntroIds.some((id) => !gameSource.includes(id))) {
   throw new Error("one or more boss intro gates are missing");
@@ -179,16 +182,16 @@ if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.w
 if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
   throw new Error(`player step-up tuning invalid: ${diagnostics.playerGroundSeamStepHeight}/${diagnostics.playerPlatformStepHeight}`);
 }
-if (diagnostics.turretAimTelegraph || !diagnostics.turretCannonMuzzle || !diagnostics.turretShotsPiercePlatforms || diagnostics.turretRowProjectileSpeed !== 365) {
+if (diagnostics.turretAimTelegraph || !diagnostics.turretCannonMuzzle || !diagnostics.turretShotsPiercePlatforms || diagnostics.turretRowProjectileSpeed !== 365 || !diagnostics.turretRowCircularFlight || diagnostics.turretRowOrbitRadius !== 7 || diagnostics.turretRowOrbitAngularSpeed !== 8.5) {
   throw new Error("five-row turret presentation or wall-piercing rule invalid");
 }
 if (gameSource.includes('enemy.type === "turret" && Number.isFinite(enemy.targetX)') || !/kind:\s*"turret-row"[\s\S]{0,180}piercePlatforms:\s*true/.test(gameSource)) {
   throw new Error("five-row turret still exposes an aim line or lacks platform piercing");
 }
-if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || diagnostics.mortarTurretShotsPierceWalls || !diagnostics.mortarTurretAdminSpawn) {
+if (diagnostics.mortarTurretCount < 1 || diagnostics.mortarTurretVolleyCount !== 3 || !diagnostics.mortarTurretTerrainCollision || diagnostics.mortarTurretShotsPierceWalls || !diagnostics.allMortarsTerrainCollision || !diagnostics.mortarTurretAdminSpawn) {
   throw new Error(`mortar turret invalid: ${diagnostics.mortarTurretCount}/${diagnostics.mortarTurretVolleyCount}`);
 }
-if (!/fireMortar\(enemy, centerTargetX \+ targetOffset, enemy\.targetY, true, true\)/.test(gameSource) || !gameSource.includes("lockedMortarInFlight && !bullet.terrainCollision")) {
+if (!/fireMortar\(enemy, centerTargetX \+ targetOffset, enemy\.targetY, true, true\)/.test(gameSource) || !gameSource.includes("lockedMortarInFlight && !bullet.terrainCollision") || !gameSource.includes("terrainCollision = true")) {
   throw new Error("triple mortar shells can still pass through terrain");
 }
 if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZone !== 0 || diagnostics.enemyZoneAuditIntervalSeconds !== 0.45) {

@@ -5779,13 +5779,23 @@
     const speed = TURRET_ROW_PROJECTILE_SPEED * difficultySettings[game.difficulty].bulletSpeed * (STAGE_BULLET_PRESSURE[enemy.stageIndex] || 1);
     for (let lane = -2; lane <= 2; lane += 1) {
       const laneOffset = lane * 14;
+      const pathX = sourceX - Math.sin(angle) * laneOffset;
+      const pathY = sourceY + Math.cos(angle) * laneOffset;
+      const rowOrbitPhase = ((lane + 2) / 5) * TAU;
+      const rowOrbitRadius = 7;
       bullets.push({
-        x: sourceX - 8,
-        y: sourceY + laneOffset - 5,
+        x: pathX + Math.cos(rowOrbitPhase) * rowOrbitRadius - 8,
+        y: pathY + Math.sin(rowOrbitPhase) * rowOrbitRadius - 5,
         w: 16,
         h: 10,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
+        pathX,
+        pathY,
+        rowOrbitPhase,
+        rowOrbitRadius,
+        rowOrbitTime: 0,
+        rowOrbitAngularSpeed: 8.5,
         life: 4.4,
         enemy: true,
         kind: "turret-row",
@@ -5817,7 +5827,7 @@
     );
   }
 
-  function fireMortar(enemy, lockedTargetX = null, lockedTargetY = null, silent = false, terrainCollision = false) {
+  function fireMortar(enemy, lockedTargetX = null, lockedTargetY = null, silent = false, terrainCollision = true) {
     const sourceX = enemy.x + enemy.w / 2;
     const sourceY = enemy.y + 12;
     const targetX = lockedTargetX ?? player.x + player.w / 2 + player.vx * 0.32;
@@ -8601,8 +8611,17 @@
         : getNearbyPlatforms(bullet, 110 + Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)));
 
       for (let step = 0; step < steps && !remove; step += 1) {
-        bullet.x += bullet.vx * stepTime;
-        bullet.y += bullet.vy * stepTime;
+        if (bullet.kind === "turret-row" && Number.isFinite(bullet.pathX) && Number.isFinite(bullet.pathY)) {
+          bullet.pathX += bullet.vx * stepTime;
+          bullet.pathY += bullet.vy * stepTime;
+          bullet.rowOrbitTime += stepTime;
+          const orbitAngle = bullet.rowOrbitPhase + bullet.rowOrbitTime * bullet.rowOrbitAngularSpeed;
+          bullet.x = bullet.pathX + Math.cos(orbitAngle) * bullet.rowOrbitRadius - bullet.w / 2;
+          bullet.y = bullet.pathY + Math.sin(orbitAngle) * bullet.rowOrbitRadius - bullet.h / 2;
+        } else {
+          bullet.x += bullet.vx * stepTime;
+          bullet.y += bullet.vy * stepTime;
+        }
         bullet.vy += (bullet.gravity || 0) * stepTime;
 
         const lockedMortarInFlight = bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer);
@@ -9375,6 +9394,16 @@
     const bodyRed = echoStyle ? "#63ffc6" : palette.red;
     const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
     const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
+    // 서린은 설정에 맞춰 흰 제복을 입는다. 잔영의 기존 색은 유지해
+    // 마지막 결투에서 두 캐릭터가 즉시 구분되도록 한다.
+    const uniformBack = echoStyle ? "#0c1825" : "#71858e";
+    const uniformFront = echoStyle ? "#172b3c" : "#aebdc0";
+    const uniformTorso = echoStyle ? "#111d2c" : "#edf3f1";
+    const uniformPanel = echoStyle ? "#29475a" : "#aebdc0";
+    const uniformShoulder = echoStyle ? "#3d6072" : "#71858e";
+    const uniformJoint = echoStyle ? "#172431" : "#24333e";
+    const uniformRearArm = echoStyle ? "#152638" : "#71858e";
+    const uniformFrontArm = echoStyle ? "#294459" : "#aebdc0";
 
     const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
     const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
@@ -9565,8 +9594,8 @@
 
     const backPose = legPose(runPosePhase, "back");
     const frontPose = legPose(runPosePhase, "front");
-    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, "#0c1825", true);
-    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, "#172b3c", true);
+    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
+    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformFront, true);
 
     // 등에 고정된 전술 신호 장치와 작은 안테나.
     ctx.fillStyle = "#0a131f";
@@ -9624,7 +9653,7 @@
     ctx.fill();
     ctx.restore();
 
-    ctx.fillStyle = "#111d2c";
+    ctx.fillStyle = uniformTorso;
     ctx.beginPath();
     ctx.moveTo(-11, -43);
     ctx.lineTo(10, -43);
@@ -9634,9 +9663,9 @@
     ctx.lineTo(-15, -30);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#29475a";
+    ctx.fillStyle = uniformPanel;
     ctx.fillRect(-10, -38, 5, 17);
-    ctx.fillStyle = "#3d6072";
+    ctx.fillStyle = uniformShoulder;
     ctx.beginPath();
     ctx.moveTo(-15, -40);
     ctx.lineTo(-7, -44);
@@ -9645,7 +9674,7 @@
     ctx.lineTo(-15, -34);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#172431";
+    ctx.fillStyle = uniformJoint;
     ctx.fillRect(-10, -22, 22, 5);
     ctx.fillStyle = empowered ? bodyAmber : bodyRed;
     ctx.fillRect(-12, -24, 25, 3);
@@ -9657,6 +9686,25 @@
     ctx.fillRect(-4, -22, 13, 2);
     ctx.fillStyle = bodyRed;
     ctx.fillRect(9, -36, 3, 15);
+    if (!echoStyle) {
+      // 흰 외피의 겹침선과 작은 계급 패치만 더해 기존의 단순한 도트
+      // 실루엣을 해치지 않으면서 제복임을 읽을 수 있게 한다.
+      ctx.fillStyle = "rgba(255,255,255,0.82)";
+      ctx.beginPath();
+      ctx.moveTo(-3, -41);
+      ctx.lineTo(8, -38);
+      ctx.lineTo(7, -29);
+      ctx.lineTo(-2, -26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = uniformShoulder;
+      ctx.fillRect(-13, -39, 5, 3);
+      ctx.fillStyle = bodyRed;
+      ctx.fillRect(-12, -38, 3, 2);
+      ctx.fillStyle = uniformJoint;
+      ctx.fillRect(4, -35, 5, 2);
+      ctx.fillRect(-2, -28, 8, 2);
+    }
     ctx.strokeStyle = "rgba(143, 210, 216, 0.38)";
     ctx.beginPath();
     ctx.moveTo(-3, -38);
@@ -9704,7 +9752,7 @@
         : running
           ? -stride * 0.58 * runBlend + 0.14
           : 0.28;
-    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, "#152638", false, true);
+    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, uniformRearArm, false, true);
 
     ctx.fillStyle = "#8da0aa";
     ctx.fillRect(-10, -57, 19, 16);
@@ -9784,7 +9832,7 @@
       bladeAngle += player.attackDir.y * 0.9;
     }
 
-    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, "#294459", false, !attacking);
+    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, uniformFrontArm, false, !attacking);
     if (attacking) {
       ctx.save();
       ctx.translate(frontHand.x, frontHand.y);
@@ -13208,7 +13256,14 @@
     ctx.textAlign = "left";
 
 
-    const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.alive && Math.abs(player.x - enemy.originX) < 1500);
+    // 보스 체력은 보스와의 단순 거리 대신 현재 구역을 기준으로 찾는다.
+    // 따라서 넓은 보스방의 입구, 컷신, 수직 발판 위에서도 구역을
+    // 벗어나기 전까지 같은 체력바가 계속 표시된다.
+    const boss = enemies.find((enemy) => (
+      enemy.type === "boss"
+      && enemy.alive
+      && (enemy.homeZoneIndex === game.zone || getZoneIndexAt(enemy.originX) === game.zone)
+    ));
     if (boss) {
       const bossDefinition = BOSS_DEFINITIONS[boss.bossKind] || BOSS_DEFINITIONS.warden;
       ctx.fillStyle = "rgba(3, 7, 13, 0.82)";
@@ -14189,11 +14244,15 @@
     turretCannonMuzzle: true,
     turretShotsPiercePlatforms: true,
     turretRowProjectileSpeed: TURRET_ROW_PROJECTILE_SPEED,
+    turretRowCircularFlight: true,
+    turretRowOrbitRadius: 7,
+    turretRowOrbitAngularSpeed: 8.5,
     mortarTurretCount: enemies.filter((enemy) => enemy.type === "mortarTurret").length,
     mortarTurretBaseHp: MORTAR_TURRET_BASE_HP,
     mortarTurretVolleyCount: MORTAR_TURRET_VOLLEY_COUNT,
     mortarTurretTerrainCollision: true,
     mortarTurretShotsPierceWalls: false,
+    allMortarsTerrainCollision: true,
     mortarExactMarkedImpact: true,
     mortarBallisticTargetLock: true,
     mortarTurretAdminSpawn: ADMIN_SPAWN_TYPES.has("mortarTurret"),
@@ -14328,6 +14387,8 @@
     bossIntroCombatGate: true,
     bossIntroWaitsForDialogue: true,
     bossDormantDamageLock: true,
+    bossHudVisibleFromZoneEntry: true,
+    bossHudPersistsAcrossArena: true,
     bossIntroCutsceneCount: Object.keys(BOSS_INTRO_CUTSCENE_IDS).length,
     cutsceneCompletionSavedAtEnd: true,
     weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
@@ -14466,11 +14527,15 @@
     turretCannonMuzzle: "true",
     turretShotsPiercePlatforms: "true",
     turretRowProjectileSpeed: String(TURRET_ROW_PROJECTILE_SPEED),
+    turretRowCircularFlight: "true",
+    turretRowOrbitRadius: "7",
+    turretRowOrbitAngularSpeed: "8.5",
     mortarTurretCount: String(enemies.filter((enemy) => enemy.type === "mortarTurret").length),
     mortarTurretBaseHp: String(MORTAR_TURRET_BASE_HP),
     mortarTurretVolleyCount: String(MORTAR_TURRET_VOLLEY_COUNT),
     mortarTurretTerrainCollision: "true",
     mortarTurretShotsPierceWalls: "false",
+    allMortarsTerrainCollision: "true",
     mortarExactMarkedImpact: "true",
     mortarBallisticTargetLock: "true",
     mortarTurretAdminSpawn: String(ADMIN_SPAWN_TYPES.has("mortarTurret")),
@@ -14609,6 +14674,8 @@
     bossIntroCombatGate: "true",
     bossIntroWaitsForDialogue: "true",
     bossDormantDamageLock: "true",
+    bossHudVisibleFromZoneEntry: "true",
+    bossHudPersistsAcrossArena: "true",
     bossIntroCutsceneCount: String(Object.keys(BOSS_INTRO_CUTSCENE_IDS).length),
     cutsceneCompletionSavedAtEnd: "true",
     weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
