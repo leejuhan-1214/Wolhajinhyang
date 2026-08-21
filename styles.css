@@ -1518,3 +1518,264 @@ button:focus-visible {
     pointer-events: none;
   }
 }
+
+/* v3.6.1 illustrated title screen ------------------------------------------------ */
+#start-screen {
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(2, 7, 15, 0.1) 0 46%, rgba(2, 7, 15, 0.02) 62%, rgba(2, 7, 15, 0.12)),
+    url("title-screen-v3.6.1.png?v=3.6.1") center / cover no-repeat;
+  backdrop-filter: none;
+  text-align: left;
+}
+
+#start-screen::before {
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(2, 8, 17, 0.14), transparent 25% 72%, rgba(2, 7, 13, 0.34)),
+    linear-gradient(90deg, rgba(2, 8, 17, 0.34), transparent 46% 67%, rgba(2, 8, 17, 0.18));
+  animation: none;
+}
+
+#start-screen.visible {
+  display: block;
+  padding: 0;
+}
+
+#start-screen h1 {
+  position: absolute;
+  top: 6.5%;
+  left: 5.2%;
+  max-width: 51%;
+  margin: 0;
+  color: #edfaff;
+  background: none;
+  font-size: clamp(38px, 6.4vw, 104px);
+  line-height: 0.95;
+  letter-spacing: -0.09em;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  -webkit-text-stroke: 1px rgba(207, 246, 255, 0.45);
+  text-shadow:
+    0 3px 0 rgba(2, 8, 16, 0.95),
+    0 0 20px rgba(116, 226, 255, 0.42),
+    5px 5px 0 rgba(255, 69, 65, 0.16);
+}
+
+#start-screen h1::after {
+  content: "";
+  display: block;
+  width: 72%;
+  height: 3px;
+  margin-top: 14px;
+  background: linear-gradient(90deg, #84f8ff, rgba(132, 248, 255, 0));
+  box-shadow: 0 0 12px rgba(132, 248, 255, 0.72);
+}
+
+#start-screen .campaign-actions,
+#start-screen .difficulty-select {
+  position: absolute;
+  right: 4.2%;
+  width: 31.7%;
+  margin: 0;
+  padding: 0;
+}
+
+#start-screen .campaign-actions {
+  bottom: 27.5%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(7px, 0.8vw, 13px);
+}
+
+#start-screen .campaign-actions button,
+#start-screen .difficulty-select button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid rgba(125, 190, 216, 0.72);
+  border-radius: 0;
+  background: linear-gradient(100deg, rgba(4, 12, 21, 0.91), rgba(8, 22, 31, 0.79));
+  color: #e5f5fa;
+  clip-path: polygon(13px 0, calc(100% - 9px) 0, 100% 9px, 100% calc(100% - 13px), calc(100% - 13px) 100%, 8px 100%, 0 calc(100% - 8px), 0 13px);
+  box-shadow:
+    inset 0 0 0 1px rgba(2, 8, 13, 0.88),
+    inset 0 0 24px rgba(43, 122, 149, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.28);
+  font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.92);
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+#start-screen .campaign-actions button::before,
+#start-screen .difficulty-select button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-left: 3px solid #ec3d3b;
+  background: linear-gradient(90deg, rgba(236, 61, 59, 0.08), transparent 18%);
+  pointer-events: none;
+}
+
+#start-screen .campaign-actions button:hover,
+#start-screen .campaign-actions button:focus-visible,
+#start-screen .difficulty-select button:hover,
+#start-screen .difficulty-select button:focus-visible,
+#start-screen .difficulty-select button.selected {
+  border-color: #89f7ff;
+  color: #ffffff;
+  background: linear-gradient(100deg, rgba(7, 28, 39, 0.94), rgba(10, 46, 59, 0.88));
+  box-shadow:
+    inset 0 0 0 1px rgba(137, 247, 255, 0.3),
+    inset 0 0 30px rgba(84, 226, 255, 0.13),
+    0 0 18px rgba(84, 226, 255, 0.34),
+    0 8px 24px rgba(0, 0, 0, 0.32);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+#start-screen .campaign-actions button {
+  min-height: clamp(42px, 7.4vh, 68px);
+  padding: 0.45rem 1.2rem;
+  font-size: clamp(13px, 1.35vw, 22px);
+}
+
+#start-screen .difficulty-select {
+  bottom: 7.8%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(7px, 0.8vw, 13px);
+}
+
+#start-screen .difficulty-select > span {
+  display: none;
+}
+
+#start-screen .difficulty-select button {
+  min-height: clamp(36px, 6.8vh, 60px);
+  padding: 0.4rem 0.55rem;
+  font-size: clamp(10px, 1.05vw, 17px);
+}
+
+#start-screen #continue-button:disabled {
+  border-color: rgba(112, 139, 151, 0.38);
+  color: #748791;
+  background: rgba(5, 13, 21, 0.72);
+  filter: none;
+  opacity: 0.68;
+}
+
+#start-screen .version-badge {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(184, 223, 231, 0.74);
+  font-size: clamp(8px, 0.75vw, 12px);
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 4px #000;
+}
+
+#start-screen .admin-status {
+  position: absolute;
+  left: 50%;
+  bottom: 2.5%;
+  z-index: 4;
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 760px), (max-height: 520px) {
+  #start-screen h1 {
+    top: 5.5%;
+    left: 4.4%;
+    font-size: clamp(28px, 6.3vw, 58px);
+  }
+
+  #start-screen h1::after {
+    height: 2px;
+    margin-top: 7px;
+  }
+
+  #start-screen .campaign-actions,
+  #start-screen .difficulty-select {
+    right: 3.2%;
+    width: 34%;
+  }
+
+  #start-screen .campaign-actions {
+    bottom: 28.5%;
+    gap: 5px;
+  }
+
+  #start-screen .campaign-actions button {
+    min-height: 32px;
+    padding: 0.25rem 0.45rem;
+    font-size: clamp(9px, 1.55vw, 13px);
+  }
+
+  #start-screen .difficulty-select {
+    bottom: 7.5%;
+    gap: 5px;
+  }
+
+  #start-screen .difficulty-select button {
+    min-height: 28px;
+    padding: 0.2rem;
+    font-size: clamp(7px, 1.2vw, 10px);
+  }
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+  #start-screen {
+    background-position: 31% center;
+  }
+
+  #start-screen::before {
+    background: linear-gradient(180deg, rgba(2, 8, 17, 0.25), transparent 32%, rgba(2, 7, 14, 0.2) 50%, rgba(2, 7, 14, 0.92) 72%);
+  }
+
+  #start-screen h1 {
+    top: max(4.5%, env(safe-area-inset-top));
+    left: 6%;
+    max-width: 88%;
+    font-size: clamp(46px, 16vw, 72px);
+  }
+
+  #start-screen .campaign-actions,
+  #start-screen .difficulty-select {
+    right: 5%;
+    left: 5%;
+    width: 90%;
+  }
+
+  #start-screen .campaign-actions {
+    bottom: 24.5%;
+  }
+
+  #start-screen .campaign-actions button {
+    min-height: 50px;
+    font-size: 16px;
+  }
+
+  #start-screen .difficulty-select {
+    bottom: max(5.5%, calc(env(safe-area-inset-bottom) + 24px));
+  }
+
+  #start-screen .difficulty-select button {
+    min-height: 42px;
+    font-size: 12px;
+  }
+
+  #start-screen .version-badge {
+    right: max(7px, env(safe-area-inset-right));
+    bottom: max(5px, env(safe-area-inset-bottom));
+  }
+}
