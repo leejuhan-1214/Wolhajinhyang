@@ -6,6 +6,47 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
+  const CINEMATIC_SPRITE_SOURCES = Object.freeze({
+    "player-idle": "assets/cinematic/sprites/player-idle.png",
+    "player-run-0": "assets/cinematic/sprites/player-run-0.png",
+    "player-run-1": "assets/cinematic/sprites/player-run-1.png",
+    "player-run-2": "assets/cinematic/sprites/player-run-2.png",
+    "player-run-3": "assets/cinematic/sprites/player-run-3.png",
+    "player-slash": "assets/cinematic/sprites/player-slash.png",
+    "player-shotgun": "assets/cinematic/sprites/player-shotgun.png",
+    runner: "assets/cinematic/sprites/runner.png",
+    gunner: "assets/cinematic/sprites/gunner.png",
+    machinegun: "assets/cinematic/sprites/machinegun.png",
+    piercer: "assets/cinematic/sprites/piercer.png",
+    mortar: "assets/cinematic/sprites/mortar.png",
+    drone: "assets/cinematic/sprites/drone.png",
+    shield: "assets/cinematic/sprites/shield.png",
+    turret: "assets/cinematic/sprites/turret.png",
+    mortarTurret: "assets/cinematic/sprites/mortarTurret.png",
+    breaker: "assets/cinematic/sprites/breaker.png",
+    hunter: "assets/cinematic/sprites/hunter.png",
+    oracle: "assets/cinematic/sprites/oracle.png",
+    revenant: "assets/cinematic/sprites/revenant.png",
+    proxy: "assets/cinematic/sprites/proxy.png",
+    warden: "assets/cinematic/sprites/warden.png",
+    furnace: "assets/cinematic/sprites/furnace.png",
+    weaver: "assets/cinematic/sprites/weaver.png",
+    censor: "assets/cinematic/sprites/censor.png",
+    echo: "assets/cinematic/sprites/echo.png",
+  });
+  const cinematicSprites = new Map();
+  if (typeof Image === "function") {
+    for (const [key, source] of Object.entries(CINEMATIC_SPRITE_SOURCES)) {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = source + "?v=3.6.2-hd";
+      cinematicSprites.set(key, image);
+    }
+  }
+  function getCinematicSprite(key) {
+    const image = cinematicSprites.get(key);
+    return image && image.complete && image.naturalWidth > 0 ? image : null;
+  }
   const startScreen = document.getElementById("start-screen");
   const pauseScreen = document.getElementById("pause-screen");
   const endScreen = document.getElementById("end-screen");
@@ -9367,6 +9408,60 @@
     ctx.restore();
   }
 
+  function drawHighFidelityPlayerSprite({
+    ghost = false,
+    echoStyle = false,
+    attacking = false,
+    shooting = false,
+    attackProgress = 0,
+    shotKick = 0,
+    running = false,
+  } = {}) {
+    let key = "player-idle";
+    if (attacking) key = "player-slash";
+    else if (shooting) key = "player-shotgun";
+    else if (running) {
+      const frame = ((Math.floor(player.runCycle / (TAU / 4)) % 4) + 4) % 4;
+      key = "player-run-" + frame;
+    }
+    const image = getCinematicSprite(key);
+    if (!image) return false;
+
+    const targetHeight = attacking ? 148 : shooting ? 136 : running ? 108 : 112;
+    const scale = targetHeight / image.naturalHeight;
+    const drawW = image.naturalWidth * scale;
+    const drawH = image.naturalHeight * scale;
+    const actionLunge = attacking
+      ? Math.sin(clamp(attackProgress, 0, 1) * Math.PI) * 15
+      : shooting
+        ? -shotKick * 7
+        : 0;
+    const runBob = running ? Math.sin(player.runCycle * 2) * 1.7 : Math.sin(game.time * 2.5) * 0.8;
+    const anchorRatio = attacking ? 0.34 : shooting ? 0.43 : 0.5;
+    const footRatio = attacking ? 0.91 : shooting ? 0.93 : 0.965;
+
+    ctx.save();
+    ctx.translate(actionLunge, runBob);
+    ctx.rotate(attacking ? Math.sin(attackProgress * Math.PI) * -0.035 : shooting ? shotKick * -0.045 : 0);
+    ctx.scale(
+      1 + (shooting ? shotKick * 0.055 : 0),
+      1 - (shooting ? shotKick * 0.035 : 0),
+    );
+    if (ghost || echoStyle) {
+      ctx.filter = "hue-rotate(215deg) saturate(1.45) brightness(1.12) drop-shadow(0 0 7px rgba(168,121,255,.84))";
+    } else if (attacking) {
+      ctx.filter = "drop-shadow(0 0 9px rgba(101,245,234,.86)) drop-shadow(0 4px 4px rgba(0,0,0,.72))";
+    } else if (shooting) {
+      ctx.filter = "drop-shadow(0 0 8px rgba(255,205,112,.72)) drop-shadow(0 4px 4px rgba(0,0,0,.72))";
+    } else {
+      ctx.filter = "drop-shadow(0 4px 4px rgba(0,0,0,.76)) drop-shadow(0 0 3px rgba(101,245,234,.42))";
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(image, -drawW * anchorRatio, -drawH * footRatio, drawW, drawH);
+    ctx.restore();
+    return true;
+  }
+
   function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player") {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -9433,6 +9528,18 @@
     const baseLean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
     const actionLean = attacking ? lerp(-0.22, 0.36, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.28 * shotKick : 0;
     const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
+    if (drawHighFidelityPlayerSprite({
+      ghost,
+      echoStyle,
+      attacking,
+      shooting,
+      attackProgress,
+      shotKick,
+      running,
+    })) {
+      ctx.restore();
+      return;
+    }
 
     ctx.translate(attackLunge - shotKick * 16, -bob + shotKick * 4 - attackImpact * 3.5 + actionSink);
     ctx.scale(
@@ -11200,6 +11307,112 @@
     }
   }
 
+  const CINEMATIC_ENEMY_PRESENTATION = Object.freeze({
+    runner: { height: 72, hover: false },
+    gunner: { height: 74, hover: false },
+    machinegun: { height: 78, hover: false },
+    piercer: { height: 76, hover: false },
+    mortar: { height: 80, hover: false },
+    drone: { height: 70, hover: true },
+    shield: { height: 88, hover: false },
+    turret: { height: 94, hover: false, fixed: true },
+    mortarTurret: { height: 102, hover: false, fixed: true },
+    breaker: { height: 132, boss: true },
+    hunter: { height: 132, boss: true },
+    oracle: { height: 138, boss: true, hover: true },
+    revenant: { height: 140, boss: true },
+    proxy: { height: 142, boss: true },
+    warden: { height: 154, boss: true, hover: true },
+    furnace: { height: 150, boss: true },
+    weaver: { height: 148, boss: true, hover: true },
+    censor: { height: 150, boss: true, hover: true },
+    echo: { height: 130, boss: true },
+  });
+
+  function drawHighFidelityEnemySprite(enemy) {
+    const key = enemy.type === "boss" ? enemy.bossKind : enemy.type;
+    const presentation = CINEMATIC_ENEMY_PRESENTATION[key];
+    const image = presentation ? getCinematicSprite(key) : null;
+    if (!image) return false;
+
+    const targetHeight = presentation.height;
+    const scale = targetHeight / image.naturalHeight;
+    const drawW = image.naturalWidth * scale;
+    const drawH = image.naturalHeight * scale;
+    const centerX = enemy.x + enemy.w * 0.5;
+    const floorY = enemy.y + enemy.h;
+    const speedRatio = clamp(Math.abs(enemy.vx || 0) / 420, 0, 1);
+    const attackPulse = enemy.windup > 0 ? 1 - clamp(enemy.windup / 1.2, 0, 1) : 0;
+    const hurtPulse = clamp((enemy.hitStun || 0) / 0.24, 0, 1);
+    const hover = presentation.hover
+      ? Math.sin(game.time * 3.4 + (enemy.anim || 0)) * (presentation.boss ? 4 : 2.5)
+      : 0;
+    const recoil = attackPulse > 0 ? Math.sin(attackPulse * Math.PI) * 4 : 0;
+    const facing = presentation.fixed ? 1 : (enemy.facing || ((enemy.vx || 0) < -3 ? -1 : 1));
+
+    ctx.save();
+    ctx.translate(centerX, floorY + hover);
+    if (presentation.boss) {
+      const accent = BOSS_DEFINITIONS[key] ? BOSS_DEFINITIONS[key].accent : "#65f5ea";
+      const aura = ctx.createRadialGradient(0, -drawH * 0.46, 4, 0, -drawH * 0.46, drawH * 0.6);
+      aura.addColorStop(0, accent + "52");
+      aura.addColorStop(0.55, accent + "18");
+      aura.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(0, -drawH * 0.46, drawH * 0.6, 0, TAU);
+      ctx.fill();
+    }
+    ctx.fillStyle = presentation.hover ? "rgba(80,245,234,.17)" : "rgba(0,0,0,.36)";
+    ctx.beginPath();
+    ctx.ellipse(0, presentation.hover ? 3 : -2, drawW * 0.3, presentation.hover ? 7 : 5, 0, 0, TAU);
+    ctx.fill();
+
+    if (speedRatio > 0.3 && !presentation.fixed) {
+      ctx.save();
+      ctx.globalAlpha = 0.18 * speedRatio;
+      ctx.scale(facing, 1);
+      ctx.drawImage(image, -drawW * 0.5 - 10, -drawH * 0.96, drawW, drawH);
+      ctx.restore();
+    }
+
+    ctx.scale(facing, 1);
+    ctx.translate(-recoil, 0);
+    ctx.rotate((enemy.vx || 0) / 9000);
+    ctx.scale(1 + attackPulse * 0.025, 1 - attackPulse * 0.018);
+    if (hurtPulse > 0) {
+      ctx.filter = "brightness(" + (1 + hurtPulse * 1.35) + ") saturate(1.45) drop-shadow(0 0 8px rgba(255,255,255,.82))";
+    } else if (presentation.boss) {
+      ctx.filter = "drop-shadow(0 7px 7px rgba(0,0,0,.78)) drop-shadow(0 0 5px rgba(255,73,108,.34))";
+    } else {
+      ctx.filter = "drop-shadow(0 5px 5px rgba(0,0,0,.72))";
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(image, -drawW * 0.5, -drawH * 0.96, drawW, drawH);
+
+    if (presentation.hover) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = enemy.type === "boss" ? "rgba(255,92,120,.62)" : "rgba(101,245,234,.68)";
+      for (const offset of [-drawW * 0.18, drawW * 0.18]) {
+        ctx.beginPath();
+        ctx.moveTo(offset - 4, -7);
+        ctx.lineTo(offset + 4, -7);
+        ctx.lineTo(offset, 12 + Math.sin(game.time * 24 + offset) * 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    if (attackPulse > 0.15) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255,205,112," + (0.35 + attackPulse * 0.5) + ")";
+      ctx.beginPath();
+      ctx.arc(drawW * 0.42, -drawH * 0.48, 3 + attackPulse * 8, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    return true;
+  }
+
   function drawEnemy(enemy) {
     if (!enemy.alive) return;
     drawEnemyTelegraph(enemy);
@@ -11220,6 +11433,7 @@
       }
       ctx.restore();
     }
+    if (drawHighFidelityEnemySprite(enemy)) return;
     if (enemy.type === "boss" && enemy.bossKind === "echo") {
       const echoPulse = 0.5 + Math.sin(game.time * 5.4) * 0.2;
       const echoCharge = enemy.bossAction === "chargeShot" && enemy.windup > 0
@@ -14429,11 +14643,17 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.3",
+    version: "3.6.2",
     playerDynamicWhiteCape: true,
     playerOriginalDarkUniform: true,
     cinematicEnemyRigTypes: 8,
     cinematicBossMotionKinds: 10,
+    highFidelityCharacterSprites: true,
+    highFidelitySpriteCount: Object.keys(CINEMATIC_SPRITE_SOURCES).length,
+    highFidelitySpritesLoaded: [...cinematicSprites.values()].filter((image) => image.complete && image.naturalWidth > 0).length,
+    highFidelityRunFrames: 4,
+    highFidelityPlayerActionFrames: 3,
+    characterArtAtlasVersion: "3.6.2-hd",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14708,7 +14928,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.3",
+    gameVersion: "3.6.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14766,6 +14986,9 @@
     turretAimTelegraph: "false",
     turretPrefireLocalCharge: "true",
     turretChargeDisplay: "muzzle-convergence",
+    highFidelityCharacterSprites: "true",
+    highFidelitySpriteCount: String(Object.keys(CINEMATIC_SPRITE_SOURCES).length),
+    characterArtAtlasVersion: "3.6.2-hd",
     playerFrameBasedAnimation: "true",
     playerRunPoseCount: "12",
     playerAttackKeyPoseCount: "3",

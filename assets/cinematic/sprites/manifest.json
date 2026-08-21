@@ -1,0 +1,132 @@
+{
+  "player-idle": {
+    "src": "assets/cinematic/sprites/player-idle.png",
+    "width": 515,
+    "height": 831
+  },
+  "player-run-0": {
+    "src": "assets/cinematic/sprites/player-run-0.png",
+    "width": 402,
+    "height": 429
+  },
+  "player-run-1": {
+    "src": "assets/cinematic/sprites/player-run-1.png",
+    "width": 479,
+    "height": 433
+  },
+  "player-run-2": {
+    "src": "assets/cinematic/sprites/player-run-2.png",
+    "width": 479,
+    "height": 422
+  },
+  "player-run-3": {
+    "src": "assets/cinematic/sprites/player-run-3.png",
+    "width": 347,
+    "height": 403
+  },
+  "player-slash": {
+    "src": "assets/cinematic/sprites/player-slash.png",
+    "width": 1171,
+    "height": 939
+  },
+  "player-shotgun": {
+    "src": "assets/cinematic/sprites/player-shotgun.png",
+    "width": 1536,
+    "height": 995
+  },
+  "runner": {
+    "src": "assets/cinematic/sprites/runner.png",
+    "width": 431,
+    "height": 661
+  },
+  "gunner": {
+    "src": "assets/cinematic/sprites/gunner.png",
+    "width": 456,
+    "height": 675
+  },
+  "machinegun": {
+    "src": "assets/cinematic/sprites/machinegun.png",
+    "width": 416,
+    "height": 677
+  },
+  "piercer": {
+    "src": "assets/cinematic/sprites/piercer.png",
+    "width": 430,
+    "height": 545
+  },
+  "mortar": {
+    "src": "assets/cinematic/sprites/mortar.png",
+    "width": 424,
+    "height": 562
+  },
+  "drone": {
+    "src": "assets/cinematic/sprites/drone.png",
+    "width": 497,
+    "height": 625
+  },
+  "shield": {
+    "src": "assets/cinematic/sprites/shield.png",
+    "width": 487,
+    "height": 543
+  },
+  "turret": {
+    "src": "assets/cinematic/sprites/turret.png",
+    "width": 554,
+    "height": 686
+  },
+  "mortarTurret": {
+    "src": "assets/cinematic/sprites/mortarTurret.png",
+    "width": 530,
+    "height": 582
+  },
+  "breaker": {
+    "src": "assets/cinematic/sprites/breaker.png",
+    "width": 1536,
+    "height": 1024
+  },
+  "hunter": {
+    "src": "assets/cinematic/sprites/hunter.png",
+    "width": 1224,
+    "height": 1285
+  },
+  "oracle": {
+    "src": "assets/cinematic/sprites/oracle.png",
+    "width": 1199,
+    "height": 1312
+  },
+  "revenant": {
+    "src": "assets/cinematic/sprites/revenant.png",
+    "width": 1208,
+    "height": 1302
+  },
+  "proxy": {
+    "src": "assets/cinematic/sprites/proxy.png",
+    "width": 1199,
+    "height": 1312
+  },
+  "warden": {
+    "src": "assets/cinematic/sprites/warden.png",
+    "width": 995,
+    "height": 1491
+  },
+  "furnace": {
+    "src": "assets/cinematic/sprites/furnace.png",
+    "width": 1001,
+    "height": 1520
+  },
+  "weaver": {
+    "src": "assets/cinematic/sprites/weaver.png",
+    "width": 1024,
+    "height": 1536
+  },
+  "censor": {
+    "src": "assets/cinematic/sprites/censor.png",
+    "width": 1024,
+    "height": 1530
+  },
+  "echo": {
+    "src": "assets/cinematic/sprites/echo.png",
+    "width": 1016,
+    "height": 1486
+  }
+}
