@@ -79,7 +79,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.2") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.3") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -156,6 +156,9 @@ if (!diagnostics.adminDeletionTombstonesPersisted || !diagnostics.adminDeletionC
 }
 if (diagnostics.adminPortableProfileVersion !== 1 || !diagnostics.adminPortableProfileExport || !diagnostics.adminPortableProfileImport || !diagnostics.adminPortableProfileShareLink || !diagnostics.adminPortableProfileIncludesStartScreen) {
   throw new Error("cross-device administrator edit transfer is missing");
+}
+if (!diagnostics.publishedAdminProfileSupported || diagnostics.publishedAdminProfileFile !== "published-admin-profile.json" || !diagnostics.publishedAdminProfileRevisionKey) {
+  throw new Error("public administrator world profile support is missing");
 }
 if (diagnostics.adminRemovedEnemyCount !== 1 || diagnostics.adminRemovedEnemyAliveCount !== 0 || diagnostics.adminSpawnedEnemyRecordCount !== 0) {
   throw new Error(`administrator deletion tombstone failed: ${diagnostics.adminRemovedEnemyCount}/${diagnostics.adminRemovedEnemyAliveCount}/${diagnostics.adminSpawnedEnemyRecordCount}`);

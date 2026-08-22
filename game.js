@@ -149,10 +149,12 @@
   const ADMIN_REMOVED_OBJECTS_KEY = "moonlit-echo-admin-removed-objects-v1";
   const ADMIN_WORLD_EDITS_KEY = "moonlit-echo-admin-world-edits-v1";
   const START_SCREEN_EDITS_KEY = "moonlit-echo-start-screen-edits-v2";
+  const PUBLISHED_ADMIN_PROFILE_REVISION_KEY = "moonlit-echo-published-admin-profile-revision-v1";
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const ADMIN_PORTABLE_PROFILE_VERSION = 1;
+  const publishedAdminProfileApplied = applyPublishedAdminProfile();
   const adminProfileImportedFromHash = importAdminPortableProfileFromHash();
   const TUTORIAL_STEPS = Object.freeze([
     { id: "move", title: "이동과 기본 점프", instruction: "표시된 구역 안에서 이동하고 SPACE/점프로 장애물을 넘으세요.", minX: 100, maxX: 570, gateX: 600 },
@@ -2304,11 +2306,14 @@
   }
 
   function buildAdminPortableProfile() {
+    const exportedAt = new Date().toISOString();
     return {
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
-      gameVersion: "3.6.2",
-      exportedAt: new Date().toISOString(),
+      gameVersion: "3.6.3",
+      published: true,
+      revision: `admin-${Date.now().toString(36)}`,
+      exportedAt,
       removedEnemies: [...adminRemovedEnemyIds],
       spawnedEnemies: adminSpawnedEnemyData,
       placedObjects: adminPlacedObjectData,
@@ -2343,6 +2348,22 @@
       window.localStorage?.removeItem(START_SCREEN_EDITS_KEY);
     }
     return true;
+  }
+
+  function applyPublishedAdminProfile() {
+    try {
+      const profile = window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__;
+      if (!profile?.published) return false;
+      validateAdminPortableProfile(profile);
+      const revision = String(profile.revision || profile.exportedAt || "published");
+      if (window.localStorage?.getItem(PUBLISHED_ADMIN_PROFILE_REVISION_KEY) === revision) return false;
+      writeAdminPortableProfile(profile);
+      window.localStorage?.setItem(PUBLISHED_ADMIN_PROFILE_REVISION_KEY, revision);
+      return true;
+    } catch (error) {
+      console.warn("공개 월드 편집본을 적용하지 못했습니다.", error);
+      return false;
+    }
   }
 
   function encodeAdminPortableProfile(profile) {
@@ -2389,12 +2410,12 @@
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `월하잔향-관리자편집-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = "published-admin-profile.json";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      setAdminProfileStatus("편집 파일 저장 완료 · 다른 컴퓨터에서 불러오세요");
+      setAdminProfileStatus("공개 업데이트 파일 생성 완료 · 저장소에 배포하면 모든 접속자에게 적용됩니다");
     } catch {
       setAdminProfileStatus("편집 파일을 저장하지 못했습니다", true);
     }
@@ -14372,7 +14393,10 @@
   }
 
   applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
-  if (adminProfileImportedFromHash && adminStatus) {
+  if (publishedAdminProfileApplied && adminStatus) {
+    adminStatus.hidden = false;
+    adminStatus.textContent = "공개 월드 편집 업데이트 적용 완료";
+  } else if (adminProfileImportedFromHash && adminStatus) {
     adminStatus.hidden = false;
     adminStatus.textContent = "공유 관리자 편집 데이터 적용 완료";
   }
@@ -14395,7 +14419,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.2",
+    version: "3.6.3",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14548,6 +14572,10 @@
     adminPortableProfileImport: true,
     adminPortableProfileShareLink: true,
     adminPortableProfileIncludesStartScreen: true,
+    publishedAdminProfileSupported: true,
+    publishedAdminProfileFile: "published-admin-profile.json",
+    publishedAdminProfileApplied,
+    publishedAdminProfileRevisionKey: PUBLISHED_ADMIN_PROFILE_REVISION_KEY,
     adminRemovedEnemyCount: adminRemovedEnemyIds.size,
     adminRemovedEnemyAliveCount: enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length,
     adminSpawnedEnemyRecordCount: adminSpawnedEnemyData.length,
@@ -14694,7 +14722,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.2",
+    gameVersion: "3.6.3",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
