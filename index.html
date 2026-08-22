@@ -12,7 +12,7 @@
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.1.png" fetchpriority="high" />
-    <link rel="stylesheet" href="styles.css?v=3.6.1" />
+    <link rel="stylesheet" href="styles.css?v=3.6.2" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -20,7 +20,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.1</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.2</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">병아리</button>
@@ -121,6 +121,13 @@
           <button type="button" data-admin-world-create="hazard"><b>함정 추가</b><span>가시·레이저·증기</span></button>
           <button type="button" data-admin-world-create="backdrop"><b>배경 장식 추가</b><span>패널·간판·비계</span></button>
         </div>
+        <div class="admin-profile-tools" aria-label="관리자 편집 데이터 공유">
+          <div><b>다른 컴퓨터로 편집 옮기기</b><span id="admin-profile-status">삭제한 적·추가한 적·맵 편집·첫 화면 문구를 함께 옮깁니다.</span></div>
+          <button id="admin-profile-export" type="button">편집 파일 저장</button>
+          <button id="admin-profile-import" type="button">편집 파일 불러오기</button>
+          <button id="admin-profile-share" type="button">공유 링크 복사</button>
+          <input id="admin-profile-import-file" type="file" accept="application/json,.json" hidden>
+        </div>
         <section id="admin-world-editor" class="admin-world-editor" aria-label="선택한 배경 요소 편집" hidden>
           <header>
             <div><small>WORLD OBJECT EDITOR</small><strong id="admin-world-selected">선택된 요소 없음</strong></div>
@@ -165,6 +172,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script src="game.js?v=3.6.1"></script>
+  <script src="game.js?v=3.6.2"></script>
   </body>
 </html>

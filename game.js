@@ -33,6 +33,11 @@
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
+  const adminProfileExport = document.getElementById("admin-profile-export");
+  const adminProfileImport = document.getElementById("admin-profile-import");
+  const adminProfileImportFile = document.getElementById("admin-profile-import-file");
+  const adminProfileShare = document.getElementById("admin-profile-share");
+  const adminProfileStatus = document.getElementById("admin-profile-status");
   const adminZonePanel = document.getElementById("admin-zone-panel");
   const adminZoneClose = document.getElementById("admin-zone-close");
   const adminZoneGrid = document.getElementById("admin-zone-grid");
@@ -147,13 +152,16 @@
   const MAX_ADMIN_SPAWNED_ENEMIES = 200;
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
+  const ADMIN_PORTABLE_PROFILE_VERSION = 1;
+  const adminProfileImportedFromHash = importAdminPortableProfileFromHash();
   const TUTORIAL_STEPS = Object.freeze([
-    { id: "move", title: "이동과 기본 점프", instruction: "표시된 구역 안에서 이동하고 SPACE/점프로 장애물을 넘으세요.", minX: 120, maxX: 690, gateX: 720 },
-    { id: "doubleJump", title: "이중 점프", instruction: "표시된 구역 안에서 공중 점프를 한 번 더 사용해 높은 발판에 오르세요.", minX: 760, maxX: 1360, gateX: 1380 },
-    { id: "wallJump", title: "벽타기와 벽점프", instruction: "표시된 수직 훈련 구역에서 벽을 타고 점프로 벽을 차세요.", minX: 1460, maxX: 2170, gateX: 2200 },
-    { id: "burst", title: "버스트", instruction: "표시된 구역 안에서 E 또는 버스트 버튼으로 충격파를 사용하세요.", minX: 2280, maxX: 2860, gateX: 2880 },
-    { id: "combat", title: "발도와 샷건", instruction: "표시된 무장 구역 안에서 좌클릭 발도와 우클릭 샷건을 각각 사용하세요.", minX: 3000, maxX: 3520, gateX: 3560 },
-    { id: "exit", title: "훈련장 통과", instruction: "표시된 마지막 구역을 지나 오른쪽 출구까지 이동하세요.", minX: 3600, maxX: 3900, gateX: 3820 },
+    { id: "move", title: "이동과 기본 점프", instruction: "표시된 구역 안에서 이동하고 SPACE/점프로 장애물을 넘으세요.", minX: 100, maxX: 570, gateX: 600 },
+    { id: "doubleJump", title: "이중 점프", instruction: "표시된 구역 안에서 공중 점프를 한 번 더 사용해 높은 발판에 오르세요.", minX: 630, maxX: 1130, gateX: 1160 },
+    { id: "wallJump", title: "벽타기와 벽점프", instruction: "표시된 수직 훈련 구역에서 벽을 타고 점프로 벽을 차세요.", minX: 1200, maxX: 1840, gateX: 1870 },
+    { id: "burst", title: "버스트", instruction: "표시된 구역 안에서 E 또는 버스트 버튼으로 충격파를 사용하세요.", minX: 1910, maxX: 2390, gateX: 2420 },
+    { id: "combat", title: "발도와 샷건", instruction: "표시된 무장 구역 안에서 좌클릭 발도와 우클릭 샷건을 각각 사용하세요.", minX: 2460, maxX: 2970, gateX: 3000 },
+    { id: "deflect", title: "칼날 탄환 소거", instruction: "훈련포의 탄환이 칼날에 닿도록 정확히 발도해 쳐내세요.", minX: 3040, maxX: 3590, gateX: 3620 },
+    { id: "exit", title: "훈련장 통과", instruction: "표시된 마지막 구역을 지나 오른쪽 출구까지 이동하세요.", minX: 3650, maxX: 3900, gateX: 3820 },
   ]);
   const TUTORIAL_END_X = ZONE_W - 180;
 
@@ -830,7 +838,7 @@
       location: "6년 전 / 백야 폐기장",
       visual: "rain",
       shots: [
-        { speaker: "한서린", text: "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,418명의 신경 기록을 피난선으로 보낼 수 있어.", tone: "operative", duration: 5.8 },
+        { speaker: "한서린", text: "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,401명의 신경 기록을 피난선으로 보낼 수 있어.", tone: "operative", duration: 5.8 },
         { speaker: "도담", text: "대신 네 기억이 전송 통로가 돼. 육체는 버티지 못해. 서린아, 내가 다른 방법을 찾을게.", tone: "control", duration: 5.7 },
         { speaker: "한서린", text: "새봄이한테 언니가 도망친 게 아니라고 전해 줘. 그리고 여기 있던 사람들을 숫자로만 남기지 마.", tone: "operative", duration: 6.1 },
       ],
@@ -914,7 +922,7 @@
       visual: "broadcast",
       shots: [
         { speaker: "무명", text: "송신 즉시 네 시민권과 한서린이라는 이름은 삭제된다. 증언은 남아도 증인은 존재하지 않게 된다.", tone: "hostile", duration: 6.0 },
-        { speaker: "서린", text: "증인은 허가받아 존재하는 사람이 아니야. 내가 사라져도 2,401명이 서로의 이름을 부를 거다.", tone: "operative", duration: 5.8 },
+        { speaker: "서린", text: "증인은 허가받아 존재하는 사람이 아니야. 내가 사라져도 2,418명이 서로의 이름을 부를 거다.", tone: "operative", duration: 5.8 },
       ],
     },
     {
@@ -1152,6 +1160,7 @@
     tutorialStep: 0,
     tutorialPulse: 0,
     tutorialSignals: {},
+    tutorialDeflectTimer: 0.8,
     controlsReversed: false,
     screenFlipActive: false,
     screenFlipFlash: 0,
@@ -2294,6 +2303,131 @@
     }
   }
 
+  function buildAdminPortableProfile() {
+    return {
+      format: "moonlit-echo-admin-profile",
+      formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
+      gameVersion: "3.6.2",
+      exportedAt: new Date().toISOString(),
+      removedEnemies: [...adminRemovedEnemyIds],
+      spawnedEnemies: adminSpawnedEnemyData,
+      placedObjects: adminPlacedObjectData,
+      removedObjects: [...adminRemovedObjectIds],
+      worldEdits: adminWorldEditData,
+      startScreenEdits: startScreenEditData,
+    };
+  }
+
+  function validateAdminPortableProfile(profile) {
+    if (!profile || profile.format !== "moonlit-echo-admin-profile" || profile.formatVersion !== ADMIN_PORTABLE_PROFILE_VERSION) {
+      throw new Error("월하잔향 관리자 편집 파일이 아닙니다.");
+    }
+    const arrayFields = ["removedEnemies", "spawnedEnemies", "placedObjects", "removedObjects", "worldEdits"];
+    if (arrayFields.some((field) => !Array.isArray(profile[field]))) throw new Error("편집 데이터 일부가 손상되었습니다.");
+    return profile;
+  }
+
+  function writeAdminPortableProfile(profile) {
+    const data = validateAdminPortableProfile(profile);
+    const writes = [
+      [ADMIN_REMOVED_ENEMIES_KEY, data.removedEnemies],
+      [ADMIN_SPAWNED_ENEMIES_KEY, data.spawnedEnemies],
+      [ADMIN_PLACED_OBJECTS_KEY, data.placedObjects],
+      [ADMIN_REMOVED_OBJECTS_KEY, data.removedObjects],
+      [ADMIN_WORLD_EDITS_KEY, data.worldEdits],
+    ];
+    for (const [key, value] of writes) window.localStorage?.setItem(key, JSON.stringify(value));
+    if (data.startScreenEdits && typeof data.startScreenEdits === "object") {
+      window.localStorage?.setItem(START_SCREEN_EDITS_KEY, JSON.stringify(data.startScreenEdits));
+    } else {
+      window.localStorage?.removeItem(START_SCREEN_EDITS_KEY);
+    }
+    return true;
+  }
+
+  function encodeAdminPortableProfile(profile) {
+    const bytes = new TextEncoder().encode(JSON.stringify(profile));
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function decodeAdminPortableProfile(encoded) {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  function importAdminPortableProfileFromHash() {
+    try {
+      const hash = String(window.location?.hash || "");
+      if (!hash.startsWith("#admin-profile=")) return false;
+      writeAdminPortableProfile(decodeAdminPortableProfile(hash.slice("#admin-profile=".length)));
+      window.history?.replaceState?.(null, document.title, `${window.location.pathname || ""}${window.location.search || ""}`);
+      return true;
+    } catch (error) {
+      console.warn("관리자 공유 편집 데이터를 불러오지 못했습니다.", error);
+      return false;
+    }
+  }
+
+  function setAdminProfileStatus(message, error = false) {
+    if (adminProfileStatus) {
+      adminProfileStatus.textContent = message;
+      adminProfileStatus.classList.toggle?.("error", error);
+    }
+    game.hint = message;
+    game.hintTimer = 4;
+  }
+
+  function downloadAdminPortableProfile() {
+    try {
+      const blob = new Blob([JSON.stringify(buildAdminPortableProfile(), null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `월하잔향-관리자편집-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setAdminProfileStatus("편집 파일 저장 완료 · 다른 컴퓨터에서 불러오세요");
+    } catch {
+      setAdminProfileStatus("편집 파일을 저장하지 못했습니다", true);
+    }
+  }
+
+  async function importAdminPortableProfileFile() {
+    const file = adminProfileImportFile?.files?.[0];
+    if (!file) return;
+    try {
+      writeAdminPortableProfile(JSON.parse(await file.text()));
+      setAdminProfileStatus("공유 편집 데이터 적용 완료 · 다시 불러오는 중");
+      setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      setAdminProfileStatus(error?.message || "편집 파일을 불러오지 못했습니다", true);
+    } finally {
+      adminProfileImportFile.value = "";
+    }
+  }
+
+  async function copyAdminPortableShareLink() {
+    try {
+      const encoded = encodeAdminPortableProfile(buildAdminPortableProfile());
+      if (encoded.length > 60000) throw new Error("편집량이 많아 링크 대신 JSON 파일을 사용해야 합니다.");
+      const base = String(window.location.href || "").split(/[?#]/)[0];
+      const link = `${base}#admin-profile=${encoded}`;
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+      else window.prompt?.("이 링크를 복사해 다른 컴퓨터에서 여세요.", link);
+      setAdminProfileStatus("공유 링크 복사 완료 · 다른 컴퓨터에서 열면 편집이 적용됩니다");
+    } catch (error) {
+      setAdminProfileStatus(error?.message || "공유 링크를 만들지 못했습니다", true);
+    }
+  }
+
   function serializeAdminWorldObject(object) {
     return {
       id: object.id,
@@ -3279,21 +3413,22 @@
       if (zone.template === "tutorial") {
         addPlatform(origin, floorY, ZONE_W, WORLD_H - floorY, "training");
         // Basic jump and double-jump range.
-        [[360, -105, 250], [820, -205, 250], [1120, -365, 220]]
+        [[300, -105, 210], [680, -190, 210], [940, -345, 180]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 26, "training"));
         // A narrow climbing shaft makes wall contact and wall jumping unambiguous.
-        addPlatform(origin + 1530, floorY - 405, 52, 405, "wall");
-        addPlatform(origin + 1970, floorY - 520, 52, 520, "wall");
-        [[1582, -130, 180], [1790, -265, 180], [1582, -410, 180], [2022, -520, 170]]
+        addPlatform(origin + 1280, floorY - 405, 52, 405, "wall");
+        addPlatform(origin + 1700, floorY - 520, 52, 520, "wall");
+        [[1332, -130, 165], [1515, -265, 165], [1332, -410, 165], [1752, -520, 135]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "training"));
-        // Burst and combat practice lanes stay clear so the inputs are easy to read.
-        [[2320, -110, 300], [2700, -190, 260], [3050, -120, 260], [3380, -220, 260]]
+        // Burst, weapon, and projectile-deflection lanes stay clear so each input is read separately.
+        [[1940, -110, 250], [2190, -190, 210], [2500, -120, 220], [2760, -205, 210], [3090, -105, 210], [3360, -185, 190]]
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, "training"));
-        addSign(origin + 360, floorY - 185, "기초 기동", "이동 · 점프");
-        addSign(origin + 900, floorY - 285, "공중 기동", "이중 점프");
-        addSign(origin + 1650, floorY - 485, "수직 기동", "벽타기 · 벽점프");
-        addSign(origin + 2450, floorY - 190, "긴급 회피", "버스트");
-        addSign(origin + 3160, floorY - 205, "무장 점검", "발도 · 샷건");
+        addSign(origin + 260, floorY - 185, "기초 기동", "이동 · 점프");
+        addSign(origin + 770, floorY - 280, "공중 기동", "이중 점프");
+        addSign(origin + 1400, floorY - 485, "수직 기동", "벽타기 · 벽점프");
+        addSign(origin + 2020, floorY - 190, "긴급 회피", "버스트");
+        addSign(origin + 2580, floorY - 205, "무장 점검", "발도 · 샷건");
+        addSign(origin + 3160, floorY - 185, "탄환 소거", "칼날에 직접 맞혀 쳐내기");
       } else if (zone.template === "scrapCrane") {
         // 1막 · 입문형: 넓은 발판과 짧은 틈으로 이중 점프를 천천히 익힌다.
         addPlatform(origin, floorY, 980, WORLD_H - floorY, "cargo");
@@ -4063,6 +4198,7 @@
       tutorialStep: 0,
       tutorialPulse: 0,
       tutorialSignals: createTutorialSignals(),
+      tutorialDeflectTimer: 0.8,
       stageAbilityNotice: null,
       stageAbilityNoticeTimer: 0,
       lastAbilityNoticeStage: -1,
@@ -4116,6 +4252,7 @@
       burst: false,
       slash: false,
       shotgun: false,
+      deflect: false,
     };
   }
 
@@ -4150,6 +4287,7 @@
       burst: "burst",
       slash: "combat",
       shotgun: "combat",
+      deflect: "deflect",
     }[signal];
     if (expected && step.id !== expected) return false;
     if (!isPlayerInTutorialStepZone(step)) {
@@ -4166,6 +4304,9 @@
     game.tutorialActive = false;
     game.tutorialCompleted = true;
     game.tutorialStep = TUTORIAL_STEPS.length;
+    for (let index = bullets.length - 1; index >= 0; index -= 1) {
+      if (bullets[index].kind === "training-round") bullets.splice(index, 1);
+    }
     game.burstUnlocked = true;
     game.stageTitle = 4.4;
     game.zoneTitle = 0;
@@ -4183,6 +4324,10 @@
     const completedStep = getTutorialStep();
     game.tutorialStep += 1;
     game.tutorialSignals = createTutorialSignals();
+    game.tutorialDeflectTimer = 0.55;
+    for (let index = bullets.length - 1; index >= 0; index -= 1) {
+      if (bullets[index].kind === "training-round") bullets.splice(index, 1);
+    }
     game.tutorialPulse = 1;
     syncTutorialDataset();
     if (game.tutorialStep >= TUTORIAL_STEPS.length) return finishTutorialStage();
@@ -4194,12 +4339,41 @@
     return true;
   }
 
+  function updateTutorialDeflectDrill(dt, step) {
+    if (step?.id !== "deflect" || !isPlayerInTutorialStepZone(step)) return;
+    game.tutorialDeflectTimer -= dt;
+    if (game.tutorialDeflectTimer > 0 || bullets.some((bullet) => bullet.kind === "training-round")) return;
+    const sourceX = 3512;
+    const sourceY = clamp(player.y + player.h * 0.52, 230, 600);
+    const targetX = player.x + player.w / 2;
+    const targetY = player.y + player.h / 2;
+    const angle = Math.atan2(targetY - sourceY, targetX - sourceX);
+    bullets.push({
+      x: sourceX - 7,
+      y: sourceY - 7,
+      w: 14,
+      h: 14,
+      vx: Math.cos(angle) * 330,
+      vy: Math.sin(angle) * 330,
+      life: 3.4,
+      enemy: true,
+      harmless: true,
+      piercePlatforms: true,
+      kind: "training-round",
+      gravity: 0,
+      color: "#ffda86",
+    });
+    game.tutorialDeflectTimer = 1.05;
+    sound.tone(245, 0.07, "square", 0.018, 0.72);
+  }
+
   function updateTutorialStage(dt) {
     if (!game.tutorialActive || game.adminMode) return;
     syncTutorialDataset();
     game.tutorialPulse = Math.max(0, game.tutorialPulse - dt * 2.6);
     const step = getTutorialStep();
     if (!step) return;
+    updateTutorialDeflectDrill(dt, step);
 
     let completed = false;
     const inRequiredZone = isPlayerInTutorialStepZone(step);
@@ -4208,6 +4382,7 @@
     else if (step.id === "wallJump") completed = inRequiredZone && game.tutorialSignals.wallJump;
     else if (step.id === "burst") completed = inRequiredZone && game.tutorialSignals.burst;
     else if (step.id === "combat") completed = inRequiredZone && game.tutorialSignals.slash && game.tutorialSignals.shotgun;
+    else if (step.id === "deflect") completed = inRequiredZone && game.tutorialSignals.deflect;
     else if (step.id === "exit") completed = inRequiredZone && player.x > TUTORIAL_END_X - 120;
     if (completed) {
       advanceTutorialStep();
@@ -4236,9 +4411,10 @@
         <article><kbd>W</kbd><kbd>SPACE</kbd><b>벽타기</b><span>벽을 밀며 오르고 점프로 벽을 찹니다.</span></article>
         <article><kbd>E</kbd><b>버스트</b><span>일반 적 탄환을 지우는 1.8초 재사용 방어 기술입니다.</span></article>
         <article><kbd>좌클릭</kbd><b>발도</b><span>칼날에 닿은 투사체와 대역-13의 플라스크·독가스를 제거합니다.</span></article>
-        <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>`;
+        <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>
+        <article><kbd>좌클릭</kbd><b>탄환 쳐내기</b><span>훈련탄이 칼날에 직접 닿도록 발도해 탄환을 없앱니다.</span></article>`;
     }
-    if (description) description.textContent = "여섯 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
+    if (description) description.textContent = "일곱 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
     if (tutorialClose) tutorialClose.textContent = "훈련 시작";
   }
 
@@ -7215,6 +7391,7 @@
         const doctorHazard = ["potion", "poison-gas"].includes(bullet.kind);
         const swordContact = doctorHazard ? overlaps(hitbox, bullet) : bulletIntersectsSlashBlade(bullet);
         if (!bullet.enemy || !swordContact) continue;
+        if (bullet.kind === "training-round") markTutorialSignal("deflect");
         const shieldRound = bullet.kind === "revenant-shield-shot";
         spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.kind === "potion" ? "#dfffe9" : shieldRound ? "#ffcd70" : bullet.color || palette.cyan, doctorHazard ? 14 : 7, 280, 0.4, 80);
         if (bullet.kind === "potion") sound.glassShatter();
@@ -12585,8 +12762,8 @@
       }
     });
 
-    // Holographic silhouettes for the final weapon check.
-    [3180, 3440].forEach((x, index) => {
+    // Holographic silhouettes for the weapon check.
+    [2580, 2840].forEach((x, index) => {
       const pulse = 0.45 + Math.sin(game.time * 4 + index) * 0.18;
       ctx.strokeStyle = `rgba(101,245,234,${pulse})`;
       ctx.lineWidth = 2;
@@ -12599,6 +12776,25 @@
       ctx.lineTo(x + 38, floorY - 52);
       ctx.stroke();
     });
+    // The last drill uses a clearly visible training cannon that fires harmless rounds.
+    const cannonPulse = 0.58 + Math.sin(game.time * 5.2) * 0.18;
+    ctx.save();
+    ctx.translate(3570, floorY - 70);
+    ctx.fillStyle = "rgba(27, 43, 52, 0.92)";
+    ctx.strokeStyle = `rgba(255,218,134,${cannonPulse})`;
+    ctx.lineWidth = 3;
+    ctx.fillRect(-4, -28, 48, 56);
+    ctx.strokeRect(-4, -28, 48, 56);
+    ctx.fillRect(-56, -10, 52, 20);
+    ctx.strokeRect(-56, -10, 52, 20);
+    ctx.beginPath();
+    ctx.arc(-58, 0, 13, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = "#ffda86";
+    ctx.font = "900 9px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("TRAINING ROUND", -6, -39);
+    ctx.restore();
     ctx.textAlign = "left";
     ctx.restore();
   }
@@ -14145,6 +14341,10 @@
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
+  adminProfileExport?.addEventListener("click", downloadAdminPortableProfile);
+  adminProfileImport?.addEventListener("click", () => adminProfileImportFile?.click());
+  adminProfileImportFile?.addEventListener("change", importAdminPortableProfileFile);
+  adminProfileShare?.addEventListener("click", copyAdminPortableShareLink);
   adminZoneClose?.addEventListener("click", () => setAdminZonePanel(false));
   tutorialClose?.addEventListener("click", closeTutorialPanel);
   for (const button of adminSpawnButtons) {
@@ -14172,6 +14372,10 @@
   }
 
   applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
+  if (adminProfileImportedFromHash && adminStatus) {
+    adminStatus.hidden = false;
+    adminStatus.textContent = "공유 관리자 편집 데이터 적용 완료";
+  }
   prepareTutorialBriefing();
   buildLevel();
   levelReady = true;
@@ -14191,7 +14395,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.1",
+    version: "3.6.2",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14339,6 +14543,11 @@
     adminDeletionCoversSpawnedEnemies: true,
     adminDeletionReloadGuard: true,
     adminDeletionRestartGuard: true,
+    adminPortableProfileVersion: ADMIN_PORTABLE_PROFILE_VERSION,
+    adminPortableProfileExport: true,
+    adminPortableProfileImport: true,
+    adminPortableProfileShareLink: true,
+    adminPortableProfileIncludesStartScreen: true,
     adminRemovedEnemyCount: adminRemovedEnemyIds.size,
     adminRemovedEnemyAliveCount: enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length,
     adminSpawnedEnemyRecordCount: adminSpawnedEnemyData.length,
@@ -14449,6 +14658,8 @@
     tutorialSteps: TUTORIAL_STEPS.length,
     tutorialSkills: TUTORIAL_STEPS.map((step) => step.id),
     tutorialStrictZones: true,
+    tutorialProjectileDeflectDrill: TUTORIAL_STEPS.some((step) => step.id === "deflect"),
+    tutorialTrainingRoundsHarmless: true,
     tutorialRanges: TUTORIAL_STEPS.map(({ id, minX, maxX }) => ({ id, minX, maxX })),
     tutorialActive: game.tutorialActive,
     tutorialCompleted: game.tutorialCompleted,
@@ -14476,14 +14687,14 @@
     proceduralFlaskShatterSfx: true,
     storyStageContext: true,
     storyQueueContext: true,
-    documentStorySource: "월하잔향.hwpx",
+    documentStorySource: "월하잔향 (1).hwpx",
     documentStoryDialogueLines: 216,
     documentStoryAligned: true,
     prologueTriggerX: TUTORIAL_END_X + 620,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.1",
+    gameVersion: "3.6.2",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
