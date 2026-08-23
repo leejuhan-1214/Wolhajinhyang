@@ -92,9 +92,10 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.9";
+  const GAME_VERSION = "3.6.10";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
-  const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 0.52, sfx: 0.9, muted: false });
+  const AUDIO_SETTINGS_REVISION = 2;
+  const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 1, sfx: 0.9, muted: false, revision: AUDIO_SETTINGS_REVISION });
   const MUSIC_TRACK_COUNT = 12;
   const TITLE_MUSIC_TRACK = 12;
   const STAGE_MUSIC_ROTATIONS = Object.freeze([
@@ -1305,13 +1306,19 @@
       music: clamp(Number(source.music ?? DEFAULT_AUDIO_SETTINGS.music), 0, 1),
       sfx: clamp(Number(source.sfx ?? DEFAULT_AUDIO_SETTINGS.sfx), 0, 1),
       muted: Boolean(source.muted ?? DEFAULT_AUDIO_SETTINGS.muted),
+      revision: AUDIO_SETTINGS_REVISION,
     };
   }
 
   function readAudioSettings() {
     try {
       const raw = window.localStorage?.getItem(AUDIO_SETTINGS_KEY);
-      return normalizeAudioSettings(raw ? JSON.parse(raw) : DEFAULT_AUDIO_SETTINGS);
+      const parsed = raw ? JSON.parse(raw) : DEFAULT_AUDIO_SETTINGS;
+      const usedOldDefaultMusic = parsed?.revision !== AUDIO_SETTINGS_REVISION && Math.abs(Number(parsed?.music) - 0.52) < 0.005;
+      if (usedOldDefaultMusic) parsed.music = 1;
+      const normalized = normalizeAudioSettings(parsed);
+      if (usedOldDefaultMusic) window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(normalized));
+      return normalized;
     } catch {
       return normalizeAudioSettings(DEFAULT_AUDIO_SETTINGS);
     }
@@ -1710,7 +1717,7 @@
 
     resolveState() {
       if (game.mode === "menu" || game.mode === "won") {
-        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.16 : 0.2, role: "title" };
+        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.2 : 0.27, role: "title" };
       }
       const zone = zones[clamp(game.zone, 0, zones.length - 1)];
       const stageIndex = clamp(zone?.stageIndex ?? game.stage, 0, stages.length - 1);
@@ -1721,11 +1728,11 @@
       ));
       if (boss && (boss.combatStarted || game.adminMode)) {
         const bossTrack = BOSS_MUSIC_TRACKS[boss.bossKind] || 8;
-        return { path: musicTrackPath(bossTrack), volume: 0.26, role: `boss-${boss.bossKind}` };
+        return { path: musicTrackPath(bossTrack), volume: 0.34, role: `boss-${boss.bossKind}` };
       }
       const section = getStageSection(zone?.localIndex || 0);
       const stageTrack = STAGE_MUSIC_ROTATIONS[stageIndex]?.[section] || 1;
-      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.1 : 0.17, role: `stage-${stageIndex + 1}-${section + 1}` };
+      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.16 : 0.235, role: `stage-${stageIndex + 1}-${section + 1}` };
     }
 
     switchTo(state) {
@@ -15325,12 +15332,15 @@
     musicCrossfadeSeconds: music.fadeSeconds,
     musicLazyLoad: true,
     musicGestureUnlock: true,
-    musicBaseVolumeReduced: true,
-    stageMusicBaseVolume: 0.17,
-    bossMusicBaseVolume: 0.26,
-    titleMusicBaseVolume: 0.2,
-    storyMusicBaseVolume: 0.1,
+    musicBaseVolumeReduced: false,
+    musicBaseVolumeRestored: true,
+    stageMusicBaseVolume: 0.235,
+    bossMusicBaseVolume: 0.34,
+    titleMusicBaseVolume: 0.27,
+    storyMusicBaseVolume: 0.16,
     defaultMusicUserVolume: DEFAULT_AUDIO_SETTINGS.music,
+    audioSettingsRevision: AUDIO_SETTINGS_REVISION,
+    oldDefaultMusicAutoMigrated: true,
     pauseVolumeControls: true,
     persistedAudioSettings: true,
     separateMasterMusicSfxVolumes: true,
@@ -15651,12 +15661,15 @@
     musicCrossfadeSeconds: String(music.fadeSeconds),
     musicLazyLoad: "true",
     musicGestureUnlock: "true",
-    musicBaseVolumeReduced: "true",
-    stageMusicBaseVolume: "0.17",
-    bossMusicBaseVolume: "0.26",
-    titleMusicBaseVolume: "0.2",
-    storyMusicBaseVolume: "0.1",
+    musicBaseVolumeReduced: "false",
+    musicBaseVolumeRestored: "true",
+    stageMusicBaseVolume: "0.235",
+    bossMusicBaseVolume: "0.34",
+    titleMusicBaseVolume: "0.27",
+    storyMusicBaseVolume: "0.16",
     defaultMusicUserVolume: String(DEFAULT_AUDIO_SETTINGS.music),
+    audioSettingsRevision: String(AUDIO_SETTINGS_REVISION),
+    oldDefaultMusicAutoMigrated: "true",
     pauseVolumeControls: "true",
     persistedAudioSettings: "true",
     separateMasterMusicSfxVolumes: "true",
