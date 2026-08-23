@@ -15,6 +15,13 @@
   const resumeButton = document.getElementById("resume-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
+  const volumeMasterInput = document.getElementById("volume-master");
+  const volumeMusicInput = document.getElementById("volume-music");
+  const volumeSfxInput = document.getElementById("volume-sfx");
+  const volumeMasterValue = document.getElementById("volume-master-value");
+  const volumeMusicValue = document.getElementById("volume-music-value");
+  const volumeSfxValue = document.getElementById("volume-sfx-value");
+  const volumeMuteButton = document.getElementById("volume-mute");
   const adminStatus = document.getElementById("admin-status");
   const startTitle = document.getElementById("start-title");
   const startScreenEditToggle = document.getElementById("start-screen-edit-toggle");
@@ -85,7 +92,9 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.7";
+  const GAME_VERSION = "3.6.8";
+  const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
+  const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 0.52, sfx: 0.9, muted: false });
   const MUSIC_TRACK_COUNT = 12;
   const TITLE_MUSIC_TRACK = 12;
   const STAGE_MUSIC_ROTATIONS = Object.freeze([
@@ -108,6 +117,13 @@
     echo: 11,
   });
   const musicTrackPath = (trackNumber) => `music-track-${String(trackNumber).padStart(2, "0")}.mp3?v=${GAME_VERSION}`;
+  const RECORDED_SFX_PATHS = Object.freeze({
+    shotgun: `sfx-shotgun.wav?v=${GAME_VERSION}`,
+    shotgunCock: `sfx-shotgun-cock.wav?v=${GAME_VERSION}`,
+    pistol: `sfx-pistol.wav?v=${GAME_VERSION}`,
+    rifle: `sfx-rifle.wav?v=${GAME_VERSION}`,
+    footsteps: Object.freeze(Array.from({ length: 6 }, (_, index) => `sfx-footstep-${String(index + 1).padStart(2, "0")}.wav?v=${GAME_VERSION}`)),
+  });
   const INPUT_TUNING = Object.freeze({
     moveSpeed: 445,
     groundAcceleration: 3600,
@@ -1280,21 +1296,96 @@
     }
   }
 
+  function normalizeAudioSettings(value) {
+    const source = value && typeof value === "object" ? value : {};
+    return {
+      master: clamp(Number(source.master ?? DEFAULT_AUDIO_SETTINGS.master), 0, 1),
+      music: clamp(Number(source.music ?? DEFAULT_AUDIO_SETTINGS.music), 0, 1),
+      sfx: clamp(Number(source.sfx ?? DEFAULT_AUDIO_SETTINGS.sfx), 0, 1),
+      muted: Boolean(source.muted ?? DEFAULT_AUDIO_SETTINGS.muted),
+    };
+  }
+
+  function readAudioSettings() {
+    try {
+      const raw = window.localStorage?.getItem(AUDIO_SETTINGS_KEY);
+      return normalizeAudioSettings(raw ? JSON.parse(raw) : DEFAULT_AUDIO_SETTINGS);
+    } catch {
+      return normalizeAudioSettings(DEFAULT_AUDIO_SETTINGS);
+    }
+  }
+
+  let audioSettings = readAudioSettings();
+
+  function persistAudioSettings() {
+    try { window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(audioSettings)); } catch { /* 저장 불가 환경에서는 현재 세션만 유지한다. */ }
+  }
+
+  function syncAudioControlUi() {
+    const entries = [
+      [volumeMasterInput, volumeMasterValue, audioSettings.master],
+      [volumeMusicInput, volumeMusicValue, audioSettings.music],
+      [volumeSfxInput, volumeSfxValue, audioSettings.sfx],
+    ];
+    for (const [input, output, value] of entries) {
+      const percent = Math.round(value * 100);
+      if (input) input.value = String(percent);
+      if (output) output.textContent = `${percent}%`;
+    }
+    if (volumeMuteButton) {
+      volumeMuteButton.setAttribute("aria-pressed", String(audioSettings.muted));
+      volumeMuteButton.textContent = audioSettings.muted ? "음소거 해제" : "음소거";
+    }
+  }
+
+  function updateAudioSetting(key, value) {
+    if (!["master", "music", "sfx"].includes(key)) return;
+    audioSettings[key] = clamp(Number(value) || 0, 0, 1);
+    persistAudioSettings();
+    syncAudioControlUi();
+    if (typeof sound !== "undefined") sound.syncVolume();
+  }
+
+  function toggleAudioMute() {
+    audioSettings.muted = !audioSettings.muted;
+    persistAudioSettings();
+    syncAudioControlUi();
+    sound.syncVolume();
+  }
+
   class Sound {
     constructor() {
       this.context = null;
+      this.sfxBus = null;
       this.enabled = true;
     }
 
     wake() {
       if (typeof music !== "undefined") music.unlock();
+      if (typeof recordedSfx !== "undefined") recordedSfx.unlock();
       if (!this.enabled) return;
       try {
-        if (!this.context) this.context = new (window.AudioContext || window.webkitAudioContext)();
+        if (!this.context) {
+          this.context = new (window.AudioContext || window.webkitAudioContext)();
+          this.sfxBus = this.context.createGain();
+          this.sfxBus.connect(this.context.destination);
+        }
+        this.syncVolume();
         if (this.context.state === "suspended") this.context.resume();
       } catch {
         this.enabled = false;
       }
+    }
+
+    outputNode() {
+      return this.sfxBus || this.context?.destination;
+    }
+
+    syncVolume() {
+      if (!this.context || !this.sfxBus) return;
+      const target = audioSettings.muted ? 0 : audioSettings.master * audioSettings.sfx;
+      this.sfxBus.gain.cancelScheduledValues(this.context.currentTime);
+      this.sfxBus.gain.setTargetAtTime(target, this.context.currentTime, 0.018);
     }
 
     tone(frequency, duration, type = "square", volume = 0.035, slide = 1, delay = 0) {
@@ -1307,7 +1398,7 @@
       oscillator.frequency.exponentialRampToValueAtTime(Math.max(35, frequency * slide), now + duration);
       gain.gain.setValueAtTime(volume, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      oscillator.connect(gain).connect(this.context.destination);
+      oscillator.connect(gain).connect(this.outputNode());
       oscillator.start(now);
       oscillator.stop(now + duration);
     }
@@ -1331,7 +1422,7 @@
       filter.Q.setValueAtTime(q, now);
       gain.gain.setValueAtTime(Math.max(0.0001, volume), now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      source.connect(filter).connect(gain).connect(this.context.destination);
+      source.connect(filter).connect(gain).connect(this.outputNode());
       source.start(now);
       source.stop(now + duration + 0.01);
     }
@@ -1342,11 +1433,14 @@
     }
 
     shotgun(charged = false) {
+      const recorded = typeof recordedSfx !== "undefined" && recordedSfx.shotgun(charged);
+      if (recorded) {
+        this.tone(charged ? 54 : 68, charged ? 0.3 : 0.2, "sine", charged ? 0.025 : 0.016, charged ? 0.32 : 0.42);
+        return;
+      }
       this.noise(charged ? 0.19 : 0.135, charged ? 0.066 : 0.052, charged ? 1900 : 2350, "lowpass", 0, 0.72);
       this.tone(charged ? 68 : 88, charged ? 0.34 : 0.24, "sine", charged ? 0.078 : 0.06, charged ? 0.27 : 0.34);
       this.tone(charged ? 142 : 176, charged ? 0.17 : 0.12, "triangle", charged ? 0.043 : 0.032, 0.42);
-      this.tone(charged ? 1180 : 1480, 0.035, "square", 0.014, 0.64, 0.052);
-      this.tone(charged ? 2640 : 3160, 0.045, "triangle", 0.009, 0.58, 0.105);
     }
 
     jump(kind = "ground") {
@@ -1370,6 +1464,7 @@
     land(impactVelocity = 0) {
       const strength = clamp((impactVelocity - 250) / 650, 0, 1);
       if (strength <= 0) return;
+      if (typeof recordedSfx !== "undefined") recordedSfx.land(strength, game.stage);
       this.noise(0.07 + strength * 0.045, 0.009 + strength * 0.016, 480, "lowpass", 0, 0.65);
       this.tone(86 - strength * 18, 0.09 + strength * 0.06, "sine", 0.014 + strength * 0.018, 0.48);
     }
@@ -1396,7 +1491,7 @@
       master.gain.setValueAtTime(0.0001, now);
       master.gain.exponentialRampToValueAtTime(style === "breaker" ? 0.046 : 0.058, now + duration * 0.76);
       master.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      filter.connect(master).connect(this.context.destination);
+      filter.connect(master).connect(this.outputNode());
       [1, 2.03, 3.96].forEach((ratio, index) => {
         const oscillator = this.context.createOscillator();
         oscillator.type = index === 0 ? "sawtooth" : index === 1 ? "triangle" : "sine";
@@ -1434,7 +1529,7 @@
       highpass.Q.setValueAtTime(1.4, now);
       noiseGain.gain.setValueAtTime(0.078, now);
       noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
-      noise.connect(highpass).connect(noiseGain).connect(this.context.destination);
+      noise.connect(highpass).connect(noiseGain).connect(this.outputNode());
       noise.start(now);
       noise.stop(now + 0.21);
       [1280, 1840, 2570, 3460, 4210].forEach((frequency, index) => {
@@ -1448,7 +1543,7 @@
         gain.gain.setValueAtTime(0.0001, start);
         gain.gain.exponentialRampToValueAtTime(0.024 - index * 0.0025, start + 0.008);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-        oscillator.connect(gain).connect(this.context.destination);
+        oscillator.connect(gain).connect(this.outputNode());
         oscillator.start(start);
         oscillator.stop(start + duration + 0.01);
       });
@@ -1461,6 +1556,110 @@
   }
 
   const sound = new Sound();
+
+  class RecordedSfx {
+    constructor() {
+      this.enabled = typeof window.Audio === "function";
+      this.unlocked = false;
+      this.templates = new Map();
+      this.active = new Set();
+      this.stepSerial = 0;
+      this.lastGunshotAt = 0;
+    }
+
+    allPaths() {
+      return [
+        RECORDED_SFX_PATHS.shotgun,
+        RECORDED_SFX_PATHS.shotgunCock,
+        RECORDED_SFX_PATHS.pistol,
+        RECORDED_SFX_PATHS.rifle,
+        ...RECORDED_SFX_PATHS.footsteps,
+      ];
+    }
+
+    unlock() {
+      if (!this.enabled || this.unlocked) return;
+      this.unlocked = true;
+      for (const path of this.allPaths()) {
+        const audio = new window.Audio();
+        audio.src = path;
+        audio.preload = "auto";
+        audio.setAttribute?.("playsinline", "");
+        audio.load?.();
+        this.templates.set(path, audio);
+      }
+    }
+
+    play(path, { volume = 1, rate = 1, delay = 0 } = {}) {
+      if (!this.enabled || !this.unlocked) return false;
+      const template = this.templates.get(path);
+      if (!template) return false;
+      const audio = template.cloneNode(true);
+      audio.volume = clamp(audioSettings.muted ? 0 : volume * audioSettings.master * audioSettings.sfx, 0, 1);
+      audio.playbackRate = clamp(rate, 0.72, 1.32);
+      audio.preservesPitch = false;
+      audio.setAttribute?.("playsinline", "");
+      const start = () => {
+        this.active.add(audio);
+        const cleanup = () => this.active.delete(audio);
+        audio.addEventListener?.("ended", cleanup, { once: true });
+        audio.addEventListener?.("error", cleanup, { once: true });
+        audio.play().catch(cleanup);
+      };
+      if (delay > 0) setTimeout(start, delay * 1000);
+      else start();
+      return true;
+    }
+
+    shotgun(charged = false) {
+      if (!this.enabled || !this.unlocked) return false;
+      this.play(RECORDED_SFX_PATHS.shotgun, {
+        volume: charged ? 0.94 : 0.78,
+        rate: charged ? 0.9 : 0.98 + Math.random() * 0.025,
+      });
+      this.play(RECORDED_SFX_PATHS.shotgunCock, {
+        volume: charged ? 0.42 : 0.34,
+        rate: charged ? 0.9 : 1.02,
+        delay: charged ? 0.24 : 0.19,
+      });
+      return true;
+    }
+
+    gunshot(kind = "standard", boss = false) {
+      if (!this.enabled || !this.unlocked || ["spell", "phase"].includes(kind)) return false;
+      const now = Date.now();
+      const minInterval = kind === "machinegun" ? 44 : 72;
+      if (now - this.lastGunshotAt < minInterval) return true;
+      this.lastGunshotAt = now;
+      const heavy = boss || ["turret-row", "missile"].includes(kind);
+      return this.play(heavy ? RECORDED_SFX_PATHS.rifle : RECORDED_SFX_PATHS.pistol, {
+        volume: heavy ? 0.3 : kind === "machinegun" ? 0.15 : 0.21,
+        rate: heavy ? 0.88 + Math.random() * 0.055 : kind === "machinegun" ? 1.12 : 0.98 + Math.random() * 0.065,
+      });
+    }
+
+    footstep(speed = 0, stageIndex = 0) {
+      if (!this.enabled || !this.unlocked || speed < 90) return false;
+      const running = speed > INPUT_TUNING.moveSpeed * 0.68;
+      const sampleIndex = (this.stepSerial * 5 + stageIndex * 2) % RECORDED_SFX_PATHS.footsteps.length;
+      this.stepSerial += 1;
+      const stagePitch = [0.93, 0.98, 1.04, 1, 0.89][clamp(stageIndex, 0, 4)];
+      return this.play(RECORDED_SFX_PATHS.footsteps[sampleIndex], {
+        volume: running ? 0.24 : 0.17,
+        rate: stagePitch * (running ? 1.08 : 0.96) * (0.98 + Math.random() * 0.045),
+      });
+    }
+
+    land(strength = 0.5, stageIndex = 0) {
+      const sampleIndex = (4 + stageIndex) % RECORDED_SFX_PATHS.footsteps.length;
+      return this.play(RECORDED_SFX_PATHS.footsteps[sampleIndex], {
+        volume: 0.18 + clamp(strength, 0, 1) * 0.13,
+        rate: 0.78 + stageIndex * 0.025,
+      });
+    }
+  }
+
+  const recordedSfx = new RecordedSfx();
 
   class MusicDirector {
     constructor() {
@@ -1480,7 +1679,7 @@
 
     resolveState() {
       if (game.mode === "menu" || game.mode === "won") {
-        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.2 : 0.27, role: "title" };
+        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.14 : 0.18, role: "title" };
       }
       const zone = zones[clamp(game.zone, 0, zones.length - 1)];
       const stageIndex = clamp(zone?.stageIndex ?? game.stage, 0, stages.length - 1);
@@ -1491,11 +1690,11 @@
       ));
       if (boss && (boss.combatStarted || game.adminMode)) {
         const bossTrack = BOSS_MUSIC_TRACKS[boss.bossKind] || 8;
-        return { path: musicTrackPath(bossTrack), volume: 0.34, role: `boss-${boss.bossKind}` };
+        return { path: musicTrackPath(bossTrack), volume: 0.22, role: `boss-${boss.bossKind}` };
       }
       const section = getStageSection(zone?.localIndex || 0);
       const stageTrack = STAGE_MUSIC_ROTATIONS[stageIndex]?.[section] || 1;
-      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.16 : 0.235, role: `stage-${stageIndex + 1}-${section + 1}` };
+      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.08 : 0.13, role: `stage-${stageIndex + 1}-${section + 1}` };
     }
 
     switchTo(state) {
@@ -1546,7 +1745,8 @@
         const fadeT = clamp(channel.fadeElapsed / this.fadeSeconds, 0, 1);
         const easedFade = fadeT * fadeT * (3 - 2 * fadeT);
         channel.volume = channel.fadeFrom + (channel.fadeTarget - channel.fadeFrom) * easedFade;
-        channel.audio.volume = clamp(channel.volume, 0, 0.42);
+        const userVolume = audioSettings.muted ? 0 : audioSettings.master * audioSettings.music;
+        channel.audio.volume = clamp(channel.volume * userVolume, 0, 0.42);
         if (channel.path !== this.activePath && channel.volume <= 0.001) {
           channel.audio.pause();
           channel.audio.removeAttribute?.("src");
@@ -6294,7 +6494,8 @@
               ? palette.red
               : palette.amber,
     });
-    sound.tone(enemy.type === "boss" ? 130 : kind === "machinegun" ? 165 : 210, kind === "machinegun" ? 0.045 : 0.08, "square", 0.018, 0.65);
+    const recordedGunshot = recordedSfx.gunshot(kind, enemy.type === "boss");
+    if (!recordedGunshot) sound.tone(enemy.type === "boss" ? 130 : kind === "machinegun" ? 165 : 210, kind === "machinegun" ? 0.045 : 0.08, "square", 0.018, 0.65);
   }
 
   function fireTurretRow(enemy) {
@@ -6334,7 +6535,7 @@
     }
     enemy.turretRecoil = 0.2;
     spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
-    sound.tone(92, 0.16, "square", 0.052, 0.48);
+    if (!recordedSfx.gunshot("turret-row", true)) sound.tone(92, 0.16, "square", 0.052, 0.48);
   }
 
   function fireFurnaceRedBurst(enemy, target, count = 5, spreadStep = 0.055, baseSpeed = 430) {
@@ -7706,6 +7907,7 @@
         game.shake = Math.max(game.shake, Math.min(3.5, impactVelocity / 240));
         spawnParticles(player.x + player.w / 2, player.y + player.h, "#8aa7ad", 9, 145, 0.34, 260);
         sound.land(impactVelocity);
+        player.stepTimer = Math.max(player.stepTimer, 0.14);
       }
       player.landingImpactArmed = false;
     }
@@ -7713,6 +7915,7 @@
       player.stepTimer = 0.12 + 48 / Math.abs(player.vx);
       const heelX = player.x + player.w / 2 - player.facing * 10;
       spawnParticles(heelX, player.y + player.h - 2, "#5f7b82", 3, 72, 0.22, 170);
+      recordedSfx.footstep(Math.abs(player.vx), game.stage);
     }
     }
 
@@ -14672,6 +14875,10 @@
     sound.wake();
     togglePause();
   });
+  volumeMasterInput?.addEventListener("input", () => updateAudioSetting("master", Number(volumeMasterInput.value) / 100));
+  volumeMusicInput?.addEventListener("input", () => updateAudioSetting("music", Number(volumeMusicInput.value) / 100));
+  volumeSfxInput?.addEventListener("input", () => updateAudioSetting("sfx", Number(volumeSfxInput.value) / 100));
+  volumeMuteButton?.addEventListener("click", toggleAudioMute);
   restartButton.addEventListener("click", () => resetGame(false));
   startScreenEditToggle?.addEventListener("click", () => setStartScreenEditor(startScreenEditor?.hidden !== false));
   startScreenEditorClose?.addEventListener("click", () => setStartScreenEditor(false));
@@ -14709,6 +14916,7 @@
   }
 
   applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
+  syncAudioControlUi();
   if (publishedAdminProfileApplied && adminStatus) {
     adminStatus.hidden = false;
     adminStatus.textContent = "공개 월드 편집 업데이트 적용 완료";
@@ -15049,6 +15257,20 @@
     musicCrossfadeSeconds: music.fadeSeconds,
     musicLazyLoad: true,
     musicGestureUnlock: true,
+    musicBaseVolumeReduced: true,
+    stageMusicBaseVolume: 0.13,
+    bossMusicBaseVolume: 0.22,
+    defaultMusicUserVolume: DEFAULT_AUDIO_SETTINGS.music,
+    pauseVolumeControls: true,
+    persistedAudioSettings: true,
+    separateMasterMusicSfxVolumes: true,
+    recordedShotgunSfx: true,
+    recordedShotgunPumpSfx: true,
+    recordedEnemyPistolSfx: true,
+    recordedEnemyRifleSfx: true,
+    recordedFootstepSfxCount: RECORDED_SFX_PATHS.footsteps.length,
+    speedAdaptiveFootsteps: true,
+    normalizedFootstepSamples: true,
     layeredJumpSfx: true,
     layeredShotgunSfx: true,
     landingImpactSfx: true,
@@ -15351,6 +15573,20 @@
     musicCrossfadeSeconds: String(music.fadeSeconds),
     musicLazyLoad: "true",
     musicGestureUnlock: "true",
+    musicBaseVolumeReduced: "true",
+    stageMusicBaseVolume: "0.13",
+    bossMusicBaseVolume: "0.22",
+    defaultMusicUserVolume: String(DEFAULT_AUDIO_SETTINGS.music),
+    pauseVolumeControls: "true",
+    persistedAudioSettings: "true",
+    separateMasterMusicSfxVolumes: "true",
+    recordedShotgunSfx: "true",
+    recordedShotgunPumpSfx: "true",
+    recordedEnemyPistolSfx: "true",
+    recordedEnemyRifleSfx: "true",
+    recordedFootstepSfxCount: String(RECORDED_SFX_PATHS.footsteps.length),
+    speedAdaptiveFootsteps: "true",
+    normalizedFootstepSamples: "true",
     layeredJumpSfx: "true",
     layeredShotgunSfx: "true",
     landingImpactSfx: "true",

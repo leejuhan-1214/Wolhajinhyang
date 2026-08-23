@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.7") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.8") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -95,6 +95,22 @@ if (diagnostics.stageMusicRotations.length !== 5 || diagnostics.stageMusicRotati
 }
 if (!diagnostics.layeredJumpSfx || !diagnostics.layeredShotgunSfx || !diagnostics.landingImpactSfx || !gameSource.includes('sound.jump("wall")') || !gameSource.includes('sound.jump("double")')) {
   throw new Error("player movement or shotgun sound redesign missing");
+}
+if (!diagnostics.pauseVolumeControls || !diagnostics.persistedAudioSettings || !diagnostics.separateMasterMusicSfxVolumes) {
+  throw new Error("pause volume controls or persistent audio settings missing");
+}
+if (!diagnostics.recordedShotgunSfx || !diagnostics.recordedShotgunPumpSfx || !diagnostics.recordedEnemyPistolSfx || !diagnostics.recordedEnemyRifleSfx || diagnostics.recordedFootstepSfxCount !== 6 || !diagnostics.speedAdaptiveFootsteps || !diagnostics.normalizedFootstepSamples) {
+  throw new Error("recorded shotgun or footstep sound set incomplete");
+}
+if (!diagnostics.musicBaseVolumeReduced || diagnostics.stageMusicBaseVolume !== 0.13 || diagnostics.bossMusicBaseVolume !== 0.22 || diagnostics.defaultMusicUserVolume !== 0.52) {
+  throw new Error("reduced music volume configuration invalid");
+}
+const recordedSfxFiles = [
+  "sfx-shotgun.wav", "sfx-shotgun-cock.wav", "sfx-pistol.wav", "sfx-rifle.wav",
+  ...Array.from({ length: 6 }, (_, index) => `sfx-footstep-${String(index + 1).padStart(2, "0")}.wav`),
+];
+if (recordedSfxFiles.some((file) => !fs.existsSync(file)) || !fs.existsSync("THIRD_PARTY_ASSETS.md")) {
+  throw new Error("recorded SFX files or third-party asset manifest missing");
 }
 const storyDialogueEntries = [...gameSource.matchAll(/\{\s*speaker:\s*"[^"]+",\s*text:\s*"[^"]+"/g)];
 const requiredDocumentStoryLines = [

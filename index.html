@@ -12,7 +12,7 @@
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.1.png" fetchpriority="high" />
-    <link rel="stylesheet" href="styles.css?v=3.6.7" />
+    <link rel="stylesheet" href="styles.css?v=3.6.8" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -20,7 +20,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.7</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.8</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">병아리</button>
@@ -58,7 +58,13 @@
       <section id="pause-screen" class="overlay compact" aria-live="polite">
         <div class="eyebrow">OPERATION PAUSED</div>
         <h2>일시 정지</h2>
-        <p>준비되면 아래 버튼을 눌러 계속하세요.</p>
+        <p>ESC 또는 아래 버튼으로 계속할 수 있습니다.</p>
+        <section class="volume-panel" aria-label="음량 설정">
+          <header><strong>음량 설정</strong><button id="volume-mute" type="button" aria-pressed="false">음소거</button></header>
+          <label for="volume-master"><span>전체 음량</span><input id="volume-master" type="range" min="0" max="100" step="1" value="85"><output id="volume-master-value" for="volume-master">85%</output></label>
+          <label for="volume-music"><span>배경 음악</span><input id="volume-music" type="range" min="0" max="100" step="1" value="52"><output id="volume-music-value" for="volume-music">52%</output></label>
+          <label for="volume-sfx"><span>효과음</span><input id="volume-sfx" type="range" min="0" max="100" step="1" value="90"><output id="volume-sfx-value" for="volume-sfx">90%</output></label>
+        </section>
         <button id="resume-button" type="button">계속하기</button>
       </section>
 
@@ -174,13 +180,13 @@
   <script>
     (async () => {
       try {
-        const response = await fetch("published-admin-profile.json?v=3.6.7", { cache: "no-store" });
+        const response = await fetch("published-admin-profile.json?v=3.6.8", { cache: "no-store" });
         if (response.ok) window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__ = await response.json();
       } catch (error) {
         console.info("공개 월드 편집본 없이 기본 맵을 시작합니다.", error?.message || error);
       }
       const gameScript = document.createElement("script");
-      gameScript.src = "game.js?v=3.6.7";
+      gameScript.src = "game.js?v=3.6.8";
       document.body.appendChild(gameScript);
     })();
   </script>
