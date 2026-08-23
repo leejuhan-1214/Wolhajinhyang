@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.8") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.9") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -102,14 +102,20 @@ if (!diagnostics.pauseVolumeControls || !diagnostics.persistedAudioSettings || !
 if (!diagnostics.recordedShotgunSfx || !diagnostics.recordedShotgunPumpSfx || !diagnostics.recordedEnemyPistolSfx || !diagnostics.recordedEnemyRifleSfx || diagnostics.recordedFootstepSfxCount !== 6 || !diagnostics.speedAdaptiveFootsteps || !diagnostics.normalizedFootstepSamples) {
   throw new Error("recorded shotgun or footstep sound set incomplete");
 }
-if (!diagnostics.musicBaseVolumeReduced || diagnostics.stageMusicBaseVolume !== 0.13 || diagnostics.bossMusicBaseVolume !== 0.22 || diagnostics.defaultMusicUserVolume !== 0.52) {
+if (!diagnostics.recordedJumpSfx || !diagnostics.bossCannonSfx || !diagnostics.bossCannonForBallisticShots || diagnostics.bossCannonOverlapGuardMs !== 150) {
+  throw new Error("recorded jump or boss cannon sound configuration missing");
+}
+if (!diagnostics.bossArenaLocksPlayerBothSides || !diagnostics.bossArenaLocksDuringIntro || !diagnostics.bossArenaUnlocksOnDefeat || !diagnostics.bossArenaLockUsesVisibleLimits || !gameSource.includes("constrainPlayerToActiveBossArena();")) {
+  throw new Error("boss arena player containment is incomplete");
+}
+if (!diagnostics.musicBaseVolumeReduced || diagnostics.stageMusicBaseVolume !== 0.17 || diagnostics.bossMusicBaseVolume !== 0.26 || diagnostics.titleMusicBaseVolume !== 0.2 || diagnostics.storyMusicBaseVolume !== 0.1 || diagnostics.defaultMusicUserVolume !== 0.52) {
   throw new Error("reduced music volume configuration invalid");
 }
 const recordedSfxFiles = [
-  "sfx-shotgun.wav", "sfx-shotgun-cock.wav", "sfx-pistol.wav", "sfx-rifle.wav",
+  "sfx-shotgun.wav", "sfx-shotgun-cock.wav", "sfx-pistol.wav", "sfx-rifle.wav", "sfx-jump.wav",
   ...Array.from({ length: 6 }, (_, index) => `sfx-footstep-${String(index + 1).padStart(2, "0")}.wav`),
 ];
-if (recordedSfxFiles.some((file) => !fs.existsSync(file)) || !fs.existsSync("THIRD_PARTY_ASSETS.md")) {
+if (recordedSfxFiles.some((file) => !fs.existsSync(file)) || !fs.existsSync("sfx-boss-cannon.ogg") || !fs.existsSync("THIRD_PARTY_ASSETS.md")) {
   throw new Error("recorded SFX files or third-party asset manifest missing");
 }
 const storyDialogueEntries = [...gameSource.matchAll(/\{\s*speaker:\s*"[^"]+",\s*text:\s*"[^"]+"/g)];

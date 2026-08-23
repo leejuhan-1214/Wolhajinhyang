@@ -92,7 +92,7 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.8";
+  const GAME_VERSION = "3.6.9";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 0.52, sfx: 0.9, muted: false });
   const MUSIC_TRACK_COUNT = 12;
@@ -122,6 +122,8 @@
     shotgunCock: `sfx-shotgun-cock.wav?v=${GAME_VERSION}`,
     pistol: `sfx-pistol.wav?v=${GAME_VERSION}`,
     rifle: `sfx-rifle.wav?v=${GAME_VERSION}`,
+    jump: `sfx-jump.wav?v=${GAME_VERSION}`,
+    bossCannon: `sfx-boss-cannon.ogg?v=${GAME_VERSION}`,
     footsteps: Object.freeze(Array.from({ length: 6 }, (_, index) => `sfx-footstep-${String(index + 1).padStart(2, "0")}.wav?v=${GAME_VERSION}`)),
   });
   const INPUT_TUNING = Object.freeze({
@@ -1444,6 +1446,18 @@
     }
 
     jump(kind = "ground") {
+      const recorded = typeof recordedSfx !== "undefined" && recordedSfx.jump(kind);
+      if (recorded) {
+        if (kind === "double") {
+          this.noise(0.075, 0.009, 1950, "highpass", 0, 0.55);
+          this.tone(310, 0.08, "sine", 0.008, 1.8);
+        } else if (kind === "wall") {
+          this.noise(0.065, 0.011, 1050, "bandpass", 0, 0.9);
+        } else {
+          this.tone(105, 0.07, "sine", 0.009, 1.35);
+        }
+        return;
+      }
       if (kind === "double") {
         this.noise(0.085, 0.018, 1850, "highpass", 0, 0.62);
         this.tone(235, 0.14, "sine", 0.025, 2.45);
@@ -1573,6 +1587,8 @@
         RECORDED_SFX_PATHS.shotgunCock,
         RECORDED_SFX_PATHS.pistol,
         RECORDED_SFX_PATHS.rifle,
+        RECORDED_SFX_PATHS.jump,
+        RECORDED_SFX_PATHS.bossCannon,
         ...RECORDED_SFX_PATHS.footsteps,
       ];
     }
@@ -1628,14 +1644,29 @@
     gunshot(kind = "standard", boss = false) {
       if (!this.enabled || !this.unlocked || ["spell", "phase"].includes(kind)) return false;
       const now = Date.now();
-      const minInterval = kind === "machinegun" ? 44 : 72;
+      const minInterval = boss ? 150 : kind === "machinegun" ? 44 : 72;
       if (now - this.lastGunshotAt < minInterval) return true;
       this.lastGunshotAt = now;
+      if (boss) {
+        return this.play(RECORDED_SFX_PATHS.bossCannon, {
+          volume: 0.43,
+          rate: 0.91 + Math.random() * 0.055,
+        });
+      }
       const heavy = boss || ["turret-row", "missile"].includes(kind);
       return this.play(heavy ? RECORDED_SFX_PATHS.rifle : RECORDED_SFX_PATHS.pistol, {
         volume: heavy ? 0.3 : kind === "machinegun" ? 0.15 : 0.21,
         rate: heavy ? 0.88 + Math.random() * 0.055 : kind === "machinegun" ? 1.12 : 0.98 + Math.random() * 0.065,
       });
+    }
+
+    jump(kind = "ground") {
+      const profile = kind === "double"
+        ? { volume: 0.19, rate: 1.13 }
+        : kind === "wall"
+          ? { volume: 0.17, rate: 1.04 }
+          : { volume: 0.23, rate: 0.96 };
+      return this.play(RECORDED_SFX_PATHS.jump, profile);
     }
 
     footstep(speed = 0, stageIndex = 0) {
@@ -1679,7 +1710,7 @@
 
     resolveState() {
       if (game.mode === "menu" || game.mode === "won") {
-        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.14 : 0.18, role: "title" };
+        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.16 : 0.2, role: "title" };
       }
       const zone = zones[clamp(game.zone, 0, zones.length - 1)];
       const stageIndex = clamp(zone?.stageIndex ?? game.stage, 0, stages.length - 1);
@@ -1690,11 +1721,11 @@
       ));
       if (boss && (boss.combatStarted || game.adminMode)) {
         const bossTrack = BOSS_MUSIC_TRACKS[boss.bossKind] || 8;
-        return { path: musicTrackPath(bossTrack), volume: 0.22, role: `boss-${boss.bossKind}` };
+        return { path: musicTrackPath(bossTrack), volume: 0.26, role: `boss-${boss.bossKind}` };
       }
       const section = getStageSection(zone?.localIndex || 0);
       const stageTrack = STAGE_MUSIC_ROTATIONS[stageIndex]?.[section] || 1;
-      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.08 : 0.13, role: `stage-${stageIndex + 1}-${section + 1}` };
+      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.1 : 0.17, role: `stage-${stageIndex + 1}-${section + 1}` };
     }
 
     switchTo(state) {
@@ -2706,6 +2737,42 @@
       worldEdits: adminWorldEditData,
       startScreenEdits: startScreenEditData,
     };
+  }
+
+  function constrainPlayerToActiveBossArena() {
+    if (game.adminMode) return null;
+    const positionZoneIndex = getZoneIndexAt(player.x + player.w / 2);
+    const boss = enemies.find((enemy) => {
+      if (!enemy.alive || enemy.type !== "boss") return false;
+      const homeZoneIndex = Number.isInteger(enemy.homeZoneIndex)
+        ? enemy.homeZoneIndex
+        : getZoneIndexAt(enemy.originX);
+      if (homeZoneIndex !== positionZoneIndex && homeZoneIndex !== game.zone) return false;
+      const zone = zones[homeZoneIndex];
+      return Boolean(zone && player.x + player.w > zone.x - 28 && player.x < zone.end + 28);
+    });
+    if (!boss) return null;
+
+    const arena = getBossArenaBounds(boss);
+    const left = arena.left + 4;
+    const right = arena.right - 4;
+    let blocked = false;
+    if (player.x < left) {
+      player.x = left;
+      player.vx = Math.max(0, player.vx);
+      blocked = true;
+    }
+    if (player.x + player.w > right) {
+      player.x = right - player.w;
+      player.vx = Math.min(0, player.vx);
+      blocked = true;
+    }
+    if (blocked) {
+      const definition = BOSS_DEFINITIONS[boss.bossKind] || BOSS_DEFINITIONS.warden;
+      game.hint = `${definition.name} 격파 전까지 보스 구역 봉쇄`;
+      game.hintTimer = Math.max(game.hintTimer, 1.25);
+    }
+    return boss;
   }
 
   function validateAdminPortableProfile(profile) {
@@ -6535,7 +6602,7 @@
     }
     enemy.turretRecoil = 0.2;
     spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
-    if (!recordedSfx.gunshot("turret-row", true)) sound.tone(92, 0.16, "square", 0.052, 0.48);
+    if (!recordedSfx.gunshot("turret-row", false)) sound.tone(92, 0.16, "square", 0.052, 0.48);
   }
 
   function fireFurnaceRedBurst(enemy, target, count = 5, spreadStep = 0.055, baseSpeed = 430) {
@@ -7985,6 +8052,7 @@
     if (player.y > WORLD_H + 120) respawn();
 
     if (!game.adminMode) {
+      constrainPlayerToActiveBossArena();
       const firstCheckedZone = game.adminCadetMode ? game.adminCadetStartZone : 0;
       for (let zoneIndex = firstCheckedZone; zoneIndex < zones.length; zoneIndex += 1) {
         const lockedZone = zones[zoneIndex];
@@ -15258,8 +15326,10 @@
     musicLazyLoad: true,
     musicGestureUnlock: true,
     musicBaseVolumeReduced: true,
-    stageMusicBaseVolume: 0.13,
-    bossMusicBaseVolume: 0.22,
+    stageMusicBaseVolume: 0.17,
+    bossMusicBaseVolume: 0.26,
+    titleMusicBaseVolume: 0.2,
+    storyMusicBaseVolume: 0.1,
     defaultMusicUserVolume: DEFAULT_AUDIO_SETTINGS.music,
     pauseVolumeControls: true,
     persistedAudioSettings: true,
@@ -15268,6 +15338,14 @@
     recordedShotgunPumpSfx: true,
     recordedEnemyPistolSfx: true,
     recordedEnemyRifleSfx: true,
+    recordedJumpSfx: true,
+    bossCannonSfx: true,
+    bossCannonForBallisticShots: true,
+    bossCannonOverlapGuardMs: 150,
+    bossArenaLocksPlayerBothSides: true,
+    bossArenaLocksDuringIntro: true,
+    bossArenaUnlocksOnDefeat: true,
+    bossArenaLockUsesVisibleLimits: true,
     recordedFootstepSfxCount: RECORDED_SFX_PATHS.footsteps.length,
     speedAdaptiveFootsteps: true,
     normalizedFootstepSamples: true,
@@ -15574,8 +15652,10 @@
     musicLazyLoad: "true",
     musicGestureUnlock: "true",
     musicBaseVolumeReduced: "true",
-    stageMusicBaseVolume: "0.13",
-    bossMusicBaseVolume: "0.22",
+    stageMusicBaseVolume: "0.17",
+    bossMusicBaseVolume: "0.26",
+    titleMusicBaseVolume: "0.2",
+    storyMusicBaseVolume: "0.1",
     defaultMusicUserVolume: String(DEFAULT_AUDIO_SETTINGS.music),
     pauseVolumeControls: "true",
     persistedAudioSettings: "true",
@@ -15584,6 +15664,14 @@
     recordedShotgunPumpSfx: "true",
     recordedEnemyPistolSfx: "true",
     recordedEnemyRifleSfx: "true",
+    recordedJumpSfx: "true",
+    bossCannonSfx: "true",
+    bossCannonForBallisticShots: "true",
+    bossCannonOverlapGuardMs: "150",
+    bossArenaLocksPlayerBothSides: "true",
+    bossArenaLocksDuringIntro: "true",
+    bossArenaUnlocksOnDefeat: "true",
+    bossArenaLockUsesVisibleLimits: "true",
     recordedFootstepSfxCount: String(RECORDED_SFX_PATHS.footsteps.length),
     speedAdaptiveFootsteps: "true",
     normalizedFootstepSamples: "true",

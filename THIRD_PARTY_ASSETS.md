@@ -33,3 +33,19 @@
 - 제작자: GboxMikeFozzy
 - 원본 설명: 지하철역 콘크리트 바닥에서 녹음된 6개 발걸음
 - 라이선스: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+
+## 점프 동작음
+
+- 로컬 파일: `sfx-jump.wav`
+- 원본: [Jump Landing](https://opengameart.org/content/jump-landing)
+- 제작자: Macro (Dan Knoflicek)
+- 사용 원본: `Jump 1.wav`
+- 라이선스: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+
+## 보스 대포 발사음
+
+- 로컬 파일: `sfx-boss-cannon.ogg`
+- 원본 묶음: [Battle at sea](https://opengameart.org/content/battle-at-sea)
+- 제작자: Thimras
+- 사용 원본: `cannon_fire.ogg`
+- 라이선스: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
