@@ -1,0 +1,68 @@
+name: Publish administrator world profile
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  publish:
+    if: >-
+      github.event.issue.user.login == github.repository_owner &&
+      startsWith(github.event.issue.title, '[ADMIN WORLD PUBLISH]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current public game
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Validate and write administrator profile
+        env:
+          ADMIN_PUBLISH_ISSUE_BODY: ${{ github.event.issue.body }}
+          ADMIN_PUBLISH_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ADMIN_PUBLISH_SUMMARY_FILE: ${{ runner.temp }}/admin-publish-summary.json
+        run: node .github/scripts/publish-admin-profile.cjs
+
+      - name: Commit public world update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add published-admin-profile.json
+          git commit -m "Publish administrator world edit #${{ github.event.issue.number }}"
+          git push origin HEAD:main
+
+      - name: Confirm and close request
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const summary = JSON.parse(fs.readFileSync(process.env.ADMIN_PUBLISH_SUMMARY_FILE, 'utf8'));
+            const lines = [
+              `공개 월드 편집을 반영했습니다. (${summary.revision})`,
+              `- 적 삭제: ${summary.removedEnemies}`,
+              `- 적 추가: ${summary.spawnedEnemies}`,
+              `- 설치물 추가: ${summary.placedObjects}`,
+              `- 설치물 삭제: ${summary.removedObjects}`,
+              `- 맵 편집: ${summary.worldEdits}`,
+              '',
+              'GitHub Pages 재배포가 자동으로 시작됩니다.',
+            ];
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: lines.join('\n'),
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+        env:
+          ADMIN_PUBLISH_SUMMARY_FILE: ${{ runner.temp }}/admin-publish-summary.json
