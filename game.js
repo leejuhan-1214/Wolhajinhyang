@@ -33,6 +33,7 @@
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
+  const adminProfilePublish = document.getElementById("admin-profile-publish");
   const adminProfileExport = document.getElementById("admin-profile-export");
   const adminProfileImport = document.getElementById("admin-profile-import");
   const adminProfileImportFile = document.getElementById("admin-profile-import-file");
@@ -154,6 +155,8 @@
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const ADMIN_PORTABLE_PROFILE_VERSION = 1;
+  const ADMIN_PUBLISH_REPOSITORY = "leejuhan-1214/Wolhajinhyang";
+  const ADMIN_PUBLISH_MARKER = "moonlit-echo-admin-publish-v1";
   const publishedAdminProfileApplied = applyPublishedAdminProfile();
   const adminProfileImportedFromHash = importAdminPortableProfileFromHash();
   const TUTORIAL_STEPS = Object.freeze([
@@ -2310,7 +2313,7 @@
     return {
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
-      gameVersion: "3.6.3",
+      gameVersion: "3.6.4",
       published: true,
       revision: `admin-${Date.now().toString(36)}`,
       exportedAt,
@@ -2375,6 +2378,50 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
+  async function encodeAdminPublishPayload(profile) {
+    const raw = new TextEncoder().encode(JSON.stringify(profile));
+    if (typeof CompressionStream !== "undefined") {
+      const compressor = new CompressionStream("gzip");
+      const compressed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(compressor)).arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < compressed.length; offset += 0x8000) {
+        binary += String.fromCharCode(...compressed.subarray(offset, offset + 0x8000));
+      }
+      return `gzip:${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
+    }
+    return `raw:${encodeAdminPortableProfile(profile)}`;
+  }
+
+  async function openAdminPublishRequest() {
+    try {
+      const profile = buildAdminPortableProfile();
+      const editCount = profile.removedEnemies.length
+        + profile.spawnedEnemies.length
+        + profile.placedObjects.length
+        + profile.removedObjects.length
+        + profile.worldEdits.length
+        + (profile.startScreenEdits ? 1 : 0);
+      if (editCount === 0) throw new Error("게시할 삭제·추가·맵 편집이 없습니다.");
+      const payload = await encodeAdminPublishPayload(profile);
+      const body = [
+        `<!-- ${ADMIN_PUBLISH_MARKER} -->`,
+        "월하잔향 관리자 월드 편집 공개 요청입니다.",
+        "아래 데이터는 자동 배포 작업에서만 사용됩니다.",
+        "",
+        "```moonlit-admin-profile",
+        payload,
+        "```",
+      ].join("\n");
+      const title = `[ADMIN WORLD PUBLISH] ${profile.revision}`;
+      const issueUrl = `https://github.com/${ADMIN_PUBLISH_REPOSITORY}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+      const popup = window.open(issueUrl, "_blank", "noopener,noreferrer");
+      if (!popup) window.location.href = issueUrl;
+      setAdminProfileStatus(`GitHub 게시 화면 열림 · 요청을 등록하면 적 삭제 ${profile.removedEnemies.length}개, 추가 ${profile.spawnedEnemies.length}개가 전체 적용됩니다`);
+    } catch (error) {
+      setAdminProfileStatus(error?.message || "공개 게시 요청을 만들지 못했습니다", true);
+    }
+  }
+
   function decodeAdminPortableProfile(encoded) {
     const padded = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
     const binary = atob(padded);
@@ -2415,7 +2462,7 @@
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      setAdminProfileStatus("공개 업데이트 파일 생성 완료 · 저장소에 배포하면 모든 접속자에게 적용됩니다");
+      setAdminProfileStatus("편집 백업 파일 저장 완료 · 이 파일은 보관·복구용입니다");
     } catch {
       setAdminProfileStatus("편집 파일을 저장하지 못했습니다", true);
     }
@@ -14362,6 +14409,7 @@
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
+  adminProfilePublish?.addEventListener("click", openAdminPublishRequest);
   adminProfileExport?.addEventListener("click", downloadAdminPortableProfile);
   adminProfileImport?.addEventListener("click", () => adminProfileImportFile?.click());
   adminProfileImportFile?.addEventListener("change", importAdminPortableProfileFile);
@@ -14419,7 +14467,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.3",
+    version: "3.6.4",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14576,6 +14624,9 @@
     publishedAdminProfileFile: "published-admin-profile.json",
     publishedAdminProfileApplied,
     publishedAdminProfileRevisionKey: PUBLISHED_ADMIN_PROFILE_REVISION_KEY,
+    adminRepositoryPublishFlow: true,
+    adminRepositoryPublishOwnerOnly: true,
+    adminPublishRepository: ADMIN_PUBLISH_REPOSITORY,
     adminRemovedEnemyCount: adminRemovedEnemyIds.size,
     adminRemovedEnemyAliveCount: enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length,
     adminSpawnedEnemyRecordCount: adminSpawnedEnemyData.length,
@@ -14722,7 +14773,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.3",
+    gameVersion: "3.6.4",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",

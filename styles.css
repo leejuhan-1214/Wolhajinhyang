@@ -1067,7 +1067,7 @@ button:focus-visible {
 
 .admin-profile-tools {
   display: grid;
-  grid-template-columns: minmax(250px, 1fr) repeat(3, auto);
+  grid-template-columns: minmax(230px, 1fr) repeat(4, auto);
   align-items: center;
   gap: 7px;
   margin-top: 8px;
@@ -1091,6 +1091,12 @@ button:focus-visible {
   box-shadow: none;
   clip-path: none;
   font-size: 9px;
+}
+
+#admin-profile-publish {
+  border-color: rgba(255, 196, 92, 0.72);
+  background: linear-gradient(180deg, rgba(93, 66, 18, 0.94), rgba(52, 36, 12, 0.94));
+  color: #fff1c7;
 }
 
 .admin-world-editor {
@@ -1307,7 +1313,7 @@ button:focus-visible {
   .admin-enemy-grid button { min-height: 65px; padding: 5px 2px; }
   .admin-world-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-world-tools button { min-height: 38px; padding: 4px; }
-  .admin-profile-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px; }
+  .admin-profile-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 5px; }
   .admin-profile-tools > div { grid-column: 1 / -1; }
   .admin-profile-tools button { min-width: 0; min-height: 32px; padding: 4px 2px; }
   .admin-world-transform-guide { grid-template-columns: 36px minmax(0, 1fr); padding: 6px; }
