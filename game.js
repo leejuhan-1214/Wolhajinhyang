@@ -33,7 +33,6 @@
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
-  const adminLiveConnect = document.getElementById("admin-live-connect");
   const adminProfileExport = document.getElementById("admin-profile-export");
   const adminProfileImport = document.getElementById("admin-profile-import");
   const adminProfileImportFile = document.getElementById("admin-profile-import-file");
@@ -156,8 +155,6 @@
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const ADMIN_PORTABLE_PROFILE_VERSION = 1;
   const LIVE_WORLD_API_BASE = "https://wolhajinhyang-live-world.magic-shark-7297.chatgpt.site";
-  const LIVE_WORLD_ORIGIN = new URL(LIVE_WORLD_API_BASE).origin;
-  const LIVE_WORLD_ADMIN_TOKEN_KEY = "moonlit-echo-live-admin-token-v1";
   const LIVE_WORLD_POLL_MS = 2000;
   const publishedAdminProfileApplied = applyPublishedAdminProfile();
   const adminProfileImportedFromHash = importAdminPortableProfileFromHash();
@@ -2326,7 +2323,7 @@
     return {
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
-      gameVersion: "3.6.5",
+      gameVersion: "3.6.6",
       published: true,
       revision: `admin-${Date.now().toString(36)}`,
       exportedAt,
@@ -2391,14 +2388,6 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
-  function readLiveWorldAdminToken() {
-    try {
-      return String(window.localStorage?.getItem(LIVE_WORLD_ADMIN_TOKEN_KEY) || "");
-    } catch {
-      return "";
-    }
-  }
-
   function profileHasWorldEdits(profile) {
     return profile.removedEnemies.length > 0
       || profile.spawnedEnemies.length > 0
@@ -2408,23 +2397,8 @@
       || Boolean(profile.startScreenEdits);
   }
 
-  function storeLiveWorldAdminToken(token) {
-    if (typeof token !== "string" || token.length < 24 || token.length > 512) return false;
-    try {
-      window.localStorage?.setItem(LIVE_WORLD_ADMIN_TOKEN_KEY, token);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   async function pushLiveWorldProfile(reason = "관리자 편집") {
     if (!liveWorldStarted || liveWorldApplying || typeof fetch !== "function") return false;
-    const token = readLiveWorldAdminToken();
-    if (!token) {
-      setAdminProfileStatus("실시간 서버 연결이 필요합니다 · 관리자 패널에서 한 번만 연결하세요", true);
-      return false;
-    }
     try {
       const response = await fetch(`${LIVE_WORLD_API_BASE}/api/world-state`, {
         method: "POST",
@@ -2432,14 +2406,9 @@
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(buildAdminPortableProfile()),
       });
-      if (response.status === 401 || response.status === 403) {
-        window.localStorage?.removeItem(LIVE_WORLD_ADMIN_TOKEN_KEY);
-        throw new Error("관리자 연결이 만료되었습니다 · 실시간 서버를 다시 연결하세요");
-      }
       if (!response.ok) throw new Error(`실시간 서버 저장 실패 (${response.status})`);
       const saved = await response.json();
       liveWorldRevision = String(saved.revision || "");
@@ -2454,27 +2423,9 @@
   }
 
   function scheduleLiveWorldPush(reason = "관리자 편집") {
-    if (!liveWorldStarted || liveWorldApplying || !readLiveWorldAdminToken()) return;
+    if (!liveWorldStarted || liveWorldApplying) return;
     clearTimeout(liveWorldPushTimer);
     liveWorldPushTimer = setTimeout(() => pushLiveWorldProfile(reason), 420);
-  }
-
-  function connectLiveWorldAdmin() {
-    if (!liveWorldStarted) startLiveWorldSync();
-    const authorizeUrl = `${LIVE_WORLD_API_BASE}/authorize?return_origin=${encodeURIComponent(window.location.origin || "https://leejuhan-1214.github.io")}`;
-    const popup = window.open(authorizeUrl, "moonlit-echo-live-admin", "popup,width=560,height=720");
-    if (!popup) window.location.href = authorizeUrl;
-    setAdminProfileStatus("실시간 관리자 인증 창이 열렸습니다 · 연결 완료 후 현재 편집을 자동 저장합니다");
-  }
-
-  function handleLiveWorldAdminMessage(event) {
-    if (event.origin !== LIVE_WORLD_ORIGIN || event.data?.type !== "moonlit-echo-live-admin-token") return;
-    if (!storeLiveWorldAdminToken(event.data.token)) {
-      setAdminProfileStatus("관리자 인증 토큰을 저장하지 못했습니다", true);
-      return;
-    }
-    setAdminProfileStatus("실시간 서버 연결 완료 · 현재 편집을 모든 기기에 저장하는 중");
-    pushLiveWorldProfile("관리자 연결");
   }
 
   function decodeAdminPortableProfile(encoded) {
@@ -2561,12 +2512,18 @@
       });
       if (!response.ok) throw new Error(`실시간 월드 불러오기 실패 (${response.status})`);
       const profile = await response.json();
-      applyLiveWorldProfile(profile);
+      const localProfile = buildAdminPortableProfile();
+      if (String(profile.revision || "") === "server-base-0" && !profileHasWorldEdits(profile) && profileHasWorldEdits(localProfile)) {
+        liveWorldRevision = "server-base-0";
+        await pushLiveWorldProfile("기존 관리자 편집 자동 이전");
+      } else {
+        applyLiveWorldProfile(profile);
+      }
       liveWorldLastError = "";
       return true;
     } catch (error) {
       liveWorldLastError = error?.message || "실시간 월드 연결 실패";
-      if (readLiveWorldAdminToken() && adminProfileStatus) {
+      if (adminProfileStatus) {
         adminProfileStatus.textContent = liveWorldLastError;
         adminProfileStatus.classList.toggle?.("error", true);
       }
@@ -2579,12 +2536,9 @@
   function startLiveWorldSync() {
     if (liveWorldStarted || typeof fetch !== "function") return false;
     liveWorldStarted = true;
-    window.addEventListener("message", handleLiveWorldAdminMessage);
     pollLiveWorldProfile();
     window.setInterval(pollLiveWorldProfile, LIVE_WORLD_POLL_MS);
-    if (readLiveWorldAdminToken()) {
-      setAdminProfileStatus("실시간 월드 서버 연결됨 · 변경 사항 자동 저장 중");
-    }
+    setAdminProfileStatus("공용 월드 자동 동기화 활성화 · Z 삭제와 X 추가가 모든 기기에 즉시 적용됩니다");
     return true;
   }
 
@@ -14550,7 +14504,6 @@
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
-  adminLiveConnect?.addEventListener("click", connectLiveWorldAdmin);
   adminProfileExport?.addEventListener("click", downloadAdminPortableProfile);
   adminProfileImport?.addEventListener("click", () => adminProfileImportFile?.click());
   adminProfileImportFile?.addEventListener("change", importAdminPortableProfileFile);
@@ -14609,7 +14562,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.5",
+    version: "3.6.6",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14771,7 +14724,9 @@
     liveWorldPollMs: LIVE_WORLD_POLL_MS,
     liveWorldRevision,
     liveWorldLastError,
-    liveWorldAdminTokenStorageKey: LIVE_WORLD_ADMIN_TOKEN_KEY,
+    liveWorldRequiresManualConnection: false,
+    liveWorldRequiresShareLink: false,
+    liveWorldDeletionIsMonotonic: true,
     liveWorldRealtimeEnemyDelete: true,
     liveWorldRealtimeEnemySpawn: true,
     liveWorldPublicRead: true,
@@ -14921,7 +14876,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.5",
+    gameVersion: "3.6.6",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
