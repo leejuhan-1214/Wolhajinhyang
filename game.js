@@ -33,7 +33,7 @@
   };
   const adminSpawnPanel = document.getElementById("admin-spawn-panel");
   const adminSpawnClose = document.getElementById("admin-spawn-close");
-  const adminProfilePublish = document.getElementById("admin-profile-publish");
+  const adminLiveConnect = document.getElementById("admin-live-connect");
   const adminProfileExport = document.getElementById("admin-profile-export");
   const adminProfileImport = document.getElementById("admin-profile-import");
   const adminProfileImportFile = document.getElementById("admin-profile-import-file");
@@ -155,8 +155,10 @@
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const ADMIN_PORTABLE_PROFILE_VERSION = 1;
-  const ADMIN_PUBLISH_REPOSITORY = "leejuhan-1214/Wolhajinhyang";
-  const ADMIN_PUBLISH_MARKER = "moonlit-echo-admin-publish-v1";
+  const LIVE_WORLD_API_BASE = "https://wolhajinhyang-live-world.magic-shark-7297.chatgpt.site";
+  const LIVE_WORLD_ORIGIN = new URL(LIVE_WORLD_API_BASE).origin;
+  const LIVE_WORLD_ADMIN_TOKEN_KEY = "moonlit-echo-live-admin-token-v1";
+  const LIVE_WORLD_POLL_MS = 2000;
   const publishedAdminProfileApplied = applyPublishedAdminProfile();
   const adminProfileImportedFromHash = importAdminPortableProfileFromHash();
   const TUTORIAL_STEPS = Object.freeze([
@@ -195,6 +197,12 @@
   let adminPlacedObjectData = readAdminPlacedObjects();
   let adminRemovedObjectIds = readAdminRemovedObjects();
   let adminWorldEditData = readAdminWorldEdits();
+  let liveWorldRevision = null;
+  let liveWorldPollInFlight = false;
+  let liveWorldPushTimer = 0;
+  let liveWorldApplying = false;
+  let liveWorldStarted = false;
+  let liveWorldLastError = "";
   let adminSpawnSerial = 0;
   let adminPlacedSerial = 0;
   let adminWorldSerial = 0;
@@ -2166,6 +2174,7 @@
     } catch {
       // Permanent administrator removal remains active for this session if storage is blocked.
     }
+    scheduleLiveWorldPush("적 삭제");
   }
 
   function refreshAdminRemovedEnemies() {
@@ -2195,6 +2204,7 @@
     } catch {
       // Base pickups and jump pads stay removed for this session if storage is unavailable.
     }
+    scheduleLiveWorldPush("오브젝트 삭제");
   }
 
   function readAdminSpawnedEnemies() {
@@ -2221,6 +2231,7 @@
     } catch {
       // Administrator additions remain active for this session if storage is blocked.
     }
+    scheduleLiveWorldPush("적 추가");
   }
 
   function createAdminSpawnId(type, stageIndex) {
@@ -2279,6 +2290,7 @@
     } catch {
       // Administrator placements remain active for this session if storage is blocked.
     }
+    scheduleLiveWorldPush("오브젝트 추가");
   }
 
   function readAdminWorldEdits() {
@@ -2306,6 +2318,7 @@
     } catch {
       // World edits stay active for this session if storage is unavailable.
     }
+    scheduleLiveWorldPush("맵 편집");
   }
 
   function buildAdminPortableProfile() {
@@ -2313,7 +2326,7 @@
     return {
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
-      gameVersion: "3.6.4",
+      gameVersion: "3.6.5",
       published: true,
       revision: `admin-${Date.now().toString(36)}`,
       exportedAt,
@@ -2378,48 +2391,90 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
-  async function encodeAdminPublishPayload(profile) {
-    const raw = new TextEncoder().encode(JSON.stringify(profile));
-    if (typeof CompressionStream !== "undefined") {
-      const compressor = new CompressionStream("gzip");
-      const compressed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(compressor)).arrayBuffer());
-      let binary = "";
-      for (let offset = 0; offset < compressed.length; offset += 0x8000) {
-        binary += String.fromCharCode(...compressed.subarray(offset, offset + 0x8000));
-      }
-      return `gzip:${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
+  function readLiveWorldAdminToken() {
+    try {
+      return String(window.localStorage?.getItem(LIVE_WORLD_ADMIN_TOKEN_KEY) || "");
+    } catch {
+      return "";
     }
-    return `raw:${encodeAdminPortableProfile(profile)}`;
   }
 
-  async function openAdminPublishRequest() {
+  function profileHasWorldEdits(profile) {
+    return profile.removedEnemies.length > 0
+      || profile.spawnedEnemies.length > 0
+      || profile.placedObjects.length > 0
+      || profile.removedObjects.length > 0
+      || profile.worldEdits.length > 0
+      || Boolean(profile.startScreenEdits);
+  }
+
+  function storeLiveWorldAdminToken(token) {
+    if (typeof token !== "string" || token.length < 24 || token.length > 512) return false;
     try {
-      const profile = buildAdminPortableProfile();
-      const editCount = profile.removedEnemies.length
-        + profile.spawnedEnemies.length
-        + profile.placedObjects.length
-        + profile.removedObjects.length
-        + profile.worldEdits.length
-        + (profile.startScreenEdits ? 1 : 0);
-      if (editCount === 0) throw new Error("게시할 삭제·추가·맵 편집이 없습니다.");
-      const payload = await encodeAdminPublishPayload(profile);
-      const body = [
-        `<!-- ${ADMIN_PUBLISH_MARKER} -->`,
-        "월하잔향 관리자 월드 편집 공개 요청입니다.",
-        "아래 데이터는 자동 배포 작업에서만 사용됩니다.",
-        "",
-        "```moonlit-admin-profile",
-        payload,
-        "```",
-      ].join("\n");
-      const title = `[ADMIN WORLD PUBLISH] ${profile.revision}`;
-      const issueUrl = `https://github.com/${ADMIN_PUBLISH_REPOSITORY}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-      const popup = window.open(issueUrl, "_blank", "noopener,noreferrer");
-      if (!popup) window.location.href = issueUrl;
-      setAdminProfileStatus(`GitHub 게시 화면 열림 · 요청을 등록하면 적 삭제 ${profile.removedEnemies.length}개, 추가 ${profile.spawnedEnemies.length}개가 전체 적용됩니다`);
-    } catch (error) {
-      setAdminProfileStatus(error?.message || "공개 게시 요청을 만들지 못했습니다", true);
+      window.localStorage?.setItem(LIVE_WORLD_ADMIN_TOKEN_KEY, token);
+      return true;
+    } catch {
+      return false;
     }
+  }
+
+  async function pushLiveWorldProfile(reason = "관리자 편집") {
+    if (!liveWorldStarted || liveWorldApplying || typeof fetch !== "function") return false;
+    const token = readLiveWorldAdminToken();
+    if (!token) {
+      setAdminProfileStatus("실시간 서버 연결이 필요합니다 · 관리자 패널에서 한 번만 연결하세요", true);
+      return false;
+    }
+    try {
+      const response = await fetch(`${LIVE_WORLD_API_BASE}/api/world-state`, {
+        method: "POST",
+        mode: "cors",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildAdminPortableProfile()),
+      });
+      if (response.status === 401 || response.status === 403) {
+        window.localStorage?.removeItem(LIVE_WORLD_ADMIN_TOKEN_KEY);
+        throw new Error("관리자 연결이 만료되었습니다 · 실시간 서버를 다시 연결하세요");
+      }
+      if (!response.ok) throw new Error(`실시간 서버 저장 실패 (${response.status})`);
+      const saved = await response.json();
+      liveWorldRevision = String(saved.revision || "");
+      liveWorldLastError = "";
+      setAdminProfileStatus(`${reason} 전체 저장 완료 · 삭제 ${saved.removedEnemies?.length || 0} · 추가 ${saved.spawnedEnemies?.length || 0}`);
+      return true;
+    } catch (error) {
+      liveWorldLastError = error?.message || "실시간 서버 저장 실패";
+      setAdminProfileStatus(liveWorldLastError, true);
+      return false;
+    }
+  }
+
+  function scheduleLiveWorldPush(reason = "관리자 편집") {
+    if (!liveWorldStarted || liveWorldApplying || !readLiveWorldAdminToken()) return;
+    clearTimeout(liveWorldPushTimer);
+    liveWorldPushTimer = setTimeout(() => pushLiveWorldProfile(reason), 420);
+  }
+
+  function connectLiveWorldAdmin() {
+    if (!liveWorldStarted) startLiveWorldSync();
+    const authorizeUrl = `${LIVE_WORLD_API_BASE}/authorize?return_origin=${encodeURIComponent(window.location.origin || "https://leejuhan-1214.github.io")}`;
+    const popup = window.open(authorizeUrl, "moonlit-echo-live-admin", "popup,width=560,height=720");
+    if (!popup) window.location.href = authorizeUrl;
+    setAdminProfileStatus("실시간 관리자 인증 창이 열렸습니다 · 연결 완료 후 현재 편집을 자동 저장합니다");
+  }
+
+  function handleLiveWorldAdminMessage(event) {
+    if (event.origin !== LIVE_WORLD_ORIGIN || event.data?.type !== "moonlit-echo-live-admin-token") return;
+    if (!storeLiveWorldAdminToken(event.data.token)) {
+      setAdminProfileStatus("관리자 인증 토큰을 저장하지 못했습니다", true);
+      return;
+    }
+    setAdminProfileStatus("실시간 서버 연결 완료 · 현재 편집을 모든 기기에 저장하는 중");
+    pushLiveWorldProfile("관리자 연결");
   }
 
   function decodeAdminPortableProfile(encoded) {
@@ -2449,6 +2504,88 @@
     }
     game.hint = message;
     game.hintTimer = 4;
+  }
+
+  function applyLiveWorldProfile(profile) {
+    const data = validateAdminPortableProfile(profile);
+    const revision = String(data.revision || data.exportedAt || "live-world");
+    if (revision === liveWorldRevision) return false;
+    const localProfile = buildAdminPortableProfile();
+    if (revision === "server-base-0" && !profileHasWorldEdits(data) && profileHasWorldEdits(localProfile)) {
+      liveWorldRevision = revision;
+      return false;
+    }
+
+    liveWorldApplying = true;
+    try {
+      writeAdminPortableProfile(data);
+      adminRemovedEnemyIds = new Set(data.removedEnemies.filter((id) => typeof id === "string"));
+      adminSpawnedEnemyData = data.spawnedEnemies.slice(-MAX_ADMIN_SPAWNED_ENEMIES);
+      adminPlacedObjectData = data.placedObjects.slice(-MAX_ADMIN_PLACED_OBJECTS);
+      adminRemovedObjectIds = new Set(data.removedObjects.filter((id) => typeof id === "string"));
+      adminWorldEditData = data.worldEdits.slice(-MAX_ADMIN_WORLD_EDITS);
+      startScreenEditData = data.startScreenEdits && typeof data.startScreenEdits === "object"
+        ? normalizeStartScreenEdits(data.startScreenEdits)
+        : null;
+      applyStartScreenEdits(startScreenEditData || START_SCREEN_DEFAULTS);
+      updateContinueButton();
+
+      const liveSpawnIds = new Set(adminSpawnedEnemyData.map((record) => record.id));
+      for (const enemy of enemies) {
+        if (adminRemovedEnemyIds.has(enemy.id) || (enemy.adminSpawned && !liveSpawnIds.has(enemy.id))) {
+          enemy.alive = false;
+          enemy.hp = 0;
+          enemy.countedKill = false;
+        }
+      }
+      restoreAdminSpawnedEnemies();
+      applyAdminRemovedEnemyData();
+      syncAdminRemovedBossState();
+      game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
+      liveWorldRevision = revision;
+      liveWorldLastError = "";
+      setAdminProfileStatus(`공용 월드 동기화 완료 · 적 삭제 ${adminRemovedEnemyIds.size} · 추가 ${adminSpawnedEnemyData.length}`);
+      return true;
+    } finally {
+      liveWorldApplying = false;
+    }
+  }
+
+  async function pollLiveWorldProfile() {
+    if (!liveWorldStarted || liveWorldPollInFlight || typeof fetch !== "function") return false;
+    liveWorldPollInFlight = true;
+    try {
+      const response = await fetch(`${LIVE_WORLD_API_BASE}/api/world-state?ts=${Date.now()}`, {
+        mode: "cors",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`실시간 월드 불러오기 실패 (${response.status})`);
+      const profile = await response.json();
+      applyLiveWorldProfile(profile);
+      liveWorldLastError = "";
+      return true;
+    } catch (error) {
+      liveWorldLastError = error?.message || "실시간 월드 연결 실패";
+      if (readLiveWorldAdminToken() && adminProfileStatus) {
+        adminProfileStatus.textContent = liveWorldLastError;
+        adminProfileStatus.classList.toggle?.("error", true);
+      }
+      return false;
+    } finally {
+      liveWorldPollInFlight = false;
+    }
+  }
+
+  function startLiveWorldSync() {
+    if (liveWorldStarted || typeof fetch !== "function") return false;
+    liveWorldStarted = true;
+    window.addEventListener("message", handleLiveWorldAdminMessage);
+    pollLiveWorldProfile();
+    window.setInterval(pollLiveWorldProfile, LIVE_WORLD_POLL_MS);
+    if (readLiveWorldAdminToken()) {
+      setAdminProfileStatus("실시간 월드 서버 연결됨 · 변경 사항 자동 저장 중");
+    }
+    return true;
   }
 
   function downloadAdminPortableProfile() {
@@ -2635,56 +2772,59 @@
     }
   }
 
-  function restoreAdminSpawnedEnemies() {
-    // 관리자 생성 적도 삭제 표식이 남아 있으면 생성 목록이 오래된 탭이나
-    // 저장 충돌로 되살아나지 못하게 복원 단계에서 먼저 차단한다.
-    const retainedRecords = adminSpawnedEnemyData.filter((record) => !isAdminRemovedEnemy(record.id));
-    if (retainedRecords.length !== adminSpawnedEnemyData.length) {
-      adminSpawnedEnemyData = retainedRecords;
-      persistAdminSpawnedEnemies();
-    }
-    for (const record of adminSpawnedEnemyData) {
-      const rawX = Number(record.x);
-      const rawY = Number(record.y);
-      const x = clamp(rawX, 0, WORLD_W - 1);
-      const stageIndex = Number.isInteger(record.stageIndex)
-        ? clamp(record.stageIndex, 0, stages.length - 1)
-        : getStageIndexAt(x);
-      const enemy = addEnemy(record.type, x, rawY, Number.isFinite(record.range) ? record.range : 220);
-      enemy.adminSpawned = true;
-      enemy.id = record.id;
-      enemy.stageIndex = stageIndex;
-      enemy.homeZoneIndex = Number.isInteger(record.homeZoneIndex)
-        ? clamp(record.homeZoneIndex, 0, zones.length - 1)
-        : getZoneIndexAt(x);
+  function restoreAdminSpawnedEnemy(record) {
+    if (!record || isAdminRemovedEnemy(record.id) || enemies.some((enemy) => enemy.id === record.id)) return null;
+    const rawX = Number(record.x);
+    const rawY = Number(record.y);
+    const x = clamp(rawX, 0, WORLD_W - 1);
+    const stageIndex = Number.isInteger(record.stageIndex)
+      ? clamp(record.stageIndex, 0, stages.length - 1)
+      : getStageIndexAt(x);
+    const enemy = addEnemy(record.type, x, rawY, Number.isFinite(record.range) ? record.range : 220);
+    enemy.adminSpawned = true;
+    enemy.id = record.id;
+    enemy.stageIndex = stageIndex;
+    enemy.homeZoneIndex = Number.isInteger(record.homeZoneIndex)
+      ? clamp(record.homeZoneIndex, 0, zones.length - 1)
+      : getZoneIndexAt(x);
+    enemy.x = clamp(x, 0, WORLD_W - enemy.w);
+    enemy.y = clamp(rawY, -enemy.h * 2, WORLD_H - enemy.h);
+    enemy.originX = enemy.x;
+    enemy.spawnX = enemy.x;
+    enemy.spawnY = enemy.y;
+    enemy.baseY = enemy.y;
+    enemy.vx = 0;
+    enemy.vy = 0;
+    enemy.alive = true;
+    enemy.countedKill = false;
+    if (enemy.type !== "boss") return enemy;
+    enemy.bossKind = BOSS_DEFINITIONS[record.bossKind]
+      ? record.bossKind
+      : stages[stageIndex].bossKind;
+    const definition = BOSS_DEFINITIONS[enemy.bossKind];
+    enemy.hp = definition.hp;
+    enemy.maxHp = definition.hp;
+    if (enemy.bossKind === "echo") {
+      enemy.w = player.w;
+      enemy.h = player.h;
       enemy.x = clamp(x, 0, WORLD_W - enemy.w);
       enemy.y = clamp(rawY, -enemy.h * 2, WORLD_H - enemy.h);
       enemy.originX = enemy.x;
       enemy.spawnX = enemy.x;
       enemy.spawnY = enemy.y;
       enemy.baseY = enemy.y;
-      enemy.vx = 0;
-      enemy.vy = 0;
-      enemy.alive = true;
-      enemy.countedKill = false;
-      if (enemy.type !== "boss") continue;
-      enemy.bossKind = BOSS_DEFINITIONS[record.bossKind]
-        ? record.bossKind
-        : stages[stageIndex].bossKind;
-      const definition = BOSS_DEFINITIONS[enemy.bossKind];
-      enemy.hp = definition.hp;
-      enemy.maxHp = definition.hp;
-      if (enemy.bossKind === "echo") {
-        enemy.w = player.w;
-        enemy.h = player.h;
-        enemy.x = clamp(x, 0, WORLD_W - enemy.w);
-        enemy.y = clamp(rawY, -enemy.h * 2, WORLD_H - enemy.h);
-        enemy.originX = enemy.x;
-        enemy.spawnX = enemy.x;
-        enemy.spawnY = enemy.y;
-        enemy.baseY = enemy.y;
-      }
     }
+    return enemy;
+  }
+
+  function restoreAdminSpawnedEnemies() {
+    // 삭제 표식과 생성 기록을 함께 동기화해 오래된 탭에서도 적이 되살아나지 않는다.
+    const retainedRecords = adminSpawnedEnemyData.filter((record) => !isAdminRemovedEnemy(record.id));
+    if (retainedRecords.length !== adminSpawnedEnemyData.length) {
+      adminSpawnedEnemyData = retainedRecords;
+      persistAdminSpawnedEnemies();
+    }
+    for (const record of adminSpawnedEnemyData) restoreAdminSpawnedEnemy(record);
   }
 
   function applyAdminRemovedEnemyData() {
@@ -3883,6 +4023,7 @@
     } catch {
       // The edited title screen remains active for this session if storage is unavailable.
     }
+    scheduleLiveWorldPush("시작 화면 편집");
   }
 
   function applyStartScreenEdits(value = START_SCREEN_DEFAULTS) {
@@ -14409,7 +14550,7 @@
   startScreenEditSave?.addEventListener("click", saveStartScreenEditor);
   startScreenEditReset?.addEventListener("click", resetStartScreenEditor);
   adminSpawnClose?.addEventListener("click", () => setAdminSpawnPanel(false));
-  adminProfilePublish?.addEventListener("click", openAdminPublishRequest);
+  adminLiveConnect?.addEventListener("click", connectLiveWorldAdmin);
   adminProfileExport?.addEventListener("click", downloadAdminPortableProfile);
   adminProfileImport?.addEventListener("click", () => adminProfileImportFile?.click());
   adminProfileImportFile?.addEventListener("change", importAdminPortableProfileFile);
@@ -14451,6 +14592,7 @@
   prepareTutorialBriefing();
   buildLevel();
   levelReady = true;
+  if (!window.__MOONLIT_ECHO_DISABLE_LIVE_SYNC__) startLiveWorldSync();
   window.__MOONLIT_ECHO_CHARACTER_ARCHIVE__ = (pageIndex = 0) => {
     characterArchivePage = clamp(Math.floor(Number(pageIndex) || 0), 0, CHARACTER_ARCHIVE_PAGES.length - 1);
     render();
@@ -14467,7 +14609,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.4",
+    version: "3.6.5",
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14624,9 +14766,15 @@
     publishedAdminProfileFile: "published-admin-profile.json",
     publishedAdminProfileApplied,
     publishedAdminProfileRevisionKey: PUBLISHED_ADMIN_PROFILE_REVISION_KEY,
-    adminRepositoryPublishFlow: true,
-    adminRepositoryPublishOwnerOnly: true,
-    adminPublishRepository: ADMIN_PUBLISH_REPOSITORY,
+    liveWorldSyncEnabled: liveWorldStarted || Boolean(window.__MOONLIT_ECHO_DISABLE_LIVE_SYNC__),
+    liveWorldApiBase: LIVE_WORLD_API_BASE,
+    liveWorldPollMs: LIVE_WORLD_POLL_MS,
+    liveWorldRevision,
+    liveWorldLastError,
+    liveWorldAdminTokenStorageKey: LIVE_WORLD_ADMIN_TOKEN_KEY,
+    liveWorldRealtimeEnemyDelete: true,
+    liveWorldRealtimeEnemySpawn: true,
+    liveWorldPublicRead: true,
     adminRemovedEnemyCount: adminRemovedEnemyIds.size,
     adminRemovedEnemyAliveCount: enemies.filter((enemy) => enemy.alive && isAdminRemovedEnemy(enemy)).length,
     adminSpawnedEnemyRecordCount: adminSpawnedEnemyData.length,
@@ -14773,7 +14921,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.4",
+    gameVersion: "3.6.5",
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",

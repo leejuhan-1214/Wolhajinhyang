@@ -12,7 +12,7 @@
     />
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.1.png" fetchpriority="high" />
-    <link rel="stylesheet" href="styles.css?v=3.6.4" />
+    <link rel="stylesheet" href="styles.css?v=3.6.5" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -20,7 +20,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.4</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.5</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">병아리</button>
@@ -121,9 +121,9 @@
           <button type="button" data-admin-world-create="hazard"><b>함정 추가</b><span>가시·레이저·증기</span></button>
           <button type="button" data-admin-world-create="backdrop"><b>배경 장식 추가</b><span>패널·간판·비계</span></button>
         </div>
-        <div class="admin-profile-tools" aria-label="관리자 편집 데이터 공개 업데이트">
-          <div><b>모든 접속자에게 월드 편집 배포</b><span id="admin-profile-status">삭제·추가한 적을 포함한 현재 편집을 GitHub 공개 월드에 반영합니다.</span></div>
-          <button id="admin-profile-publish" type="button">전체 사용자에게 게시</button>
+        <div class="admin-profile-tools" aria-label="관리자 편집 데이터 실시간 업데이트">
+          <div><b>모든 접속자에게 실시간 월드 편집</b><span id="admin-profile-status">한 번 연결하면 Z 삭제·X 추가가 즉시 서버에 저장되고 모든 기기에 반영됩니다.</span></div>
+          <button id="admin-live-connect" type="button">실시간 서버 연결</button>
           <button id="admin-profile-export" type="button">편집 백업 파일 저장</button>
           <button id="admin-profile-import" type="button">편집 파일 불러오기</button>
           <button id="admin-profile-share" type="button">임시 확인 링크 복사</button>
@@ -176,13 +176,13 @@
   <script>
     (async () => {
       try {
-        const response = await fetch("published-admin-profile.json?v=3.6.4", { cache: "no-store" });
+        const response = await fetch("published-admin-profile.json?v=3.6.5", { cache: "no-store" });
         if (response.ok) window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__ = await response.json();
       } catch (error) {
         console.info("공개 월드 편집본 없이 기본 맵을 시작합니다.", error?.message || error);
       }
       const gameScript = document.createElement("script");
-      gameScript.src = "game.js?v=3.6.4";
+      gameScript.src = "game.js?v=3.6.5";
       document.body.appendChild(gameScript);
     })();
   </script>
