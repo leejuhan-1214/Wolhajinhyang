@@ -1,9 +1,9 @@
 {
   "format": "moonlit-echo-admin-profile",
   "formatVersion": 1,
-  "gameVersion": "3.6.6",
+  "gameVersion": "3.6.7",
   "published": false,
-  "revision": "base-v3.6.6",
+  "revision": "base-v3.6.7",
   "removedEnemies": [],
   "spawnedEnemies": [],
   "placedObjects": [],

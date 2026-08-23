@@ -80,12 +80,21 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.6") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.7") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
 if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향 (1).hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
   throw new Error("HWPX story alignment diagnostics missing");
+}
+if (!diagnostics.musicDirectorEnabled || diagnostics.musicTrackCount !== 12 || diagnostics.titleMusicTrack !== 12 || diagnostics.musicCrossfadeSeconds !== 1.15 || !diagnostics.musicLazyLoad || !diagnostics.musicGestureUnlock) {
+  throw new Error("dynamic music director configuration invalid");
+}
+if (diagnostics.stageMusicRotations.length !== 5 || diagnostics.stageMusicRotations.some((rotation) => rotation.length !== 4) || Object.keys(diagnostics.bossMusicTracks).length !== 10) {
+  throw new Error("stage or boss music assignment is incomplete");
+}
+if (!diagnostics.layeredJumpSfx || !diagnostics.layeredShotgunSfx || !diagnostics.landingImpactSfx || !gameSource.includes('sound.jump("wall")') || !gameSource.includes('sound.jump("double")')) {
+  throw new Error("player movement or shotgun sound redesign missing");
 }
 const storyDialogueEntries = [...gameSource.matchAll(/\{\s*speaker:\s*"[^"]+",\s*text:\s*"[^"]+"/g)];
 const requiredDocumentStoryLines = [

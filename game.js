@@ -85,6 +85,29 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
+  const GAME_VERSION = "3.6.7";
+  const MUSIC_TRACK_COUNT = 12;
+  const TITLE_MUSIC_TRACK = 12;
+  const STAGE_MUSIC_ROTATIONS = Object.freeze([
+    Object.freeze([1, 1, 1, 2]),
+    Object.freeze([2, 2, 1, 2]),
+    Object.freeze([1, 3, 3, 1]),
+    Object.freeze([2, 3, 2, 3]),
+    Object.freeze([3, 1, 2, 3]),
+  ]);
+  const BOSS_MUSIC_TRACKS = Object.freeze({
+    breaker: 4,
+    hunter: 5,
+    oracle: 6,
+    revenant: 7,
+    proxy: 6,
+    warden: 9,
+    furnace: 8,
+    weaver: 10,
+    censor: 8,
+    echo: 11,
+  });
+  const musicTrackPath = (trackNumber) => `music-track-${String(trackNumber).padStart(2, "0")}.mp3?v=${GAME_VERSION}`;
   const INPUT_TUNING = Object.freeze({
     moveSpeed: 445,
     groundAcceleration: 3600,
@@ -1264,6 +1287,7 @@
     }
 
     wake() {
+      if (typeof music !== "undefined") music.unlock();
       if (!this.enabled) return;
       try {
         if (!this.context) this.context = new (window.AudioContext || window.webkitAudioContext)();
@@ -1273,9 +1297,9 @@
       }
     }
 
-    tone(frequency, duration, type = "square", volume = 0.035, slide = 1) {
+    tone(frequency, duration, type = "square", volume = 0.035, slide = 1, delay = 0) {
       if (!this.context || !this.enabled) return;
-      const now = this.context.currentTime;
+      const now = this.context.currentTime + Math.max(0, delay);
       const oscillator = this.context.createOscillator();
       const gain = this.context.createGain();
       oscillator.type = type;
@@ -1288,14 +1312,66 @@
       oscillator.stop(now + duration);
     }
 
+    noise(duration, volume, frequency, filterType = "lowpass", delay = 0, q = 0.8) {
+      if (!this.context || !this.enabled) return;
+      const now = this.context.currentTime + Math.max(0, delay);
+      const frameCount = Math.max(1, Math.floor(this.context.sampleRate * duration));
+      const buffer = this.context.createBuffer(1, frameCount, this.context.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let index = 0; index < frameCount; index += 1) {
+        const life = 1 - index / frameCount;
+        data[index] = (Math.random() * 2 - 1) * (0.35 + life * 0.65);
+      }
+      const source = this.context.createBufferSource();
+      const filter = this.context.createBiquadFilter();
+      const gain = this.context.createGain();
+      source.buffer = buffer;
+      filter.type = filterType;
+      filter.frequency.setValueAtTime(frequency, now);
+      filter.Q.setValueAtTime(q, now);
+      gain.gain.setValueAtTime(Math.max(0.0001, volume), now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      source.connect(filter).connect(gain).connect(this.context.destination);
+      source.start(now);
+      source.stop(now + duration + 0.01);
+    }
+
     attack() {
       this.tone(260, 0.09, "sawtooth", 0.045, 2.4);
       this.tone(110, 0.13, "square", 0.025, 0.55);
     }
 
     shotgun(charged = false) {
-      this.tone(charged ? 72 : 92, charged ? 0.28 : 0.2, "sawtooth", charged ? 0.09 : 0.065, 0.24);
-      this.tone(charged ? 680 : 520, 0.055, "square", 0.035, 0.38);
+      this.noise(charged ? 0.19 : 0.135, charged ? 0.066 : 0.052, charged ? 1900 : 2350, "lowpass", 0, 0.72);
+      this.tone(charged ? 68 : 88, charged ? 0.34 : 0.24, "sine", charged ? 0.078 : 0.06, charged ? 0.27 : 0.34);
+      this.tone(charged ? 142 : 176, charged ? 0.17 : 0.12, "triangle", charged ? 0.043 : 0.032, 0.42);
+      this.tone(charged ? 1180 : 1480, 0.035, "square", 0.014, 0.64, 0.052);
+      this.tone(charged ? 2640 : 3160, 0.045, "triangle", 0.009, 0.58, 0.105);
+    }
+
+    jump(kind = "ground") {
+      if (kind === "double") {
+        this.noise(0.085, 0.018, 1850, "highpass", 0, 0.62);
+        this.tone(235, 0.14, "sine", 0.025, 2.45);
+        this.tone(430, 0.09, "triangle", 0.014, 1.55, 0.025);
+        return;
+      }
+      if (kind === "wall") {
+        this.noise(0.075, 0.021, 980, "bandpass", 0, 1.15);
+        this.tone(175, 0.115, "triangle", 0.024, 1.82);
+        this.tone(360, 0.055, "sine", 0.011, 1.28, 0.018);
+        return;
+      }
+      this.noise(0.055, 0.014, 620, "highpass", 0, 0.5);
+      this.tone(148, 0.12, "triangle", 0.022, 1.95);
+      this.tone(285, 0.07, "sine", 0.012, 1.42, 0.018);
+    }
+
+    land(impactVelocity = 0) {
+      const strength = clamp((impactVelocity - 250) / 650, 0, 1);
+      if (strength <= 0) return;
+      this.noise(0.07 + strength * 0.045, 0.009 + strength * 0.016, 480, "lowpass", 0, 0.65);
+      this.tone(86 - strength * 18, 0.09 + strength * 0.06, "sine", 0.014 + strength * 0.018, 0.48);
     }
 
     hit() {
@@ -1385,6 +1461,102 @@
   }
 
   const sound = new Sound();
+
+  class MusicDirector {
+    constructor() {
+      this.enabled = typeof window.Audio === "function";
+      this.unlocked = false;
+      this.channels = [];
+      this.activePath = "";
+      this.activeVolume = 0;
+      this.fadeSeconds = 1.15;
+    }
+
+    unlock() {
+      if (!this.enabled) return;
+      this.unlocked = true;
+      for (const channel of this.channels) channel.audio.play().catch(() => {});
+    }
+
+    resolveState() {
+      if (game.mode === "menu" || game.mode === "won") {
+        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.2 : 0.27, role: "title" };
+      }
+      const zone = zones[clamp(game.zone, 0, zones.length - 1)];
+      const stageIndex = clamp(zone?.stageIndex ?? game.stage, 0, stages.length - 1);
+      const boss = enemies.find((enemy) => (
+        enemy.alive
+        && enemy.type === "boss"
+        && enemy.homeZoneIndex === game.zone
+      ));
+      if (boss && (boss.combatStarted || game.adminMode)) {
+        const bossTrack = BOSS_MUSIC_TRACKS[boss.bossKind] || 8;
+        return { path: musicTrackPath(bossTrack), volume: 0.34, role: `boss-${boss.bossKind}` };
+      }
+      const section = getStageSection(zone?.localIndex || 0);
+      const stageTrack = STAGE_MUSIC_ROTATIONS[stageIndex]?.[section] || 1;
+      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.16 : 0.235, role: `stage-${stageIndex + 1}-${section + 1}` };
+    }
+
+    switchTo(state) {
+      this.activePath = state.path;
+      this.activeVolume = state.volume;
+      for (const channel of this.channels) channel.target = 0;
+      let channel = this.channels.find((candidate) => candidate.path === state.path);
+      if (!channel) {
+        const audio = new window.Audio();
+        audio.src = state.path;
+        audio.loop = true;
+        audio.preload = "metadata";
+        audio.volume = 0;
+        audio.setAttribute?.("playsinline", "");
+        channel = {
+          audio,
+          path: state.path,
+          role: state.role,
+          volume: 0,
+          target: state.volume,
+          fadeFrom: 0,
+          fadeTarget: state.volume,
+          fadeElapsed: 0,
+        };
+        this.channels.push(channel);
+      }
+      channel.role = state.role;
+      channel.target = state.volume;
+      if (this.unlocked) channel.audio.play().catch(() => {});
+    }
+
+    update(dt) {
+      if (!this.enabled) return;
+      const state = this.resolveState();
+      if (state.path !== this.activePath) this.switchTo(state);
+      else this.activeVolume = state.volume;
+      const duck = game.mode === "paused" ? 0.18 : 1;
+      for (let index = this.channels.length - 1; index >= 0; index -= 1) {
+        const channel = this.channels[index];
+        const desired = channel.path === this.activePath ? this.activeVolume * duck : 0;
+        channel.target = desired;
+        if (Math.abs(desired - channel.fadeTarget) > 0.0005) {
+          channel.fadeFrom = channel.volume;
+          channel.fadeTarget = desired;
+          channel.fadeElapsed = 0;
+        }
+        channel.fadeElapsed = Math.min(this.fadeSeconds, channel.fadeElapsed + dt);
+        const fadeT = clamp(channel.fadeElapsed / this.fadeSeconds, 0, 1);
+        const easedFade = fadeT * fadeT * (3 - 2 * fadeT);
+        channel.volume = channel.fadeFrom + (channel.fadeTarget - channel.fadeFrom) * easedFade;
+        channel.audio.volume = clamp(channel.volume, 0, 0.42);
+        if (channel.path !== this.activePath && channel.volume <= 0.001) {
+          channel.audio.pause();
+          channel.audio.removeAttribute?.("src");
+          this.channels.splice(index, 1);
+        }
+      }
+    }
+  }
+
+  const music = new MusicDirector();
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -2323,7 +2495,7 @@
     return {
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
-      gameVersion: "3.6.6",
+      gameVersion: GAME_VERSION,
       published: true,
       revision: `admin-${Date.now().toString(36)}`,
       exportedAt,
@@ -7490,7 +7662,7 @@
       player.jumpBuffer = 0;
       player.squash = -0.13;
       spawnParticles(player.x + (player.wallLeft ? 0 : player.w), player.y + player.h / 2, palette.cyan, 10, 220, 0.35, 360);
-      sound.tone(230, 0.1, "square", 0.025, 1.45);
+      sound.jump("wall");
     } else if (player.jumpBuffer > 0 && player.coyote > 0) {
       markTutorialSignal("groundJump");
       player.vy = -715;
@@ -7500,7 +7672,7 @@
       player.jumpBuffer = 0;
       player.squash = -0.16;
       spawnParticles(player.x + player.w / 2, player.y + player.h, "#a8d8df", 7, 130, 0.28, 300);
-      sound.tone(190, 0.1, "square", 0.025, 1.7);
+      sound.jump("ground");
     } else if (player.jumpBuffer > 0 && !player.grounded && player.airJumpAvailable) {
       markTutorialSignal("doubleJump");
       player.vy = -675;
@@ -7509,7 +7681,7 @@
       player.jumpBuffer = 0;
       player.squash = -0.12;
       spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 13, 240, 0.4, 260);
-      sound.tone(260, 0.12, "square", 0.03, 1.65);
+      sound.jump("double");
     }
 
     const effectiveLeft = game.controlsReversed ? right : left;
@@ -7533,6 +7705,7 @@
         player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
         game.shake = Math.max(game.shake, Math.min(3.5, impactVelocity / 240));
         spawnParticles(player.x + player.w / 2, player.y + player.h, "#8aa7ad", 9, 145, 0.34, 260);
+        sound.land(impactVelocity);
       }
       player.landingImpactArmed = false;
     }
@@ -14004,6 +14177,7 @@
     const rawDt = Math.min((now - previousTime) / 1000, 0.033);
     previousTime = now;
     update(rawDt);
+    music.update(rawDt);
     render();
     requestAnimationFrame(frame);
   }
@@ -14562,7 +14736,7 @@
     render();
   };
   window.__MOONLIT_ECHO_DIAGNOSTICS__ = () => ({
-    version: "3.6.6",
+    version: GAME_VERSION,
     worldWidth: WORLD_W,
     progressiveZoneWidths: true,
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -14867,6 +15041,17 @@
     proceduralBeamChargeSfx: true,
     proceduralBeamFireSfx: true,
     proceduralFlaskShatterSfx: true,
+    musicDirectorEnabled: true,
+    musicTrackCount: MUSIC_TRACK_COUNT,
+    titleMusicTrack: TITLE_MUSIC_TRACK,
+    stageMusicRotations: STAGE_MUSIC_ROTATIONS.map((rotation) => [...rotation]),
+    bossMusicTracks: { ...BOSS_MUSIC_TRACKS },
+    musicCrossfadeSeconds: music.fadeSeconds,
+    musicLazyLoad: true,
+    musicGestureUnlock: true,
+    layeredJumpSfx: true,
+    layeredShotgunSfx: true,
+    landingImpactSfx: true,
     storyStageContext: true,
     storyQueueContext: true,
     documentStorySource: "월하잔향 (1).hwpx",
@@ -14876,7 +15061,7 @@
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
   });
   Object.assign(document.documentElement.dataset, {
-    gameVersion: "3.6.6",
+    gameVersion: GAME_VERSION,
     worldWidth: String(WORLD_W),
     progressiveZoneWidths: "true",
     terrainGeneration: "vertical-ascent-routes-v2.8.0",
@@ -15158,6 +15343,17 @@
     proceduralBeamChargeSfx: "true",
     proceduralBeamFireSfx: "true",
     proceduralFlaskShatterSfx: "true",
+    musicDirectorEnabled: "true",
+    musicTrackCount: String(MUSIC_TRACK_COUNT),
+    titleMusicTrack: String(TITLE_MUSIC_TRACK),
+    stageMusicRotations: STAGE_MUSIC_ROTATIONS.map((rotation) => rotation.join("-")).join("|"),
+    bossMusicTracks: Object.entries(BOSS_MUSIC_TRACKS).map(([kind, track]) => `${kind}:${track}`).join(","),
+    musicCrossfadeSeconds: String(music.fadeSeconds),
+    musicLazyLoad: "true",
+    musicGestureUnlock: "true",
+    layeredJumpSfx: "true",
+    layeredShotgunSfx: "true",
+    landingImpactSfx: "true",
     storyStageContext: "true",
     storyQueueContext: "true",
     documentStorySource: "월하잔향.hwpx",
