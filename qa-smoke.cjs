@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.11") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.12") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -99,16 +99,16 @@ if (!diagnostics.layeredJumpSfx || !diagnostics.layeredShotgunSfx || !diagnostic
 if (!diagnostics.pauseVolumeControls || !diagnostics.persistedAudioSettings || !diagnostics.separateMasterMusicSfxVolumes) {
   throw new Error("pause volume controls or persistent audio settings missing");
 }
-if (!diagnostics.recordedShotgunSfx || !diagnostics.recordedShotgunPumpSfx || !diagnostics.recordedEnemyPistolSfx || !diagnostics.recordedEnemyRifleSfx || diagnostics.recordedFootstepSfxCount !== 6 || !diagnostics.speedAdaptiveFootsteps || !diagnostics.normalizedFootstepSamples) {
-  throw new Error("recorded shotgun or footstep sound set incomplete");
+if (diagnostics.audioPresetVersion !== "3.6.7" || !diagnostics.proceduralShotgunSfx || !diagnostics.proceduralJumpSfx || !diagnostics.proceduralLandingSfx || !diagnostics.proceduralEnemyGunSfx) {
+  throw new Error("v3.6.7 procedural audio preset is incomplete");
 }
-if (!diagnostics.recordedJumpSfx || !diagnostics.bossCannonSfx || !diagnostics.bossCannonForBallisticShots || diagnostics.bossCannonOverlapGuardMs !== 150) {
-  throw new Error("recorded jump or boss cannon sound configuration missing");
+if (diagnostics.recordedShotgunSfx || diagnostics.recordedShotgunPumpSfx || diagnostics.recordedEnemyPistolSfx || diagnostics.recordedEnemyRifleSfx || diagnostics.recordedJumpSfx || diagnostics.bossCannonSfx || diagnostics.bossCannonForBallisticShots || diagnostics.bossCannonOverlapGuardMs !== 0 || diagnostics.recordedFootstepSfxCount !== 0 || diagnostics.speedAdaptiveFootsteps || diagnostics.normalizedFootstepSamples) {
+  throw new Error("post-v3.6.7 recorded SFX are still active");
 }
 if (!diagnostics.bossArenaLocksPlayerBothSides || !diagnostics.bossArenaLocksDuringIntro || !diagnostics.bossArenaUnlocksOnDefeat || !diagnostics.bossArenaLockUsesVisibleLimits || !gameSource.includes("constrainPlayerToActiveBossArena();")) {
   throw new Error("boss arena player containment is incomplete");
 }
-if (diagnostics.musicBaseVolumeReduced || !diagnostics.musicBaseVolumeRestored || diagnostics.stageMusicBaseVolume !== 0.235 || diagnostics.bossMusicBaseVolume !== 0.34 || diagnostics.titleMusicBaseVolume !== 0.27 || diagnostics.storyMusicBaseVolume !== 0.16 || diagnostics.defaultMusicUserVolume !== 1 || diagnostics.audioSettingsRevision !== 3 || !diagnostics.oldDefaultMusicAutoMigrated || !diagnostics.musicGestureCaptureUnlock || !diagnostics.musicPlaybackRetry || !diagnostics.musicVolumeRecoveryMigration) {
+if (diagnostics.musicBaseVolumeReduced || !diagnostics.musicBaseVolumeRestored || diagnostics.stageMusicBaseVolume !== 0.235 || diagnostics.bossMusicBaseVolume !== 0.34 || diagnostics.titleMusicBaseVolume !== 0.27 || diagnostics.storyMusicBaseVolume !== 0.16 || diagnostics.defaultMasterUserVolume !== 1 || diagnostics.defaultMusicUserVolume !== 1 || diagnostics.defaultSfxUserVolume !== 1 || diagnostics.audioSettingsRevision !== 4 || diagnostics.oldDefaultMusicAutoMigrated || !diagnostics.audioPresetAutoMigrated || !diagnostics.musicGestureCaptureUnlock || !diagnostics.musicPlaybackRetry || !diagnostics.musicVolumeRecoveryMigration) {
   throw new Error("initial music volume restoration configuration invalid");
 }
 const recordedSfxFiles = [

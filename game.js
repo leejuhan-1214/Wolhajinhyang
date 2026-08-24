@@ -92,10 +92,12 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.11";
+  const GAME_VERSION = "3.6.12";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
-  const AUDIO_SETTINGS_REVISION = 3;
-  const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 1, sfx: 0.9, muted: false, revision: AUDIO_SETTINGS_REVISION });
+  const AUDIO_SETTINGS_REVISION = 4;
+  const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
+  const AUDIO_PRESET_VERSION = "3.6.7";
+  const USE_RECORDED_SFX = false;
   const MUSIC_TRACK_COUNT = 12;
   const TITLE_MUSIC_TRACK = 12;
   const STAGE_MUSIC_ROTATIONS = Object.freeze([
@@ -1314,10 +1316,15 @@
     try {
       const raw = window.localStorage?.getItem(AUDIO_SETTINGS_KEY);
       const parsed = raw ? JSON.parse(raw) : DEFAULT_AUDIO_SETTINGS;
-      const needsBgmRecovery = Number(parsed?.revision || 0) < AUDIO_SETTINGS_REVISION;
-      if (needsBgmRecovery) parsed.music = 1;
+      const needsPresetRecovery = Number(parsed?.revision || 0) < AUDIO_SETTINGS_REVISION;
+      if (needsPresetRecovery) {
+        parsed.master = 1;
+        parsed.music = 1;
+        parsed.sfx = 1;
+        parsed.muted = false;
+      }
       const normalized = normalizeAudioSettings(parsed);
-      if (needsBgmRecovery) window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(normalized));
+      if (needsPresetRecovery) window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(normalized));
       return normalized;
     } catch {
       return normalizeAudioSettings(DEFAULT_AUDIO_SETTINGS);
@@ -1371,7 +1378,7 @@
 
     wake() {
       if (typeof music !== "undefined") music.unlock();
-      if (typeof recordedSfx !== "undefined") recordedSfx.unlock();
+      if (USE_RECORDED_SFX && typeof recordedSfx !== "undefined") recordedSfx.unlock();
       if (!this.enabled) return;
       try {
         if (!this.context) {
@@ -1442,7 +1449,7 @@
     }
 
     shotgun(charged = false) {
-      const recorded = typeof recordedSfx !== "undefined" && recordedSfx.shotgun(charged);
+      const recorded = USE_RECORDED_SFX && typeof recordedSfx !== "undefined" && recordedSfx.shotgun(charged);
       if (recorded) {
         this.tone(charged ? 54 : 68, charged ? 0.3 : 0.2, "sine", charged ? 0.025 : 0.016, charged ? 0.32 : 0.42);
         return;
@@ -1450,10 +1457,12 @@
       this.noise(charged ? 0.19 : 0.135, charged ? 0.066 : 0.052, charged ? 1900 : 2350, "lowpass", 0, 0.72);
       this.tone(charged ? 68 : 88, charged ? 0.34 : 0.24, "sine", charged ? 0.078 : 0.06, charged ? 0.27 : 0.34);
       this.tone(charged ? 142 : 176, charged ? 0.17 : 0.12, "triangle", charged ? 0.043 : 0.032, 0.42);
+      this.tone(charged ? 1180 : 1480, 0.035, "square", 0.014, 0.64, 0.052);
+      this.tone(charged ? 2640 : 3160, 0.045, "triangle", 0.009, 0.58, 0.105);
     }
 
     jump(kind = "ground") {
-      const recorded = typeof recordedSfx !== "undefined" && recordedSfx.jump(kind);
+      const recorded = USE_RECORDED_SFX && typeof recordedSfx !== "undefined" && recordedSfx.jump(kind);
       if (recorded) {
         if (kind === "double") {
           this.noise(0.075, 0.009, 1950, "highpass", 0, 0.55);
@@ -1485,7 +1494,7 @@
     land(impactVelocity = 0) {
       const strength = clamp((impactVelocity - 250) / 650, 0, 1);
       if (strength <= 0) return;
-      if (typeof recordedSfx !== "undefined") recordedSfx.land(strength, game.stage);
+      if (USE_RECORDED_SFX && typeof recordedSfx !== "undefined") recordedSfx.land(strength, game.stage);
       this.noise(0.07 + strength * 0.045, 0.009 + strength * 0.016, 480, "lowpass", 0, 0.65);
       this.tone(86 - strength * 18, 0.09 + strength * 0.06, "sine", 0.014 + strength * 0.018, 0.48);
     }
@@ -6588,7 +6597,7 @@
               ? palette.red
               : palette.amber,
     });
-    const recordedGunshot = recordedSfx.gunshot(kind, enemy.type === "boss");
+    const recordedGunshot = USE_RECORDED_SFX && recordedSfx.gunshot(kind, enemy.type === "boss");
     if (!recordedGunshot) sound.tone(enemy.type === "boss" ? 130 : kind === "machinegun" ? 165 : 210, kind === "machinegun" ? 0.045 : 0.08, "square", 0.018, 0.65);
   }
 
@@ -6629,7 +6638,7 @@
     }
     enemy.turretRecoil = 0.2;
     spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
-    if (!recordedSfx.gunshot("turret-row", false)) sound.tone(92, 0.16, "square", 0.052, 0.48);
+    if (!USE_RECORDED_SFX || !recordedSfx.gunshot("turret-row", false)) sound.tone(92, 0.16, "square", 0.052, 0.48);
   }
 
   function fireFurnaceRedBurst(enemy, target, count = 5, spreadStep = 0.055, baseSpeed = 430) {
@@ -8025,7 +8034,7 @@
       player.stepTimer = 0.12 + 48 / Math.abs(player.vx);
       const heelX = player.x + player.w / 2 - player.facing * 10;
       spawnParticles(heelX, player.y + player.h - 2, "#5f7b82", 3, 72, 0.22, 170);
-      recordedSfx.footstep(Math.abs(player.vx), game.stage);
+      if (USE_RECORDED_SFX) recordedSfx.footstep(Math.abs(player.vx), game.stage);
     }
     }
 
@@ -15438,27 +15447,35 @@
     bossMusicBaseVolume: 0.34,
     titleMusicBaseVolume: 0.27,
     storyMusicBaseVolume: 0.16,
+    audioPresetVersion: AUDIO_PRESET_VERSION,
+    defaultMasterUserVolume: DEFAULT_AUDIO_SETTINGS.master,
     defaultMusicUserVolume: DEFAULT_AUDIO_SETTINGS.music,
+    defaultSfxUserVolume: DEFAULT_AUDIO_SETTINGS.sfx,
     audioSettingsRevision: AUDIO_SETTINGS_REVISION,
-    oldDefaultMusicAutoMigrated: true,
+    oldDefaultMusicAutoMigrated: false,
+    audioPresetAutoMigrated: true,
     pauseVolumeControls: true,
     persistedAudioSettings: true,
     separateMasterMusicSfxVolumes: true,
-    recordedShotgunSfx: true,
-    recordedShotgunPumpSfx: true,
-    recordedEnemyPistolSfx: true,
-    recordedEnemyRifleSfx: true,
-    recordedJumpSfx: true,
-    bossCannonSfx: true,
-    bossCannonForBallisticShots: true,
-    bossCannonOverlapGuardMs: 150,
+    proceduralShotgunSfx: true,
+    proceduralJumpSfx: true,
+    proceduralLandingSfx: true,
+    proceduralEnemyGunSfx: true,
+    recordedShotgunSfx: USE_RECORDED_SFX,
+    recordedShotgunPumpSfx: USE_RECORDED_SFX,
+    recordedEnemyPistolSfx: USE_RECORDED_SFX,
+    recordedEnemyRifleSfx: USE_RECORDED_SFX,
+    recordedJumpSfx: USE_RECORDED_SFX,
+    bossCannonSfx: USE_RECORDED_SFX,
+    bossCannonForBallisticShots: USE_RECORDED_SFX,
+    bossCannonOverlapGuardMs: USE_RECORDED_SFX ? 150 : 0,
     bossArenaLocksPlayerBothSides: true,
     bossArenaLocksDuringIntro: true,
     bossArenaUnlocksOnDefeat: true,
     bossArenaLockUsesVisibleLimits: true,
-    recordedFootstepSfxCount: RECORDED_SFX_PATHS.footsteps.length,
-    speedAdaptiveFootsteps: true,
-    normalizedFootstepSamples: true,
+    recordedFootstepSfxCount: USE_RECORDED_SFX ? RECORDED_SFX_PATHS.footsteps.length : 0,
+    speedAdaptiveFootsteps: USE_RECORDED_SFX,
+    normalizedFootstepSamples: USE_RECORDED_SFX,
     layeredJumpSfx: true,
     layeredShotgunSfx: true,
     landingImpactSfx: true,
@@ -15772,27 +15789,35 @@
     bossMusicBaseVolume: "0.34",
     titleMusicBaseVolume: "0.27",
     storyMusicBaseVolume: "0.16",
+    audioPresetVersion: AUDIO_PRESET_VERSION,
+    defaultMasterUserVolume: String(DEFAULT_AUDIO_SETTINGS.master),
     defaultMusicUserVolume: String(DEFAULT_AUDIO_SETTINGS.music),
+    defaultSfxUserVolume: String(DEFAULT_AUDIO_SETTINGS.sfx),
     audioSettingsRevision: String(AUDIO_SETTINGS_REVISION),
-    oldDefaultMusicAutoMigrated: "true",
+    oldDefaultMusicAutoMigrated: "false",
+    audioPresetAutoMigrated: "true",
     pauseVolumeControls: "true",
     persistedAudioSettings: "true",
     separateMasterMusicSfxVolumes: "true",
-    recordedShotgunSfx: "true",
-    recordedShotgunPumpSfx: "true",
-    recordedEnemyPistolSfx: "true",
-    recordedEnemyRifleSfx: "true",
-    recordedJumpSfx: "true",
-    bossCannonSfx: "true",
-    bossCannonForBallisticShots: "true",
-    bossCannonOverlapGuardMs: "150",
+    proceduralShotgunSfx: "true",
+    proceduralJumpSfx: "true",
+    proceduralLandingSfx: "true",
+    proceduralEnemyGunSfx: "true",
+    recordedShotgunSfx: String(USE_RECORDED_SFX),
+    recordedShotgunPumpSfx: String(USE_RECORDED_SFX),
+    recordedEnemyPistolSfx: String(USE_RECORDED_SFX),
+    recordedEnemyRifleSfx: String(USE_RECORDED_SFX),
+    recordedJumpSfx: String(USE_RECORDED_SFX),
+    bossCannonSfx: String(USE_RECORDED_SFX),
+    bossCannonForBallisticShots: String(USE_RECORDED_SFX),
+    bossCannonOverlapGuardMs: USE_RECORDED_SFX ? "150" : "0",
     bossArenaLocksPlayerBothSides: "true",
     bossArenaLocksDuringIntro: "true",
     bossArenaUnlocksOnDefeat: "true",
     bossArenaLockUsesVisibleLimits: "true",
-    recordedFootstepSfxCount: String(RECORDED_SFX_PATHS.footsteps.length),
-    speedAdaptiveFootsteps: "true",
-    normalizedFootstepSamples: "true",
+    recordedFootstepSfxCount: USE_RECORDED_SFX ? String(RECORDED_SFX_PATHS.footsteps.length) : "0",
+    speedAdaptiveFootsteps: String(USE_RECORDED_SFX),
+    normalizedFootstepSamples: String(USE_RECORDED_SFX),
     layeredJumpSfx: "true",
     layeredShotgunSfx: "true",
     landingImpactSfx: "true",
