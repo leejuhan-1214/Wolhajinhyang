@@ -92,12 +92,12 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.12";
+  const GAME_VERSION = "3.6.13";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 4;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
-  const AUDIO_PRESET_VERSION = "3.6.7";
-  const USE_RECORDED_SFX = false;
+  const AUDIO_PRESET_VERSION = "3.6.7-bgm+recorded-sfx";
+  const USE_RECORDED_SFX = true;
   const MUSIC_TRACK_COUNT = 12;
   const TITLE_MUSIC_TRACK = 12;
   const STAGE_MUSIC_ROTATIONS = Object.freeze([
@@ -1595,6 +1595,8 @@
       this.active = new Set();
       this.stepSerial = 0;
       this.lastGunshotAt = 0;
+      this.successfulPlayCount = 0;
+      this.lastPlayedPath = "";
     }
 
     allPaths() {
@@ -1636,7 +1638,12 @@
         const cleanup = () => this.active.delete(audio);
         audio.addEventListener?.("ended", cleanup, { once: true });
         audio.addEventListener?.("error", cleanup, { once: true });
-        audio.play().catch(cleanup);
+        audio.play().then(() => {
+          this.successfulPlayCount += 1;
+          this.lastPlayedPath = path.split("?")[0];
+          document.documentElement.dataset.recordedSfxPlaybackCount = String(this.successfulPlayCount);
+          document.documentElement.dataset.recordedSfxLastPath = this.lastPlayedPath;
+        }).catch(cleanup);
       };
       if (delay > 0) setTimeout(start, delay * 1000);
       else start();
@@ -1665,23 +1672,23 @@
       this.lastGunshotAt = now;
       if (boss) {
         return this.play(RECORDED_SFX_PATHS.bossCannon, {
-          volume: 0.43,
+          volume: 0.58,
           rate: 0.91 + Math.random() * 0.055,
         });
       }
       const heavy = boss || ["turret-row", "missile"].includes(kind);
       return this.play(heavy ? RECORDED_SFX_PATHS.rifle : RECORDED_SFX_PATHS.pistol, {
-        volume: heavy ? 0.3 : kind === "machinegun" ? 0.15 : 0.21,
+        volume: heavy ? 0.46 : kind === "machinegun" ? 0.3 : 0.38,
         rate: heavy ? 0.88 + Math.random() * 0.055 : kind === "machinegun" ? 1.12 : 0.98 + Math.random() * 0.065,
       });
     }
 
     jump(kind = "ground") {
       const profile = kind === "double"
-        ? { volume: 0.19, rate: 1.13 }
+        ? { volume: 0.42, rate: 1.13 }
         : kind === "wall"
-          ? { volume: 0.17, rate: 1.04 }
-          : { volume: 0.23, rate: 0.96 };
+          ? { volume: 0.38, rate: 1.04 }
+          : { volume: 0.48, rate: 0.96 };
       return this.play(RECORDED_SFX_PATHS.jump, profile);
     }
 
@@ -1692,7 +1699,7 @@
       this.stepSerial += 1;
       const stagePitch = [0.93, 0.98, 1.04, 1, 0.89][clamp(stageIndex, 0, 4)];
       return this.play(RECORDED_SFX_PATHS.footsteps[sampleIndex], {
-        volume: running ? 0.24 : 0.17,
+        volume: running ? 0.42 : 0.32,
         rate: stagePitch * (running ? 1.08 : 0.96) * (0.98 + Math.random() * 0.045),
       });
     }
@@ -1700,7 +1707,7 @@
     land(strength = 0.5, stageIndex = 0) {
       const sampleIndex = (4 + stageIndex) % RECORDED_SFX_PATHS.footsteps.length;
       return this.play(RECORDED_SFX_PATHS.footsteps[sampleIndex], {
-        volume: 0.18 + clamp(strength, 0, 1) * 0.13,
+        volume: 0.3 + clamp(strength, 0, 1) * 0.18,
         rate: 0.78 + stageIndex * 0.025,
       });
     }
@@ -15476,6 +15483,11 @@
     recordedFootstepSfxCount: USE_RECORDED_SFX ? RECORDED_SFX_PATHS.footsteps.length : 0,
     speedAdaptiveFootsteps: USE_RECORDED_SFX,
     normalizedFootstepSamples: USE_RECORDED_SFX,
+    recordedSfxPlaybackCount: recordedSfx.successfulPlayCount,
+    recordedSfxLastPath: recordedSfx.lastPlayedPath,
+    recordedGunVolumeBoost: true,
+    recordedFootstepVolumeBoost: true,
+    recordedJumpVolumeBoost: true,
     layeredJumpSfx: true,
     layeredShotgunSfx: true,
     landingImpactSfx: true,
@@ -15818,6 +15830,11 @@
     recordedFootstepSfxCount: USE_RECORDED_SFX ? String(RECORDED_SFX_PATHS.footsteps.length) : "0",
     speedAdaptiveFootsteps: String(USE_RECORDED_SFX),
     normalizedFootstepSamples: String(USE_RECORDED_SFX),
+    recordedSfxPlaybackCount: String(recordedSfx.successfulPlayCount),
+    recordedSfxLastPath: recordedSfx.lastPlayedPath,
+    recordedGunVolumeBoost: "true",
+    recordedFootstepVolumeBoost: "true",
+    recordedJumpVolumeBoost: "true",
     layeredJumpSfx: "true",
     layeredShotgunSfx: "true",
     landingImpactSfx: "true",
