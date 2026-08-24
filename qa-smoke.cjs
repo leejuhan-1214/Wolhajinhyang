@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.16") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.17") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -114,7 +114,7 @@ if (!diagnostics.bossArenaLocksPlayerBothSides || !diagnostics.bossArenaLocksDur
 if (!diagnostics.bossArenaWideEngagementRange || !diagnostics.bossCornerRetreatRecovery || diagnostics.bossCornerIdleRecoverySeconds !== 1.4 || !diagnostics.bossTransientActionRelease || !gameSource.includes("distance < bossEngagementRange")) {
   throw new Error("boss corner attack recovery is incomplete");
 }
-if (diagnostics.musicBaseVolumeReduced || !diagnostics.musicBaseVolumeRestored || diagnostics.stageMusicBaseVolume !== 0.235 || diagnostics.bossMusicBaseVolume !== 0.34 || diagnostics.titleMusicBaseVolume !== 0.27 || diagnostics.storyMusicBaseVolume !== 0.16 || diagnostics.defaultMasterUserVolume !== 1 || diagnostics.defaultMusicUserVolume !== 1 || diagnostics.defaultSfxUserVolume !== 1 || diagnostics.audioSettingsRevision !== 4 || diagnostics.oldDefaultMusicAutoMigrated || !diagnostics.audioPresetAutoMigrated || !diagnostics.musicGestureCaptureUnlock || !diagnostics.musicPlaybackRetry || !diagnostics.musicVolumeRecoveryMigration) {
+if (diagnostics.musicBaseVolumeReduced || !diagnostics.musicBaseVolumeRestored || diagnostics.stageMusicBaseVolume !== 0.28 || diagnostics.bossMusicBaseVolume !== 0.4 || diagnostics.titleMusicBaseVolume !== 0.32 || diagnostics.storyMusicBaseVolume !== 0.19 || diagnostics.defaultMasterUserVolume !== 1 || diagnostics.defaultMusicUserVolume !== 1 || diagnostics.defaultSfxUserVolume !== 1 || diagnostics.audioSettingsRevision !== 5 || diagnostics.oldDefaultMusicAutoMigrated || !diagnostics.audioPresetAutoMigrated || !diagnostics.musicGestureCaptureUnlock || !diagnostics.musicPlaybackRetry || !diagnostics.musicVolumeRecoveryMigration) {
   throw new Error("initial music volume restoration configuration invalid");
 }
 const recordedSfxFiles = [
@@ -284,7 +284,7 @@ if (!diagnostics.runnerSweptRushHitbox || diagnostics.runnerRushLeadingReach !==
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {
   throw new Error("act 3 triple-projectile burst parry is missing");
 }
-if (!diagnostics.flameSwordEnabled || diagnostics.flameSwordAct !== 4 || diagnostics.flameSwordBurnDamage !== 0.2 || !diagnostics.stageAbilityAnnouncements) {
+if (!diagnostics.flameSwordEnabled || diagnostics.flameSwordAct !== 4 || diagnostics.flameSwordBurnDamage !== 0.3 || !diagnostics.stageAbilityAnnouncements) {
   throw new Error("act 4 flame sword progression is missing");
 }
 if (diagnostics.gongmunSwordWaveOrientation !== "velocity-perpendicular-crescent") {

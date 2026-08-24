@@ -93,9 +93,9 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.16";
+  const GAME_VERSION = "3.6.17";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
-  const AUDIO_SETTINGS_REVISION = 4;
+  const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
   const AUDIO_PRESET_VERSION = "3.6.7-bgm+recorded-sfx";
   const USE_RECORDED_SFX = true;
@@ -161,7 +161,7 @@
   const BURST_PARRY_PROJECTILE_COUNT = 3;
   const FLAME_SWORD_BURN_SECONDS = 2.4;
   const FLAME_SWORD_BURN_INTERVAL = 0.48;
-  const FLAME_SWORD_BURN_DAMAGE = 0.2;
+  const FLAME_SWORD_BURN_DAMAGE = 0.3;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0;
@@ -1747,7 +1747,7 @@
 
     resolveState() {
       if (game.mode === "menu" || game.mode === "won") {
-        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.2 : 0.27, role: "title" };
+        return { path: musicTrackPath(TITLE_MUSIC_TRACK), volume: game.mode === "won" ? 0.24 : 0.32, role: "title" };
       }
       const zone = zones[clamp(game.zone, 0, zones.length - 1)];
       const stageIndex = clamp(zone?.stageIndex ?? game.stage, 0, stages.length - 1);
@@ -1758,11 +1758,11 @@
       ));
       if (boss && (boss.combatStarted || game.adminMode)) {
         const bossTrack = BOSS_MUSIC_TRACKS[boss.bossKind] || 8;
-        return { path: musicTrackPath(bossTrack), volume: 0.34, role: `boss-${boss.bossKind}` };
+        return { path: musicTrackPath(bossTrack), volume: 0.4, role: `boss-${boss.bossKind}` };
       }
       const section = getStageSection(zone?.localIndex || 0);
       const stageTrack = STAGE_MUSIC_ROTATIONS[stageIndex]?.[section] || 1;
-      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.16 : 0.235, role: `stage-${stageIndex + 1}-${section + 1}` };
+      return { path: musicTrackPath(stageTrack), volume: game.cutscene || game.story ? 0.19 : 0.28, role: `stage-${stageIndex + 1}-${section + 1}` };
     }
 
     switchTo(state) {
@@ -15121,6 +15121,7 @@
   window.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true, passive: true });
   window.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true, passive: true });
   window.addEventListener("keydown", unlockGameAudioFromGesture, { capture: true });
+  window.addEventListener("click", unlockGameAudioFromGesture, { capture: true, passive: true });
 
   startButton.addEventListener("click", () => {
     enterMobileFullscreen();
@@ -15528,10 +15529,10 @@
     musicVolumeRecoveryMigration: true,
     musicBaseVolumeReduced: false,
     musicBaseVolumeRestored: true,
-    stageMusicBaseVolume: 0.235,
-    bossMusicBaseVolume: 0.34,
-    titleMusicBaseVolume: 0.27,
-    storyMusicBaseVolume: 0.16,
+    stageMusicBaseVolume: 0.28,
+    bossMusicBaseVolume: 0.4,
+    titleMusicBaseVolume: 0.32,
+    storyMusicBaseVolume: 0.19,
     audioPresetVersion: AUDIO_PRESET_VERSION,
     defaultMasterUserVolume: DEFAULT_AUDIO_SETTINGS.master,
     defaultMusicUserVolume: DEFAULT_AUDIO_SETTINGS.music,
@@ -15887,10 +15888,10 @@
     musicVolumeRecoveryMigration: "true",
     musicBaseVolumeReduced: "false",
     musicBaseVolumeRestored: "true",
-    stageMusicBaseVolume: "0.235",
-    bossMusicBaseVolume: "0.34",
-    titleMusicBaseVolume: "0.27",
-    storyMusicBaseVolume: "0.16",
+    stageMusicBaseVolume: "0.28",
+    bossMusicBaseVolume: "0.4",
+    titleMusicBaseVolume: "0.32",
+    storyMusicBaseVolume: "0.19",
     audioPresetVersion: AUDIO_PRESET_VERSION,
     defaultMasterUserVolume: String(DEFAULT_AUDIO_SETTINGS.master),
     defaultMusicUserVolume: String(DEFAULT_AUDIO_SETTINGS.music),
