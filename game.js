@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.15";
+  const GAME_VERSION = "3.6.16";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 4;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -8638,6 +8638,13 @@
     const echoSpeedFactor = bossKind === "echo" ? 1.12 : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
+    const homeArena = getBossArenaBounds(enemy);
+    const arenaLeft = homeArena.left;
+    const arenaRight = homeArena.right;
+    const arenaWidth = Math.max(1, arenaRight - arenaLeft);
+    // Boss rooms are wider than the old 900px attack gate. Keep the boss engaged
+    // across its own sealed arena so a corner position cannot disable attack decisions.
+    const bossEngagementRange = Math.max(1100, Math.hypot(arenaWidth, 760) + 160);
     enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
     enemy.crisisPatternCooldown = Math.max(0, (enemy.crisisPatternCooldown || 0) - dt);
 
@@ -8651,9 +8658,22 @@
       enemy.pendingRetreatDirection = 0;
     }
 
-    const retreating = (enemy.retreatTimer || 0) > 0;
+    let retreating = (enemy.retreatTimer || 0) > 0;
     if (retreating) {
       enemy.retreatTimer = Math.max(0, enemy.retreatTimer - dt);
+      const pinnedLeft = enemy.x <= arenaLeft + 20;
+      const pinnedRight = enemy.x + enemy.w >= arenaRight - 20;
+      const retreatDirection = enemy.retreatDirection || -enemy.facing || -1;
+      const retreatPointsOutward = (pinnedLeft && retreatDirection < 0) || (pinnedRight && retreatDirection > 0);
+      if (retreatPointsOutward) {
+        enemy.retreatTimer = 0;
+        enemy.pendingRetreatTimer = 0;
+        enemy.pendingRetreatDelay = 0;
+        enemy.pendingRetreatDirection = 0;
+        enemy.retreatDirection = pinnedLeft ? 1 : -1;
+        enemy.cooldown = Math.min(enemy.cooldown, 0.35);
+        retreating = false;
+      }
     }
 
     if (!enemy.halfPhaseTriggered && hpRatio <= 0.5 && enemy.windup <= 0) {
@@ -8779,7 +8799,7 @@
     if (bossKind === "warden") {
       enemy.funnelCooldown = Math.max(0, (enemy.funnelCooldown || 0) - dt);
       const activeFunnels = bullets.filter((bullet) => bullet.kind === "boss-funnel" && bullet.ownerId === enemy.id).length;
-      if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < 980 && activeFunnels === 0) {
+      if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < bossEngagementRange && activeFunnels === 0) {
         launchBossFunnels(enemy, hpRatio < 0.5 ? 5 : 4);
         enemy.cooldown = Math.max(enemy.cooldown, 0.82 * bossCurve.cooldown);
         game.hint = "철각 · 육익 판넬 재전개";
@@ -8818,7 +8838,7 @@
     if (bossKind === "censor") {
       enemy.barrierTimer = Math.max(0, (enemy.barrierTimer || 0) - dt);
       enemy.barrierCooldown = Math.max(0, (enemy.barrierCooldown || 0) - dt);
-      if (enemy.barrierCooldown <= 0 && enemy.barrierTimer <= 0 && distance < 900) {
+      if (enemy.barrierCooldown <= 0 && enemy.barrierTimer <= 0 && distance < bossEngagementRange) {
         enemy.barrierTimer = hpRatio < 0.5 ? 1.35 : 1.05;
         enemy.barrierCooldown = hpRatio < 0.5 ? 4.6 : 5.6;
         spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#b56cff", 30, 390, 0.7, 0);
@@ -8828,7 +8848,7 @@
       }
       enemy.summonCooldown = Math.max(0, (enemy.summonCooldown || 0) - dt);
       const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id).length;
-      if (enemy.summonCooldown <= 0 && distance < 1050 && livingSummons < 4) {
+      if (enemy.summonCooldown <= 0 && distance < bossEngagementRange && livingSummons < 4) {
         const summonPool = ["runner", "gunner", "machinegun", "turret", "mortarTurret", "piercer", "drone", "shield", "mortar"];
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
@@ -8890,9 +8910,6 @@
     } else {
       enemy.vx = moveToward(enemy.vx, 0, 500 * dt);
     }
-    const homeArena = getBossArenaBounds(enemy);
-    const arenaLeft = homeArena.left;
-    const arenaRight = homeArena.right;
     if (kind === "weaver" && !chargingShot) {
       const hoverTarget = enemy.baseY - 185 + Math.sin(enemy.anim * 1.75) * 72;
       const hoverVelocity = clamp((hoverTarget - enemy.y) * 3.1, -330, 330);
@@ -8922,6 +8939,18 @@
     }
     constrainBossToArenaVertical(enemy);
 
+    const atArenaEdge = enemy.x <= arenaLeft + 20 || enemy.x + enemy.w >= arenaRight - 20;
+    if (atArenaEdge && enemy.windup <= 0 && !enemy.bossAction && distance < bossEngagementRange) {
+      enemy.cornerIdleTimer = (enemy.cornerIdleTimer || 0) + dt;
+      if (enemy.cornerIdleTimer >= 1.4) {
+        enemy.cooldown = Math.min(enemy.cooldown, 0);
+        enemy.vx = Math.sign(dx || (enemy.x <= arenaLeft + 20 ? 1 : -1)) * Math.max(90, Math.abs(enemy.vx));
+        enemy.cornerIdleTimer = 0;
+      }
+    } else {
+      enemy.cornerIdleTimer = 0;
+    }
+
     if (
       !retreating
       && hpRatio <= 0.35
@@ -8929,14 +8958,14 @@
       && enemy.cooldown <= 0
       && enemy.windup <= 0
       && !enemy.bossAction
-      && distance < 900
+      && distance < bossEngagementRange
       && startBossCrisisPattern(enemy, dx)
     ) {
       enemy.cooldown = Math.max(0.82, enemy.cooldown * bossCurve.cooldown);
       return;
     }
 
-    if (!retreating && enemy.cooldown <= 0 && distance < 900) {
+    if (!retreating && enemy.cooldown <= 0 && distance < bossEngagementRange) {
       const phaseCount = definition.patterns.length;
       selectBossPatternPhase(enemy, phaseCount, hpRatio, distance);
       const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
@@ -9238,6 +9267,7 @@
 
     if (enemy.windup > 0) {
       const previous = enemy.windup;
+      const releasedAction = enemy.bossAction;
       enemy.windup -= dt;
       if (previous > 0.1 && enemy.windup <= 0.1) {
         if (enemy.bossAction === "slam") {
@@ -9327,6 +9357,9 @@
           enemy.bossAction = null;
         } else if (enemy.bossAction === "chargeShot") {
           releaseBossChargedShot(enemy);
+        }
+        if (enemy.bossAction === releasedAction && releasedAction && releasedAction !== "idle") {
+          enemy.bossAction = null;
         }
         game.shake = Math.max(game.shake, 10 + rank * 2);
       }
@@ -15525,6 +15558,10 @@
     bossArenaLocksDuringIntro: true,
     bossArenaUnlocksOnDefeat: true,
     bossArenaLockUsesVisibleLimits: true,
+    bossArenaWideEngagementRange: true,
+    bossCornerRetreatRecovery: true,
+    bossCornerIdleRecoverySeconds: 1.4,
+    bossTransientActionRelease: true,
     recordedFootstepSfxCount: USE_RECORDED_SFX ? RECORDED_SFX_PATHS.footsteps.length : 0,
     speedAdaptiveFootsteps: USE_RECORDED_SFX,
     normalizedFootstepSamples: USE_RECORDED_SFX,
@@ -15880,6 +15917,10 @@
     bossArenaLocksDuringIntro: "true",
     bossArenaUnlocksOnDefeat: "true",
     bossArenaLockUsesVisibleLimits: "true",
+    bossArenaWideEngagementRange: "true",
+    bossCornerRetreatRecovery: "true",
+    bossCornerIdleRecoverySeconds: "1.4",
+    bossTransientActionRelease: "true",
     recordedFootstepSfxCount: USE_RECORDED_SFX ? String(RECORDED_SFX_PATHS.footsteps.length) : "0",
     speedAdaptiveFootsteps: String(USE_RECORDED_SFX),
     normalizedFootstepSamples: String(USE_RECORDED_SFX),
