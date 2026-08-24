@@ -92,9 +92,9 @@
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.10";
+  const GAME_VERSION = "3.6.11";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
-  const AUDIO_SETTINGS_REVISION = 2;
+  const AUDIO_SETTINGS_REVISION = 3;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 0.85, music: 1, sfx: 0.9, muted: false, revision: AUDIO_SETTINGS_REVISION });
   const MUSIC_TRACK_COUNT = 12;
   const TITLE_MUSIC_TRACK = 12;
@@ -395,7 +395,7 @@
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
-      patterns: ["월광 검기", "중갑 돌진", "삼연 검기", "방패 사격", "십자 참월"],
+      patterns: ["월광 검기", "중갑 돌진", "삼연 검기", "방패 사격", "십자 참월", "월광 마구찌르기"],
     },
     proxy: {
       name: "광기 연구체 · 대역-13",
@@ -410,7 +410,7 @@
     breaker: [0, 2, 1, 3],
     hunter: [0, 2, 3, 1, 4],
     oracle: [0, 3, 1, 2],
-    revenant: [0, 2, 1, 3, 4],
+    revenant: [0, 2, 1, 5, 3, 4],
     proxy: [0, 2, 1, 4, 3],
     warden: [0, 2, 4, 1, 3, 5],
     furnace: [1, 0, 2, 3, 4],
@@ -1314,10 +1314,10 @@
     try {
       const raw = window.localStorage?.getItem(AUDIO_SETTINGS_KEY);
       const parsed = raw ? JSON.parse(raw) : DEFAULT_AUDIO_SETTINGS;
-      const usedOldDefaultMusic = parsed?.revision !== AUDIO_SETTINGS_REVISION && Math.abs(Number(parsed?.music) - 0.52) < 0.005;
-      if (usedOldDefaultMusic) parsed.music = 1;
+      const needsBgmRecovery = Number(parsed?.revision || 0) < AUDIO_SETTINGS_REVISION;
+      if (needsBgmRecovery) parsed.music = 1;
       const normalized = normalizeAudioSettings(parsed);
-      if (usedOldDefaultMusic) window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(normalized));
+      if (needsBgmRecovery) window.localStorage?.setItem(AUDIO_SETTINGS_KEY, JSON.stringify(normalized));
       return normalized;
     } catch {
       return normalizeAudioSettings(DEFAULT_AUDIO_SETTINGS);
@@ -1707,12 +1707,24 @@
       this.activePath = "";
       this.activeVolume = 0;
       this.fadeSeconds = 1.15;
+      this.retryTimer = 0;
     }
 
     unlock() {
       if (!this.enabled) return;
+      const wasUnlocked = this.unlocked;
       this.unlocked = true;
-      for (const channel of this.channels) channel.audio.play().catch(() => {});
+      if (this.channels.length === 0) this.switchTo(this.resolveState());
+      for (const channel of this.channels) {
+        if (!wasUnlocked || channel.audio.paused) this.playChannel(channel);
+      }
+    }
+
+    playChannel(channel) {
+      if (!this.unlocked || !channel?.audio) return;
+      if (!channel.audio.currentSrc && (channel.audio.readyState || 0) === 0) channel.audio.load?.();
+      const attempt = channel.audio.play?.();
+      if (attempt?.catch) attempt.catch(() => { this.retryTimer = 0.2; });
     }
 
     resolveState() {
@@ -1761,11 +1773,12 @@
       }
       channel.role = state.role;
       channel.target = state.volume;
-      if (this.unlocked) channel.audio.play().catch(() => {});
+      if (this.unlocked) this.playChannel(channel);
     }
 
     update(dt) {
       if (!this.enabled) return;
+      this.retryTimer = Math.max(0, this.retryTimer - dt);
       const state = this.resolveState();
       if (state.path !== this.activePath) this.switchTo(state);
       else this.activeVolume = state.volume;
@@ -1785,12 +1798,19 @@
         channel.volume = channel.fadeFrom + (channel.fadeTarget - channel.fadeFrom) * easedFade;
         const userVolume = audioSettings.muted ? 0 : audioSettings.master * audioSettings.music;
         channel.audio.volume = clamp(channel.volume * userVolume, 0, 0.42);
+        if (channel.path === this.activePath && this.unlocked && channel.audio.paused && this.retryTimer <= 0) {
+          this.retryTimer = 0.75;
+          this.playChannel(channel);
+        }
         if (channel.path !== this.activePath && channel.volume <= 0.001) {
           channel.audio.pause();
           channel.audio.removeAttribute?.("src");
           this.channels.splice(index, 1);
         }
       }
+      document.documentElement.dataset.musicUnlocked = String(this.unlocked);
+      document.documentElement.dataset.musicActivePlaying = String(this.channels.some((channel) => channel.path === this.activePath && channel.audio.paused === false));
+      document.documentElement.dataset.musicActiveTrack = this.activePath;
     }
   }
 
@@ -7221,15 +7241,31 @@
     firePointBullet(sourceX, sourceY, target, speed, spread, "revenant-sword-wave", "#f2e6ff");
     const wave = bullets[bullets.length - 1];
     if (wave) {
-      // 검기의 진행 방향은 플레이어를 향하되, 칼날 형상은 세워서 가로 탄처럼 보이지 않게 한다.
+      // 진행 벡터와 칼날 축을 분리한다. 칼날은 비행 방향에 수직인 초승달로 유지된다.
       wave.w = 22 * scale;
       wave.h = 58 * scale;
       wave.x = sourceX - wave.w / 2;
       wave.y = sourceY - wave.h / 2;
+      wave.travelAngle = Math.atan2(wave.vy, wave.vx);
+      wave.bladeAxis = "perpendicular";
       wave.damage = scale > 1.15 ? 2 : 1;
     }
     spawnParticles(sourceX, sourceY, "#d7b7ff", 14, 360, 0.35, 0);
     sound.tone(360, 0.11, "sawtooth", 0.035, 1.7);
+  }
+
+  function beginRevenantThrustBarrage(enemy, dx, hpRatio) {
+    enemy.windup = 0.72;
+    enemy.bossAction = "revenantThrustWindup";
+    enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+    enemy.dashRange = hpRatio < 0.5 ? 640 : 540;
+    enemy.thrustsRemaining = hpRatio < 0.5 ? 7 : 6;
+    enemy.thrustStep = 0;
+    enemy.thrustInterval = 0;
+    enemy.thrustFlashTimer = 0;
+    enemy.vx *= 0.2;
+    spawnParticles(enemy.x + enemy.w / 2 + enemy.dashDirection * 42, enemy.y + enemy.h * 0.42, "#f2e6ff", 20, 260, 0.55, 0);
+    sound.tone(190, 0.42, "sawtooth", 0.026, 2.2);
   }
 
   function throwPotion(enemy, targetX, variant = 0, offset = 0) {
@@ -8777,6 +8813,7 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
+    const revenantThrusting = enemy.bossAction === "revenantThrustBarrage";
     if (retreating) {
       const retreatSpeed = (350 + rank * 24) * bossCurve.mobility;
       enemy.vx = moveToward(enemy.vx, (enemy.retreatDirection || -enemy.facing || -1) * retreatSpeed, 1180 * dt);
@@ -8788,6 +8825,8 @@
           : 1;
       const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor * beamRetreatBoost;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
+    } else if (revenantThrusting) {
+      enemy.vx = moveToward(enemy.vx, (enemy.dashDirection || enemy.facing || 1) * (590 + rank * 28), 1850 * dt);
     } else if (approachAction) {
       const approachSpeed = bossKind === "proxy" ? 430 : bossKind === "echo" ? 610 : 510;
       const stopRange = bossKind === "proxy" ? 105 : 88;
@@ -8919,9 +8958,12 @@
         } else if (enemy.bossPhase === 3) {
           startBossChargedShot(enemy, "revenant-shield-burst", dx, 0.68);
           enemy.cooldown = 2.15 * recovery;
-        } else {
+        } else if (enemy.bossPhase === 4) {
           startBossChargedShot(enemy, "revenant-cross-wave", dx, 0.88);
           enemy.cooldown = 2.15 * recovery;
+        } else {
+          beginRevenantThrustBarrage(enemy, dx, hpRatio);
+          enemy.cooldown = 2.35 * recovery;
         }
       } else if (bossKind === "proxy") {
         if (enemy.mutated) {
@@ -9110,6 +9152,38 @@
       }
     }
 
+    enemy.thrustFlashTimer = Math.max(0, (enemy.thrustFlashTimer || 0) - dt);
+    if (enemy.bossAction === "revenantThrustBarrage" && enemy.thrustsRemaining > 0) {
+      enemy.thrustInterval -= dt;
+      if (enemy.thrustInterval <= 0) {
+        const thrustDx = player.x + player.w / 2 - (enemy.x + enemy.w / 2);
+        const thrustDy = player.y + player.h / 2 - (enemy.y + enemy.h / 2);
+        const direction = Math.sign(thrustDx || enemy.dashDirection || enemy.facing || 1);
+        const finisher = enemy.thrustsRemaining === 1;
+        enemy.facing = direction;
+        enemy.dashDirection = direction;
+        enemy.vx = direction * (finisher ? 790 : 650 + rank * 24);
+        enemy.thrustStep += 1;
+        enemy.thrustFlashTimer = finisher ? 0.16 : 0.105;
+        const bladeX = enemy.x + enemy.w / 2 + direction * (finisher ? 132 : 108);
+        const bladeY = enemy.y + enemy.h * 0.45;
+        if (Math.abs(thrustDx) < (finisher ? 235 : 190) && Math.abs(thrustDy) < 105) {
+          damagePlayer(finisher && rank >= 3 ? 2 : 1, enemy.x + enemy.w / 2);
+        }
+        spawnParticles(bladeX, bladeY, finisher ? "#fff1b8" : "#e7d8ff", finisher ? 30 : 15, finisher ? 560 : 370, 0.3, 0);
+        sound.tone(finisher ? 112 : 240 + enemy.thrustStep * 18, finisher ? 0.18 : 0.075, finisher ? "sawtooth" : "square", finisher ? 0.05 : 0.025, finisher ? 0.5 : 1.8);
+        enemy.thrustsRemaining -= 1;
+        enemy.thrustInterval = finisher ? 0.3 : 0.13;
+        if (enemy.thrustsRemaining <= 0) {
+          enemy.bossAction = null;
+          enemy.vx *= 0.28;
+          enemy.pendingRetreatDelay = 0.18;
+          enemy.pendingRetreatTimer = 0.28;
+          enemy.pendingRetreatDirection = -direction;
+        }
+      }
+    }
+
     if (enemy.windup > 0) {
       const previous = enemy.windup;
       enemy.windup -= dt;
@@ -9153,6 +9227,12 @@
           if (Math.abs(dx) < 185 && Math.abs(player.y - enemy.y) < 110) damagePlayer(1, enemy.x);
           fireRevenantShieldBurst(enemy, { x: player.x + player.w / 2, y: player.y + player.h / 2 }, enemy.shieldOverdrive ? 5 : 3, 0.085, 520);
           enemy.bossAction = null;
+        } else if (enemy.bossAction === "revenantThrustWindup") {
+          enemy.bossAction = "revenantThrustBarrage";
+          enemy.thrustInterval = 0;
+          enemy.vx = 0;
+          game.hint = "공문 · 월광 마구찌르기";
+          game.hintTimer = 1.2;
         } else if (enemy.bossAction === "madDash") {
           enemy.vx = Math.sign(dx || 1) * 500;
           throwPotion(enemy, player.x + player.w / 2, 1, -110);
@@ -10949,7 +11029,7 @@
       ctx.restore();
     } else if (
       enemy.type === "boss"
-      && ["dash", "reflectRush", "shieldRush", "madDash", "echoSlash", "echoCounter", "echoDash", "mutantApproach", "mutantLeap", "mutantSmash"].includes(enemy.bossAction)
+      && ["dash", "reflectRush", "shieldRush", "revenantThrustWindup", "madDash", "echoSlash", "echoCounter", "echoDash", "mutantApproach", "mutantLeap", "mutantSmash"].includes(enemy.bossAction)
     ) {
       const direction = enemy.dashDirection || Math.sign(player.x - enemy.x) || enemy.facing || 1;
       const startX = enemy.x + enemy.w / 2;
@@ -11350,18 +11430,24 @@
       for (let barrel = -1; barrel <= 1; barrel += 1) { ctx.fillStyle = "#d4dde0"; ctx.fillRect(-34, barrel * 7 - 2, 14, 4); }
       ctx.restore();
       const swordPattern = chargingShot && String(enemy.bossShotPattern || "").includes("revenant-") && enemy.bossShotPattern !== "revenant-shield-burst";
-      const swordAngle = swordPattern ? -1.35 + chargeProgress * 1.65 : -0.42 + motion * 0.025;
+      const thrustWindup = enemy.bossAction === "revenantThrustWindup";
+      const thrusting = enemy.bossAction === "revenantThrustBarrage" || (enemy.thrustFlashTimer || 0) > 0;
+      const thrustPulse = clamp((enemy.thrustFlashTimer || 0) / 0.16, 0, 1);
+      const swordAngle = thrusting ? -0.04 + motion * 0.012 : thrustWindup ? 2.65 : swordPattern ? -1.35 + chargeProgress * 1.65 : -0.42 + motion * 0.025;
       limb(14, 30, 28, 43, 9, flash ? "#fff" : "#39444c");
-      ctx.save(); ctx.translate(29, 43); ctx.rotate(swordAngle);
+      ctx.save(); ctx.translate(29 + thrustPulse * 24, 43); ctx.rotate(swordAngle);
       ctx.fillStyle = "#171d22"; ctx.fillRect(-4, -5, 21, 10);
       ctx.fillStyle = accent; ctx.fillRect(8, -8, 5, 16);
       ctx.fillStyle = "#e8eff1";
       ctx.beginPath(); ctx.moveTo(14, -5); ctx.lineTo(83, -2); ctx.lineTo(96, 0); ctx.lineTo(82, 4); ctx.lineTo(14, 5); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = "#91a0a7"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.restore();
-      if (swordPattern) {
+      if (swordPattern || thrusting) {
         ctx.strokeStyle = `rgba(226,207,255,${0.35 + pulse * 0.35})`; ctx.lineWidth = 5;
-        ctx.beginPath(); ctx.arc(25, 42, 78, -1.45, 0.38); ctx.stroke();
+        ctx.beginPath();
+        if (thrusting) { ctx.moveTo(36, 43); ctx.lineTo(146 + thrustPulse * 24, 43); }
+        else ctx.arc(25, 42, 78, -1.45, 0.38);
+        ctx.stroke();
       }
       if ((enemy.shieldMuzzleFlash || 0) > 0) {
         ctx.save();
@@ -12928,7 +13014,7 @@
       return;
     }
     if (bullet.kind === "revenant-sword-wave") {
-      const angle = Math.atan2(bullet.vy, bullet.vx);
+      const angle = Number.isFinite(bullet.travelAngle) ? bullet.travelAngle : Math.atan2(bullet.vy, bullet.vx);
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(angle);
@@ -12936,9 +13022,9 @@
       ctx.fillStyle = "rgba(215,183,255,0.18)";
       ctx.beginPath(); ctx.ellipse(0, 0, bullet.w * 0.72, bullet.h * 1.2, 0, 0, TAU); ctx.fill();
       ctx.strokeStyle = "#f6eeff"; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(-bullet.w * 0.55, bullet.h * 0.35); ctx.quadraticCurveTo(0, -bullet.h * 0.75, bullet.w * 0.55, bullet.h * 0.35); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bullet.w * 0.2, -bullet.h * 0.62); ctx.quadraticCurveTo(bullet.w * 1.05, 0, bullet.w * 0.2, bullet.h * 0.62); ctx.stroke();
       ctx.strokeStyle = "#b88cff"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-bullet.w * 0.48, bullet.h * 0.55); ctx.quadraticCurveTo(0, -bullet.h * 0.45, bullet.w * 0.48, bullet.h * 0.55); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-bullet.w * 0.12, -bullet.h * 0.52); ctx.quadraticCurveTo(bullet.w * 0.7, 0, -bullet.w * 0.12, bullet.h * 0.52); ctx.stroke();
       ctx.restore();
       return;
     }
@@ -14937,6 +15023,11 @@
   syncVisibleViewport();
   syncTouchControls();
 
+  const unlockGameAudioFromGesture = () => sound.wake();
+  window.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true, passive: true });
+  window.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true, passive: true });
+  window.addEventListener("keydown", unlockGameAudioFromGesture, { capture: true });
+
   startButton.addEventListener("click", () => {
     enterMobileFullscreen();
     resetGame(false);
@@ -15150,7 +15241,9 @@
     weaverIceStorm: true,
     weaverSnowSpeedMultiplier: 0.58,
     censorPhaseTwoFullArenaSnow: true,
-    revenantMeleeCombo: false,
+    revenantMeleeCombo: true,
+    revenantThrustBarrageHits: 6,
+    revenantThrustBarragePhaseTwoHits: 7,
     revenantShieldArtillery: true,
     revenantPhaseTwoSupportFire: true,
     revenantShieldRoundsGrantCharge: 0.8,
@@ -15194,7 +15287,7 @@
     midBossHealReward: false,
     gongmunSwordMotion: true,
     gongmunSwordWaves: true,
-    gongmunSwordWaveOrientation: "vertical-crescent",
+    gongmunSwordWaveOrientation: "velocity-perpendicular-crescent",
     gongmunSimplifiedArmor: true,
     adminDirectCanvasTransform: true,
     adminTransformHandles: 8,
@@ -15325,6 +15418,10 @@
     proceduralBeamFireSfx: true,
     proceduralFlaskShatterSfx: true,
     musicDirectorEnabled: true,
+    musicUnlocked: music.unlocked,
+    musicActivePath: music.activePath,
+    musicChannelCount: music.channels.length,
+    musicActivePlaying: music.channels.some((channel) => channel.path === music.activePath && channel.audio.paused === false),
     musicTrackCount: MUSIC_TRACK_COUNT,
     titleMusicTrack: TITLE_MUSIC_TRACK,
     stageMusicRotations: STAGE_MUSIC_ROTATIONS.map((rotation) => [...rotation]),
@@ -15332,6 +15429,9 @@
     musicCrossfadeSeconds: music.fadeSeconds,
     musicLazyLoad: true,
     musicGestureUnlock: true,
+    musicGestureCaptureUnlock: true,
+    musicPlaybackRetry: true,
+    musicVolumeRecoveryMigration: true,
     musicBaseVolumeReduced: false,
     musicBaseVolumeRestored: true,
     stageMusicBaseVolume: 0.235,
@@ -15497,7 +15597,9 @@
     weaverIceStorm: "true",
     weaverSnowSpeedMultiplier: "0.58",
     censorPhaseTwoFullArenaSnow: "true",
-    revenantMeleeCombo: "false",
+    revenantMeleeCombo: "true",
+    revenantThrustBarrageHits: "6",
+    revenantThrustBarragePhaseTwoHits: "7",
     revenantShieldArtillery: "true",
     revenantPhaseTwoSupportFire: "true",
     revenantShieldRoundsGrantCharge: "0.8",
@@ -15531,7 +15633,7 @@
     bossRewardDamagePerLevel: "0",
     gongmunSwordMotion: "true",
     gongmunSwordWaves: "true",
-    gongmunSwordWaveOrientation: "vertical-crescent",
+    gongmunSwordWaveOrientation: "velocity-perpendicular-crescent",
     gongmunSimplifiedArmor: "true",
     adminDirectCanvasTransform: "true",
     adminTransformHandles: "8",
@@ -15661,6 +15763,9 @@
     musicCrossfadeSeconds: String(music.fadeSeconds),
     musicLazyLoad: "true",
     musicGestureUnlock: "true",
+    musicGestureCaptureUnlock: "true",
+    musicPlaybackRetry: "true",
+    musicVolumeRecoveryMigration: "true",
     musicBaseVolumeReduced: "false",
     musicBaseVolumeRestored: "true",
     stageMusicBaseVolume: "0.235",
