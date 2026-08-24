@@ -91,8 +91,9 @@
   const GRAVITY = 2050;
   const TAU = Math.PI * 2;
   const TARGET_CAMPAIGN_MINUTES = 2440;
-  const SCREEN_SHAKE_SCALE = 0.42;
-  const GAME_VERSION = "3.6.13";
+  const SCREEN_SHAKE_SCALE = 0.18;
+  const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
+  const GAME_VERSION = "3.6.14";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 4;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -253,6 +254,7 @@
   let pickupSerial = 0;
   let boostSerial = 0;
   let selectedAdminWorldObject = null;
+  let adminWorldCanvasEditActive = false;
   let adminWorldTransform = null;
   let adminWorldUndoSnapshot = null;
   let levelReady = false;
@@ -4886,6 +4888,15 @@
   }
 
   function toggleAdminSpawnPanel() {
+    if (adminWorldCanvasEditActive && selectedAdminWorldObject && !selectedAdminWorldObject.hidden) {
+      const selected = selectedAdminWorldObject;
+      adminWorldCanvasEditActive = false;
+      adminSpawnPanel.hidden = false;
+      adminSpawnPanel.classList.toggle?.("visible", true);
+      if (adminZonePanel) adminZonePanel.hidden = true;
+      setAdminWorldEditor(true, selected);
+      return true;
+    }
     return setAdminSpawnPanel(adminSpawnPanel?.hidden !== false);
   }
 
@@ -5121,6 +5132,7 @@
   function setAdminWorldEditor(open, object = selectedAdminWorldObject) {
     if (!adminWorldEditor) return false;
     const shouldOpen = Boolean(open && object && game.adminMode && game.mode === "playing");
+    adminWorldCanvasEditActive = false;
     selectedAdminWorldObject = shouldOpen ? object : null;
     adminWorldEditor.hidden = !shouldOpen;
     if (!shouldOpen) {
@@ -5137,6 +5149,29 @@
     adminWorldInputs.sub.disabled = !supportsText;
     updateAdminWorldTransformStatus(object);
     if (adminWorldUndo) adminWorldUndo.disabled = adminWorldUndoSnapshot?.id !== object.id;
+    return true;
+  }
+
+  function isAdminWorldEditing() {
+    return Boolean(
+      game.adminMode
+      && selectedAdminWorldObject
+      && !selectedAdminWorldObject.hidden
+      && (adminWorldCanvasEditActive || adminWorldEditor?.hidden === false)
+    );
+  }
+
+  function activateAdminWorldCanvasEdit(object) {
+    if (!object || !setAdminWorldEditor(true, object)) return false;
+    adminWorldCanvasEditActive = true;
+    adminWorldEditor.hidden = true;
+    if (adminSpawnPanel) {
+      adminSpawnPanel.hidden = true;
+      adminSpawnPanel.classList.toggle?.("visible", false);
+    }
+    updateAdminWorldTransformStatus(object);
+    game.hint = "관리자 편집 · 선택 창 숨김 · 캔버스에서 이동/크기 조절 · X 상세 편집";
+    game.hintTimer = 4.2;
     return true;
   }
 
@@ -5224,7 +5259,7 @@
   }
 
   function beginAdminWorldTransform(event) {
-    if (!game.adminMode || game.mode !== "playing" || adminWorldEditor?.hidden !== false) return false;
+    if (!game.adminMode || game.mode !== "playing" || !isAdminWorldEditing()) return false;
     updatePointer(event);
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
@@ -5233,7 +5268,8 @@
     if (!mode) {
       object = findAdminWorldObjectAt(worldX, worldY);
       if (!object) return false;
-      setAdminWorldEditor(true, object);
+      if (adminWorldCanvasEditActive) activateAdminWorldCanvasEdit(object);
+      else setAdminWorldEditor(true, object);
       mode = getAdminWorldTransformMode(object, worldX, worldY, event.pointerType) || "move";
     }
     const bounds = getAdminWorldBounds(object);
@@ -5343,7 +5379,7 @@
       game.hintTimer = 2.8;
       return null;
     }
-    setAdminWorldEditor(true, nearest);
+    activateAdminWorldCanvasEdit(nearest);
     return nearest;
   }
 
@@ -10264,7 +10300,7 @@
   }
 
   function drawAdminWorldSelection() {
-    if (!game.adminMode || adminWorldEditor?.hidden !== false || !selectedAdminWorldObject || selectedAdminWorldObject.hidden) return;
+    if (!isAdminWorldEditing()) return;
     const bounds = getAdminWorldBounds(selectedAdminWorldObject);
     ctx.save();
     ctx.strokeStyle = palette.amber;
@@ -13541,7 +13577,9 @@
   }
 
   function drawWorld() {
-    const effectiveShake = game.cutscene || game.story ? 0 : game.shake * SCREEN_SHAKE_SCALE;
+    const effectiveShake = game.cutscene || game.story || game.adminMode
+      ? 0
+      : Math.min(game.shake * SCREEN_SHAKE_SCALE, MAX_SCREEN_SHAKE_AMPLITUDE);
     const shakeX = effectiveShake > 0 ? (hash(game.time * 1000) - 0.5) * effectiveShake : 0;
     const shakeY = effectiveShake > 0 ? (hash(game.time * 1300 + 12) - 0.5) * effectiveShake : 0;
     ctx.save();
@@ -14662,7 +14700,7 @@
       || game.tutorialOpen
       || adminSpawnPanel?.hidden === false
       || adminZonePanel?.hidden === false
-      || adminWorldEditor?.hidden === false
+      || isAdminWorldEditing()
     ) return;
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
@@ -14698,7 +14736,7 @@
   }
 
   function startTouchDirectAttack(type) {
-    if (game.mode !== "playing" || game.cutscene || game.tutorialOpen || adminWorldEditor?.hidden === false) return;
+    if (game.mode !== "playing" || game.cutscene || game.tutorialOpen || isAdminWorldEditing()) return;
     const target = findMobileAimTarget(type === "slash" ? 260 : 1080, type === "slash" ? -0.45 : -0.05);
     const aim = target
       ? aimAtWorldPoint(target.x + target.w / 2, target.y + target.h / 2)
@@ -14906,7 +14944,7 @@
 
   canvas.addEventListener("mousemove", updatePointer);
   canvas.addEventListener("pointerdown", (event) => {
-    if (game.adminMode && adminWorldEditor?.hidden === false) {
+    if (isAdminWorldEditing()) {
       event.preventDefault();
       event.stopPropagation();
       updatePointer(event);
@@ -14950,7 +14988,7 @@
       requestCutsceneAdvance();
       return;
     }
-    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || adminWorldEditor?.hidden === false) return;
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || isAdminWorldEditing()) return;
     if (event.button === 0) startAttack();
     if (event.button === 2) startShotgun();
   });
@@ -14999,7 +15037,7 @@
     }
     if (event.code === "Escape") {
       if (startScreenEditor?.hidden === false) setStartScreenEditor(false);
-      else if (adminWorldEditor?.hidden === false) setAdminWorldEditor(false);
+      else if (isAdminWorldEditing()) setAdminWorldEditor(false);
       else if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
       else togglePause();
     }
@@ -15498,6 +15536,12 @@
     documentStoryAligned: true,
     prologueTriggerX: TUTORIAL_END_X + 620,
     storyStable: Boolean(game.cutscene || game.story) ? game.shake === 0 : true,
+    adminNearestSelectionAutoHidesCatalog: true,
+    adminCanvasOnlyDirectTransform: true,
+    adminCanvasEditReopensWithX: true,
+    screenShakeScale: SCREEN_SHAKE_SCALE,
+    screenShakeMaxAmplitude: MAX_SCREEN_SHAKE_AMPLITUDE,
+    screenShakeDisabledInAdminMode: true,
   });
   Object.assign(document.documentElement.dataset, {
     gameVersion: GAME_VERSION,
@@ -15844,6 +15888,12 @@
     documentStoryDialogueLines: "216",
     documentStoryAligned: "true",
     prologueTriggerX: String(TUTORIAL_END_X + 620),
+    adminNearestSelectionAutoHidesCatalog: "true",
+    adminCanvasOnlyDirectTransform: "true",
+    adminCanvasEditReopensWithX: "true",
+    screenShakeScale: String(SCREEN_SHAKE_SCALE),
+    screenShakeMaxAmplitude: String(MAX_SCREEN_SHAKE_AMPLITUDE),
+    screenShakeDisabledInAdminMode: "true",
   });
   updateContinueButton();
   requestAnimationFrame(frame);
