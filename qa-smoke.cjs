@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.14") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.15") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -105,7 +105,7 @@ if (diagnostics.audioPresetVersion !== "3.6.7-bgm+recorded-sfx" || !diagnostics.
 if (!diagnostics.recordedShotgunSfx || !diagnostics.recordedShotgunPumpSfx || !diagnostics.recordedEnemyPistolSfx || !diagnostics.recordedEnemyRifleSfx || !diagnostics.recordedJumpSfx || !diagnostics.bossCannonSfx || !diagnostics.bossCannonForBallisticShots || diagnostics.bossCannonOverlapGuardMs !== 150 || diagnostics.recordedFootstepSfxCount !== 6 || !diagnostics.speedAdaptiveFootsteps || !diagnostics.normalizedFootstepSamples || !diagnostics.recordedGunVolumeBoost || !diagnostics.recordedFootstepVolumeBoost || !diagnostics.recordedJumpVolumeBoost) {
   throw new Error("recorded gun, footstep, or jump SFX are inactive");
 }
-if (!diagnostics.adminNearestSelectionAutoHidesCatalog || !diagnostics.adminCanvasOnlyDirectTransform || !diagnostics.adminCanvasEditReopensWithX || diagnostics.screenShakeScale !== 0.18 || diagnostics.screenShakeMaxAmplitude !== 6 || !diagnostics.screenShakeDisabledInAdminMode) {
+if (!diagnostics.adminNearestSelectionAutoHidesCatalog || !diagnostics.adminCanvasOnlyDirectTransform || !diagnostics.adminCanvasEditReopensWithX || !diagnostics.adminDeleteKeyEnabled || !diagnostics.adminDeleteKeySafeInInputs || diagnostics.screenShakeScale !== 0.18 || diagnostics.screenShakeMaxAmplitude !== 6 || !diagnostics.screenShakeDisabledInAdminMode) {
   throw new Error("admin canvas editing visibility or reduced screen shake configuration is invalid");
 }
 if (!diagnostics.bossArenaLocksPlayerBothSides || !diagnostics.bossArenaLocksDuringIntro || !diagnostics.bossArenaUnlocksOnDefeat || !diagnostics.bossArenaLockUsesVisibleLimits || !gameSource.includes("constrainPlayerToActiveBossArena();")) {

@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.14";
+  const GAME_VERSION = "3.6.15";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 4;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -5170,7 +5170,7 @@
       adminSpawnPanel.classList.toggle?.("visible", false);
     }
     updateAdminWorldTransformStatus(object);
-    game.hint = "관리자 편집 · 선택 창 숨김 · 캔버스에서 이동/크기 조절 · X 상세 편집";
+    game.hint = "관리자 편집 · 선택 창 숨김 · 이동/크기 조절 · DEL 삭제 · X 상세 편집";
     game.hintTimer = 4.2;
     return true;
   }
@@ -15008,7 +15008,7 @@
       }
       return;
     }
-    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "Escape", "ShiftLeft", "ShiftRight", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "KeyL", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
+    const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "Escape", "Delete", "ShiftLeft", "ShiftRight", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "KeyL", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
     if (handled.includes(event.code)) event.preventDefault();
     const firstPress = !keys.has(event.code);
     if (firstPress) pressed.add(event.code);
@@ -15016,6 +15016,13 @@
 
     if (game.tutorialOpen) {
       if (firstPress && ["Space", "Enter", "Escape"].includes(event.code)) closeTutorialPanel();
+      return;
+    }
+
+    if (firstPress && event.code === "Delete" && game.adminMode && game.mode === "playing" && isAdminWorldEditing()) {
+      deleteAdminWorldSelection();
+      pressed.delete("Delete");
+      keys.delete("Delete");
       return;
     }
 
@@ -15539,6 +15546,8 @@
     adminNearestSelectionAutoHidesCatalog: true,
     adminCanvasOnlyDirectTransform: true,
     adminCanvasEditReopensWithX: true,
+    adminDeleteKeyEnabled: true,
+    adminDeleteKeySafeInInputs: true,
     screenShakeScale: SCREEN_SHAKE_SCALE,
     screenShakeMaxAmplitude: MAX_SCREEN_SHAKE_AMPLITUDE,
     screenShakeDisabledInAdminMode: true,
@@ -15891,6 +15900,8 @@
     adminNearestSelectionAutoHidesCatalog: "true",
     adminCanvasOnlyDirectTransform: "true",
     adminCanvasEditReopensWithX: "true",
+    adminDeleteKeyEnabled: "true",
+    adminDeleteKeySafeInInputs: "true",
     screenShakeScale: String(SCREEN_SHAKE_SCALE),
     screenShakeMaxAmplitude: String(MAX_SCREEN_SHAKE_AMPLITUDE),
     screenShakeDisabledInAdminMode: "true",
