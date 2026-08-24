@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.17";
+  const GAME_VERSION = "3.6.18";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -162,6 +162,10 @@
   const FLAME_SWORD_BURN_SECONDS = 2.4;
   const FLAME_SWORD_BURN_INTERVAL = 0.48;
   const FLAME_SWORD_BURN_DAMAGE = 0.3;
+  const ECHO_PARRY_WINDUP_SECONDS = 0.56;
+  const ECHO_PARRY_OPEN_SECONDS = 0.34;
+  const ECHO_PARRY_CLOSE_SECONDS = 0.1;
+  const MUTANT_DEBRIS_DAMAGE = 1;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
   const NORMAL_ENEMY_REPAIR_DROP_CHANCE = 0;
@@ -367,7 +371,7 @@
       hp: 51,
       size: [34, 56],
       accent: "#a879ff",
-      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "잔상 반격", "기억 반전"],
+      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전"],
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
@@ -6151,6 +6155,11 @@
       return;
     }
 
+    if (isEchoParryActive(enemy)) {
+      triggerEchoParry(enemy, source);
+      return;
+    }
+
     if (enemy.type === "boss" && enemy.bossKind === "hunter" && player.burstTimer > 0 && (enemy.reflectBreakTimer || 0) <= 0) {
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, "#a6f7ff", 12, 250, 0.34, 0);
       game.hint = "적린 · 산탄과 버스트 반사 · 일본도만 유효";
@@ -6259,6 +6268,11 @@
     if (enemy.type === "boss" && enemy.bossKind === "oracle" && enemy.pendingShotId === bullet.shotId) {
       // 치환 예고 중인 산탄은 육화에게 피해를 주지 않고 잠시 후 플레이어에게 역류한다.
       enemy.hitShotId = bullet.shotId;
+      return true;
+    }
+    if (isEchoParryActive(enemy)) {
+      enemy.hitShotId = bullet.shotId;
+      triggerEchoParry(enemy, "shotgun");
       return true;
     }
     const shielded = ensureShieldState(enemy)
@@ -7388,13 +7402,70 @@
         kind: "mutant-debris",
         gravity: 920,
         color: chunk % 2 ? "#697078" : "#4c555d",
-        damage: 2,
+        damage: MUTANT_DEBRIS_DAMAGE,
       });
     }
     spawnParticles(sourceX, floorY - 4, "#8a9296", 40, 520, 0.7, 520);
     spawnParticles(sourceX, floorY - 4, "#474f55", 26, 380, 0.58, 760);
     game.shake = Math.max(game.shake, 16);
     sound.tone(58, 0.26, "sawtooth", 0.065, 0.34);
+  }
+
+  function isEchoParryActive(enemy) {
+    return Boolean(
+      enemy?.alive
+      && enemy.type === "boss"
+      && enemy.bossKind === "echo"
+      && enemy.bossAction === "echoCounter"
+      && enemy.windup <= ECHO_PARRY_OPEN_SECONDS
+      && enemy.windup > ECHO_PARRY_CLOSE_SECONDS
+    );
+  }
+
+  function beginEchoParry(enemy, dx) {
+    enemy.windup = ECHO_PARRY_WINDUP_SECONDS;
+    enemy.bossAction = "echoCounter";
+    enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
+    enemy.dashRange = 520;
+    enemy.echoParryDuration = ECHO_PARRY_WINDUP_SECONDS;
+    game.hint = "잔영-00 · 거울 패링 준비";
+    game.hintTimer = 1.05;
+    sound.tone(620, 0.16, "triangle", 0.026, 1.55);
+  }
+
+  function triggerEchoParry(enemy, source = "slash") {
+    if (!isEchoParryActive(enemy)) return false;
+    const direction = Math.sign(player.x + player.w / 2 - (enemy.x + enemy.w / 2)) || enemy.facing || 1;
+    enemy.echoParryCount = (enemy.echoParryCount || 0) + 1;
+    enemy.bossAction = "echoParryRiposte";
+    enemy.windup = 0.14;
+    enemy.dashDirection = direction;
+    enemy.dashRange = 360;
+    enemy.cooldown = Math.max(enemy.cooldown, 1.18);
+    enemy.vx = -direction * 150;
+    player.vx = -direction * 185;
+    player.vy = Math.min(player.vy, -125);
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.43, "#e9dcff", 28, 520, 0.46, 0);
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.43, "#63ffc6", 18, 360, 0.38, 0);
+    game.hint = source === "shotgun" ? "잔영-00 · 산탄 패링 · 역상탄 반격" : "잔영-00 · 발도 패링 · 즉시 반격";
+    game.hintTimer = 1.35;
+    game.freeze = Math.max(game.freeze, 0.07);
+    game.flash = Math.max(game.flash, 0.12);
+    game.shake = Math.max(game.shake, 7);
+    sound.tone(980, 0.08, "square", 0.045, 0.48);
+    sound.tone(240, 0.18, "sawtooth", 0.035, 1.75);
+    if (source === "shotgun") {
+      firePointBullet(
+        enemy.x + enemy.w / 2 + direction * 18,
+        enemy.y + enemy.h * 0.43,
+        { x: player.x + player.w / 2, y: player.y + player.h / 2 },
+        690,
+        0,
+        "echo-parry-return",
+        "#d9c7ff",
+      );
+    }
+    return true;
   }
 
   function selectBossPatternPhase(enemy, phaseCount, hpRatio, distance) {
@@ -8884,6 +8955,7 @@
     }
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
+    const echoGuarding = ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction) && enemy.windup > 0;
     const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
     const revenantThrusting = enemy.bossAction === "revenantThrustBarrage";
     if (retreating) {
@@ -8897,6 +8969,9 @@
           : 1;
       const retreatSpeed = (165 + rank * 24) * speedScale * echoSpeedFactor * beamRetreatBoost;
       enemy.vx = moveToward(enemy.vx, enemy.bossChargeDirection * retreatSpeed, 560 * dt);
+    } else if (echoGuarding) {
+      enemy.vx = moveToward(enemy.vx, 0, 1350 * dt);
+      enemy.facing = Math.sign(dx || enemy.facing || 1);
     } else if (revenantThrusting) {
       enemy.vx = moveToward(enemy.vx, (enemy.dashDirection || enemy.facing || 1) * (590 + rank * 28), 1850 * dt);
     } else if (approachAction) {
@@ -9178,7 +9253,10 @@
           ? Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0]
           : null;
         const phase = enemy.bossPhase;
-        if (adaptiveChoice === "rush" || phase === 0) {
+        if (adaptiveChoice === "slash") {
+          beginEchoParry(enemy, dx);
+          enemy.cooldown = 1.42 * recovery;
+        } else if (adaptiveChoice === "rush" || phase === 0) {
           enemy.windup = 0.4;
           enemy.bossAction = "echoDash";
           enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
@@ -9201,10 +9279,7 @@
           startBossChargedShot(enemy, "echo-burst", dx, 0.82);
           enemy.cooldown = 1.75 * recovery;
         } else {
-          enemy.windup = 0.38;
-          enemy.bossAction = "echoCounter";
-          enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
-          enemy.dashRange = 520;
+          beginEchoParry(enemy, dx);
           enemy.cooldown = 1.48 * recovery;
         }
       }
@@ -9294,6 +9369,13 @@
           enemy.vx = Math.sign(dx) * 690;
           if (Math.abs(dx) < 190 && Math.abs(player.y - enemy.y) < 115) damagePlayer(1, enemy.x);
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 20, 480, 0.4, 0);
+        } else if (enemy.bossAction === "echoParryRiposte") {
+          const riposteDirection = enemy.dashDirection || Math.sign(dx || enemy.facing || 1);
+          enemy.vx = riposteDirection * 860;
+          enemy.facing = riposteDirection;
+          if (Math.abs(dx) < 225 && Math.abs(player.y - enemy.y) < 128) damagePlayer(1, enemy.x);
+          spawnParticles(enemy.x + enemy.w / 2 + riposteDirection * 45, enemy.y + enemy.h * 0.43, "#f4edff", 30, 620, 0.42, 0);
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.43, "#63ffc6", 18, 430, 0.38, 0);
         } else if (enemy.bossAction === "positionSwap") {
           swapBossWithPlayer(enemy);
         } else if (enemy.bossAction === "reflectRush") {
@@ -11083,7 +11165,36 @@
   function drawEnemyTelegraph(enemy) {
     if (enemy.windup <= 0) return;
     const pulse = 0.45 + Math.sin(game.time * 28) * 0.22;
-    if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && getBossArchetype(enemy.bossKind) !== "weaver") {
+    if (enemy.type === "boss" && enemy.bossKind === "echo" && enemy.bossAction === "echoCounter") {
+      const centerX = enemy.x + enemy.w / 2;
+      const centerY = enemy.y + enemy.h * 0.44;
+      const active = isEchoParryActive(enemy);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.translate(centerX, centerY);
+      ctx.rotate(enemy.facing < 0 ? Math.PI : 0);
+      ctx.strokeStyle = active ? "#f5efff" : "#a879ff";
+      ctx.lineWidth = active ? 5 : 3;
+      ctx.globalAlpha = active ? 0.92 : 0.48 + pulse * 0.42;
+      ctx.beginPath();
+      ctx.arc(0, 0, 38 + pulse * 5, -1.18, 1.18);
+      ctx.stroke();
+      ctx.strokeStyle = "#63ffc6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(8, -32);
+      ctx.lineTo(34, 0);
+      ctx.lineTo(8, 32);
+      ctx.stroke();
+      for (let spark = 0; spark < 4; spark += 1) {
+        const angle = -0.9 + spark * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * 42, Math.sin(angle) * 42);
+        ctx.lineTo(Math.cos(angle) * (50 + pulse * 6), Math.sin(angle) * (50 + pulse * 6));
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && getBossArchetype(enemy.bossKind) !== "weaver") {
       const duration = Math.max(0.01, enemy.bossChargeDuration || enemy.windup);
       const progress = clamp(1 - enemy.windup / duration, 0, 1);
       const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
@@ -12076,7 +12187,7 @@
         shotAimX: player.shotAimX,
         shotAimY: player.shotAimY,
       };
-      const echoDrawingSword = ["echoSlash", "echoCounter", "echoDash"].includes(enemy.bossAction);
+      const echoDrawingSword = ["echoSlash", "echoCounter", "echoParryRiposte", "echoDash"].includes(enemy.bossAction);
       Object.assign(player, {
         vx: enemy.vx,
         vy: enemy.vy,
@@ -12088,7 +12199,7 @@
         attackTimer: echoDrawingSword ? Math.max(0.04, enemy.windup || 0.1) : 0,
         attackDuration: 0.4,
         attackDir: { x: enemy.facing, y: enemy.bossAction === "echoCounter" ? -0.24 : 0.08 },
-        chargedAttack: enemy.bossAction === "echoCounter",
+        chargedAttack: ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction),
         recoilTimer: enemy.bossAction === "chargeShot" && enemy.bossShotPattern === "echo-shotgun" ? Math.max(0.04, enemy.windup || 0.1) : 0,
         shotAimX: enemy.facing,
         shotAimY: 0,
@@ -12102,7 +12213,7 @@
       ctx.restore();
 
       const echoSpeed = clamp(Math.abs(enemy.vx) / 420, 0, 1);
-      if (echoSpeed > 0.45 || enemy.bossAction === "echoCounter") {
+      if (echoSpeed > 0.45 || ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction)) {
         for (let trailIndex = 2; trailIndex >= 1; trailIndex -= 1) {
           ctx.save();
           ctx.globalAlpha = (0.04 + echoSpeed * 0.05) * trailIndex;
@@ -15409,6 +15520,7 @@
     doctorFlaskSlashClear: true,
     doctorPoisonGasSlashClear: true,
     mutantDebrisSlashClear: false,
+    mutantDebrisDamage: MUTANT_DEBRIS_DAMAGE,
     proxyMutationHealRatio: 0.25,
     parryEnabled: false,
     burstTripleParryEnabled: true,
@@ -15422,7 +15534,10 @@
     flameSwordBurnDamage: FLAME_SWORD_BURN_DAMAGE,
     stageAbilityAnnouncements: true,
     playerBulletReflection: false,
-    echoParryEnabled: false,
+    echoParryEnabled: true,
+    echoParryWindowSeconds: Number((ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2)),
+    echoParryReflectsShotgun: true,
+    echoParryRiposteDamage: 1,
     allDirectionBulletDestroy: false,
     slashUsesFrozenAttackAnchor: true,
     slashBladeHalfWidth: 34,
@@ -15791,10 +15906,14 @@
     doctorFlaskSlashClear: "true",
     doctorPoisonGasSlashClear: "true",
     mutantDebrisSlashClear: "false",
+    mutantDebrisDamage: String(MUTANT_DEBRIS_DAMAGE),
     proxyMutationHealRatio: "0.25",
     parryEnabled: "false",
     playerBulletReflection: "false",
-    echoParryEnabled: "false",
+    echoParryEnabled: "true",
+    echoParryWindowSeconds: (ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2),
+    echoParryReflectsShotgun: "true",
+    echoParryRiposteDamage: "1",
     allDirectionBulletDestroy: "false",
     slashUsesFrozenAttackAnchor: "true",
     slashBladeHalfWidth: "34",
