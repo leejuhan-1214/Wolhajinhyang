@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.18";
+  const GAME_VERSION = "3.6.19";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -162,9 +162,15 @@
   const FLAME_SWORD_BURN_SECONDS = 2.4;
   const FLAME_SWORD_BURN_INTERVAL = 0.48;
   const FLAME_SWORD_BURN_DAMAGE = 0.3;
-  const ECHO_PARRY_WINDUP_SECONDS = 0.56;
-  const ECHO_PARRY_OPEN_SECONDS = 0.34;
+  const ECHO_PARRY_WINDUP_SECONDS = 0.62;
+  const ECHO_PARRY_OPEN_SECONDS = 0.42;
   const ECHO_PARRY_CLOSE_SECONDS = 0.1;
+  const ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN = 1.55;
+  const ECHO_SHOTGUN_PELLET_COUNT = 7;
+  const ECHO_PARRY_RETURN_PROJECTILES = 3;
+  const ECHO_SPEED_FACTOR = 1.22;
+  const ECHO_ATTACK_RECOVERY_FACTOR = 0.86;
+  const ECHO_SKILL_MULTIPLIER = 3.5;
   const MUTANT_DEBRIS_DAMAGE = 1;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
@@ -368,7 +374,7 @@
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 51,
+      hp: 60,
       size: [34, 56],
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전"],
@@ -5905,6 +5911,32 @@
       game.hintTimer = 1.7;
     }
 
+    const reactiveEcho = !game.adminMode && enemies.find((enemy) => {
+      if (
+        !enemy.alive
+        || enemy.type !== "boss"
+        || enemy.bossKind !== "echo"
+        || isBossIntroLocked(enemy)
+        || enemy.homeZoneIndex !== game.zone
+        || enemy.windup > 0
+        || enemy.bossAction
+        || (enemy.echoReactiveParryCooldown || 0) > 0
+      ) return false;
+      const echoDX = enemy.x + enemy.w / 2 - (player.x + player.w / 2);
+      const echoDY = enemy.y + enemy.h / 2 - (player.y + player.h / 2);
+      const echoDistance = Math.max(1, Math.hypot(echoDX, echoDY));
+      const aimDot = aim.x * echoDX / echoDistance + aim.y * echoDY / echoDistance;
+      return echoDistance < 500 && aimDot > 0.84;
+    });
+    if (reactiveEcho) {
+      const echoDX = player.x + player.w / 2 - (reactiveEcho.x + reactiveEcho.w / 2);
+      beginEchoParry(reactiveEcho, echoDX, { reactiveShotgun: true });
+      reactiveEcho.echoReactiveParryCooldown = reactiveEcho.adaptivePhase
+        ? ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN * 0.78
+        : ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN;
+      reactiveEcho.cooldown = Math.max(reactiveEcho.cooldown, 0.82);
+    }
+
     for (let pellet = 0; pellet < pelletCount; pellet += 1) {
       const ratio = pelletCount === 1 ? 0 : pellet / (pelletCount - 1) - 0.5;
       const angle = Math.atan2(aim.y, aim.x) + ratio * spread + (hash(player.shotId * 17 + pellet) - 0.5) * 0.035;
@@ -7422,13 +7454,13 @@
     );
   }
 
-  function beginEchoParry(enemy, dx) {
-    enemy.windup = ECHO_PARRY_WINDUP_SECONDS;
+  function beginEchoParry(enemy, dx, { reactiveShotgun = false } = {}) {
+    enemy.windup = reactiveShotgun ? ECHO_PARRY_OPEN_SECONDS : ECHO_PARRY_WINDUP_SECONDS;
     enemy.bossAction = "echoCounter";
     enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
     enemy.dashRange = 520;
     enemy.echoParryDuration = ECHO_PARRY_WINDUP_SECONDS;
-    game.hint = "잔영-00 · 거울 패링 준비";
+    game.hint = reactiveShotgun ? "잔영-00 · 산탄 궤적 분석 · 거울 패링" : "잔영-00 · 거울 패링 준비";
     game.hintTimer = 1.05;
     sound.tone(620, 0.16, "triangle", 0.026, 1.55);
   }
@@ -7455,15 +7487,18 @@
     sound.tone(980, 0.08, "square", 0.045, 0.48);
     sound.tone(240, 0.18, "sawtooth", 0.035, 1.75);
     if (source === "shotgun") {
-      firePointBullet(
-        enemy.x + enemy.w / 2 + direction * 18,
-        enemy.y + enemy.h * 0.43,
-        { x: player.x + player.w / 2, y: player.y + player.h / 2 },
-        690,
-        0,
-        "echo-parry-return",
-        "#d9c7ff",
-      );
+      for (let index = 0; index < ECHO_PARRY_RETURN_PROJECTILES; index += 1) {
+        const centeredIndex = index - (ECHO_PARRY_RETURN_PROJECTILES - 1) / 2;
+        firePointBullet(
+          enemy.x + enemy.w / 2 + direction * 18,
+          enemy.y + enemy.h * 0.43,
+          { x: player.x + player.w / 2, y: player.y + player.h / 2 },
+          690 - Math.abs(centeredIndex) * 35,
+          centeredIndex * 0.085,
+          "echo-parry-return",
+          "#d9c7ff",
+        );
+      }
     }
     return true;
   }
@@ -7762,8 +7797,9 @@
         ));
         break;
       case "echo-shotgun":
-        for (let index = -2; index <= 2; index += 1) {
-          fireBullet(enemy, 460 - Math.abs(index) * 26, index * 0.12, index === 0 ? "phase" : "standard", target);
+        for (let index = 0; index < ECHO_SHOTGUN_PELLET_COUNT; index += 1) {
+          const centeredIndex = index - (ECHO_SHOTGUN_PELLET_COUNT - 1) / 2;
+          fireBullet(enemy, 500 - Math.abs(centeredIndex) * 22, centeredIndex * 0.095, centeredIndex === 0 ? "phase" : "standard", target);
         }
         break;
       case "echo-air":
@@ -8706,7 +8742,7 @@
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
     const bossCurve = getBossDifficultyCurve(rank);
     const enrage = hpRatio < 0.45 ? 1.16 : 1;
-    const echoSpeedFactor = bossKind === "echo" ? 1.12 : 1;
+    const echoSpeedFactor = bossKind === "echo" ? ECHO_SPEED_FACTOR : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
     const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
     const homeArena = getBossArenaBounds(enemy);
@@ -8889,6 +8925,7 @@
 
     if (bossKind === "echo") {
       enemy.echoMimicJumpCooldown = Math.max(0, (enemy.echoMimicJumpCooldown || 0) - dt);
+      enemy.echoReactiveParryCooldown = Math.max(0, (enemy.echoReactiveParryCooldown || 0) - dt);
       const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
       const sampleRate = Math.min(1, dt * 4.8);
       analysis.slash = lerp(analysis.slash, player.attackTimer > 0 ? 1 : 0, sampleRate);
@@ -8897,7 +8934,7 @@
       analysis.rush = lerp(analysis.rush, Math.abs(player.vx) > INPUT_TUNING.moveSpeed * 0.72 ? 1 : 0, sampleRate);
       enemy.echoAnalysis = analysis;
       enemy.echoReadout = Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0];
-      enemy.echoSkillMultiplier = 3;
+      enemy.echoSkillMultiplier = ECHO_SKILL_MULTIPLIER;
       if (!player.grounded && player.vy < -150 && enemy.grounded && enemy.echoMimicJumpCooldown <= 0) {
         enemy.vy = -690;
         enemy.vx = Math.sign(dx || 1) * 310;
@@ -9043,7 +9080,7 @@
     if (!retreating && enemy.cooldown <= 0 && distance < bossEngagementRange) {
       const phaseCount = definition.patterns.length;
       selectBossPatternPhase(enemy, phaseCount, hpRatio, distance);
-      const recovery = hpRatio < 0.45 ? (kind === "echo" ? 1.05 : 0.82) : 1;
+      const recovery = hpRatio < 0.45 ? 0.82 : 1;
 
       if (bossKind === "breaker") {
         if (enemy.bossPhase === 0) {
@@ -9253,7 +9290,7 @@
           ? Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0]
           : null;
         const phase = enemy.bossPhase;
-        if (adaptiveChoice === "slash") {
+        if (adaptiveChoice === "slash" || adaptiveChoice === "shotgun") {
           beginEchoParry(enemy, dx);
           enemy.cooldown = 1.42 * recovery;
         } else if (adaptiveChoice === "rush" || phase === 0) {
@@ -9262,7 +9299,7 @@
           enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
           enemy.dashRange = Math.min(820, Math.max(260, Math.abs(dx) + 90));
           enemy.cooldown = 1.28 * recovery;
-        } else if (adaptiveChoice === "shotgun" || phase === 1) {
+        } else if (phase === 1) {
           startBossChargedShot(enemy, "echo-shotgun", dx, 0.46);
           enemy.cooldown = 1.42 * recovery;
         } else if (adaptiveChoice === "air" || phase === 2) {
@@ -9283,7 +9320,7 @@
           enemy.cooldown = 1.48 * recovery;
         }
       }
-      enemy.cooldown = Math.max(0.48, enemy.cooldown * bossCurve.cooldown);
+      enemy.cooldown = Math.max(0.48, enemy.cooldown * bossCurve.cooldown * (bossKind === "echo" ? ECHO_ATTACK_RECOVERY_FACTOR : 1));
       if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup *= bossCurve.windup;
     }
 
@@ -9434,7 +9471,7 @@
         } else if (enemy.bossAction === "echoDash") {
           enemy.vx = Math.sign(dx || enemy.dashDirection || 1) * 880;
           enemy.vy = player.y + player.h < enemy.y && enemy.grounded ? -390 : enemy.vy;
-          if (Math.abs(dx) < 205 && Math.abs(player.y - enemy.y) < 118) damagePlayer(1, enemy.x);
+          if (Math.abs(dx) < 205 && Math.abs(player.y - enemy.y) < 118) damagePlayer(enemy.adaptivePhase ? 2 : 1, enemy.x);
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.48, "#63ffc6", 26, 620, 0.42, 0);
           enemy.bossAction = null;
         } else if (enemy.bossAction === "chargeShot") {
@@ -15458,7 +15495,11 @@
     proxySelfInjection: true,
     proxyArenaLaserCount: 0,
     echoAdaptiveCombatAI: true,
-    echoSkillMultiplier: 3,
+    echoSkillMultiplier: ECHO_SKILL_MULTIPLIER,
+    echoHp: BOSS_DEFINITIONS.echo.hp,
+    echoSpeedFactor: ECHO_SPEED_FACTOR,
+    echoAttackRecoveryFactor: ECHO_ATTACK_RECOVERY_FACTOR,
+    echoShotgunPelletCount: ECHO_SHOTGUN_PELLET_COUNT,
     bossDashTelegraphs: true,
     bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
@@ -15537,6 +15578,9 @@
     echoParryEnabled: true,
     echoParryWindowSeconds: Number((ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2)),
     echoParryReflectsShotgun: true,
+    echoReactiveShotgunParry: true,
+    echoReactiveShotgunParryCooldown: ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN,
+    echoParryReturnProjectiles: ECHO_PARRY_RETURN_PROJECTILES,
     echoParryRiposteDamage: 1,
     allDirectionBulletDestroy: false,
     slashUsesFrozenAttackAnchor: true,
@@ -15843,7 +15887,11 @@
     proxySelfInjection: "true",
     proxyArenaLaserCount: "0",
     echoAdaptiveCombatAI: "true",
-    echoSkillMultiplier: "3",
+    echoSkillMultiplier: String(ECHO_SKILL_MULTIPLIER),
+    echoHp: String(BOSS_DEFINITIONS.echo.hp),
+    echoSpeedFactor: String(ECHO_SPEED_FACTOR),
+    echoAttackRecoveryFactor: String(ECHO_ATTACK_RECOVERY_FACTOR),
+    echoShotgunPelletCount: String(ECHO_SHOTGUN_PELLET_COUNT),
     bossDashTelegraphs: "true",
     bossDeathPickupSuppressed: "true",
     shieldBaseHp: String(SHIELD_BASE_HP),
@@ -15913,6 +15961,9 @@
     echoParryEnabled: "true",
     echoParryWindowSeconds: (ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2),
     echoParryReflectsShotgun: "true",
+    echoReactiveShotgunParry: "true",
+    echoReactiveShotgunParryCooldown: String(ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN),
+    echoParryReturnProjectiles: String(ECHO_PARRY_RETURN_PROJECTILES),
     echoParryRiposteDamage: "1",
     allDirectionBulletDestroy: "false",
     slashUsesFrozenAttackAnchor: "true",
