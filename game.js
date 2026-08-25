@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.20";
+  const GAME_VERSION = "3.6.21";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -171,6 +171,9 @@
   const ECHO_SPEED_FACTOR = 1.3;
   const ECHO_ATTACK_RECOVERY_FACTOR = 0.78;
   const ECHO_SKILL_MULTIPLIER = 4;
+  const ECHO_CHAIN_BURST_COUNT = 3;
+  const ECHO_DIVE_VOLLEY_COUNT = 3;
+  const ECHO_AFTERIMAGE_SOURCE_COUNT = 3;
   const MUTANT_DEBRIS_DAMAGE = 1;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
@@ -377,7 +380,7 @@
       hp: 66,
       size: [34, 56],
       accent: "#a879ff",
-      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전"],
+      patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전", "삼연 버스트 추격", "공중 산탄 강하", "양방향 잔상 협공"],
     },
     breaker: {
       name: "폐철 집행기 · 쇄우",
@@ -430,7 +433,7 @@
     furnace: [1, 0, 2, 3, 4],
     weaver: [0, 3, 1, 2, 4],
     censor: [0, 2, 1, 3, 4],
-    echo: [0, 2, 1, 3, 5, 4],
+    echo: [0, 6, 2, 1, 7, 3, 5, 8, 4],
   });
   const BOSS_FOLLOWUP_PATTERNS = Object.freeze({
     "warden-funnels": "warden-volley",
@@ -453,6 +456,9 @@
     "proxy-potion": "proxy-toxic-ring",
     "echo-shotgun": "echo-air",
     "echo-air": "echo-burst",
+    "echo-triple-burst": "echo-afterimage-crossfire",
+    "echo-dive-barrage": "echo-triple-burst",
+    "echo-afterimage-crossfire": "echo-shotgun",
   });
   const BOSS_CRISIS_PATTERNS = Object.freeze({
     breaker: { pattern: "breaker-siege", duration: 1.18, recovery: 3.7 },
@@ -6530,6 +6536,10 @@
       enemy.echoParriedShotId = null;
       enemy.echoReactiveParryCooldown = 0;
       enemy.echoParrySuccessTimer = 0;
+      enemy.echoChainDashRemaining = 0;
+      enemy.echoChainDashTimer = 0;
+      enemy.echoDiveShotsRemaining = 0;
+      enemy.echoDiveShotTimer = 0;
       if (isAdminRemovedEnemy(enemy)) {
         enemy.alive = false;
         enemy.hp = 0;
@@ -7815,6 +7825,41 @@
           fireBullet(enemy, 310 + (index % 2) * 70, index * TAU / 10, index % 3 === 0 ? "phase" : "standard", target);
         }
         break;
+      case "echo-triple-burst":
+        enemy.echoChainDashRemaining = ECHO_CHAIN_BURST_COUNT;
+        enemy.echoChainDashTimer = 0.04;
+        enemy.echoChainDashSerial = (enemy.echoChainDashSerial || 0) + 1;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.5, "#63ffc6", 30, 560, 0.48, 0);
+        break;
+      case "echo-dive-barrage":
+        enemy.vy = -920;
+        enemy.vx = Math.sign(target.x - (enemy.x + enemy.w / 2) || enemy.facing || 1) * 430;
+        enemy.echoDiveShotsRemaining = ECHO_DIVE_VOLLEY_COUNT;
+        enemy.echoDiveShotTimer = 0.12;
+        enemy.echoDiveSerial = (enemy.echoDiveSerial || 0) + 1;
+        spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h, "#b994ff", 28, 520, 0.5, 280);
+        break;
+      case "echo-afterimage-crossfire": {
+        const arena = getBossArenaBounds(enemy, 150);
+        const sourcePositions = [
+          { x: arena.left + 90, y: enemy.baseY - 210 },
+          { x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h * 0.42 },
+          { x: arena.right - 90, y: enemy.baseY - 95 },
+        ];
+        sourcePositions.forEach((source, sourceIndex) => {
+          spawnParticles(source.x, source.y, sourceIndex === 1 ? "#63ffc6" : "#b994ff", 22, 380, 0.48, 0);
+          [-0.1, 0, 0.1].forEach((spread) => firePointBullet(
+            source.x,
+            source.y,
+            { x: player.x + player.w / 2 + player.vx * 0.18, y: player.y + player.h / 2 + player.vy * 0.06 },
+            540 - sourceIndex * 18,
+            spread,
+            "echo-afterimage-shot",
+            sourceIndex === 1 ? "#63ffc6" : "#d9c7ff",
+          ));
+        });
+        break;
+      }
       case "warden-redline":
         launchBossFunnels(enemy, 4);
         [-0.3, -0.1, 0.1, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
@@ -8928,6 +8973,52 @@
       enemy.echoMimicJumpCooldown = Math.max(0, (enemy.echoMimicJumpCooldown || 0) - dt);
       enemy.echoReactiveParryCooldown = Math.max(0, (enemy.echoReactiveParryCooldown || 0) - dt);
       enemy.echoParrySuccessTimer = Math.max(0, (enemy.echoParrySuccessTimer || 0) - dt);
+      enemy.echoChainDashWindow = Math.max(0, (enemy.echoChainDashWindow || 0) - dt);
+      if (enemy.echoChainDashWindow > 0 && Math.abs(dx) < 215 && Math.abs(player.y - enemy.y) < 125) {
+        damagePlayer(enemy.adaptivePhase ? 2 : 1, enemy.x + enemy.w / 2);
+        enemy.echoChainDashWindow = 0;
+      }
+      if ((enemy.echoChainDashRemaining || 0) > 0) {
+        enemy.echoChainDashTimer = Math.max(0, (enemy.echoChainDashTimer || 0) - dt);
+        if (enemy.echoChainDashTimer <= 0) {
+          const chainDirection = Math.sign(player.x + player.w / 2 - (enemy.x + enemy.w / 2)) || enemy.facing || 1;
+          const chainStep = ECHO_CHAIN_BURST_COUNT - enemy.echoChainDashRemaining;
+          enemy.facing = chainDirection;
+          enemy.vx = chainDirection * (980 + chainStep * 80);
+          if (chainStep === 1 && enemy.grounded) enemy.vy = -470;
+          enemy.echoChainDashWindow = 0.19;
+          [-0.08, 0.08].forEach((spread) => fireBullet(
+            enemy,
+            560 + chainStep * 35,
+            spread,
+            "phase",
+            { x: player.x + player.w / 2, y: player.y + player.h / 2 },
+          ));
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.47, chainStep === 2 ? "#f4edff" : "#63ffc6", 24, 620, 0.38, 0);
+          sound.tone(320 + chainStep * 120, 0.11, "sawtooth", 0.035, 1.9);
+          enemy.echoChainDashRemaining -= 1;
+          enemy.echoChainDashTimer = 0.2;
+        }
+      }
+      if ((enemy.echoDiveShotsRemaining || 0) > 0) {
+        enemy.echoDiveShotTimer = Math.max(0, (enemy.echoDiveShotTimer || 0) - dt);
+        if (enemy.echoDiveShotTimer <= 0) {
+          const diveStep = ECHO_DIVE_VOLLEY_COUNT - enemy.echoDiveShotsRemaining;
+          const diveTarget = { x: player.x + player.w / 2 + player.vx * 0.12, y: player.y + player.h / 2 };
+          [-0.18, -0.09, 0, 0.09, 0.18].forEach((spread, index) => fireBullet(
+            enemy,
+            500 - Math.abs(index - 2) * 28,
+            spread,
+            index === 2 ? "phase" : "standard",
+            diveTarget,
+          ));
+          enemy.vx = Math.sign(diveTarget.x - (enemy.x + enemy.w / 2) || enemy.facing || 1) * (460 + diveStep * 80);
+          if (enemy.echoDiveShotsRemaining === 1) enemy.vy = 840;
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, diveStep === 2 ? "#63ffc6" : "#b994ff", 20, 430, 0.36, 0);
+          enemy.echoDiveShotsRemaining -= 1;
+          enemy.echoDiveShotTimer = 0.16;
+        }
+      }
       const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
       const sampleRate = Math.min(1, dt * 4.8);
       analysis.slash = lerp(analysis.slash, player.attackTimer > 0 ? 1 : 0, sampleRate);
@@ -8995,6 +9086,13 @@
 
     const chargingShot = enemy.bossAction === "chargeShot" && enemy.windup > 0;
     const echoGuarding = ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction) && enemy.windup > 0;
+    const echoSequenceActive = bossKind === "echo" && ((enemy.echoChainDashRemaining || 0) > 0 || (enemy.echoDiveShotsRemaining || 0) > 0 || (enemy.echoChainDashWindow || 0) > 0);
+    if (echoSequenceActive) {
+      retreating = false;
+      enemy.retreatTimer = 0;
+      enemy.pendingRetreatTimer = 0;
+      enemy.pendingRetreatDelay = 0;
+    }
     const approachAction = ["shieldRush", "mutantApproach", "mutantLeap", "mutantSmash", "echoDash"].includes(enemy.bossAction) && enemy.windup > 0;
     const revenantThrusting = enemy.bossAction === "revenantThrustBarrage";
     if (retreating) {
@@ -9011,6 +9109,8 @@
     } else if (echoGuarding) {
       enemy.vx = moveToward(enemy.vx, 0, 1350 * dt);
       enemy.facing = Math.sign(dx || enemy.facing || 1);
+    } else if (echoSequenceActive) {
+      enemy.facing = Math.sign(enemy.vx || dx || enemy.facing || 1);
     } else if (revenantThrusting) {
       enemy.vx = moveToward(enemy.vx, (enemy.dashDirection || enemy.facing || 1) * (590 + rank * 28), 1850 * dt);
     } else if (approachAction) {
@@ -9317,9 +9417,18 @@
         } else if (phase === 4) {
           startBossChargedShot(enemy, "echo-burst", dx, 0.82);
           enemy.cooldown = 1.75 * recovery;
-        } else {
+        } else if (phase === 5) {
           beginEchoParry(enemy, dx);
           enemy.cooldown = 1.48 * recovery;
+        } else if (phase === 6) {
+          startBossChargedShot(enemy, "echo-triple-burst", dx, 0.5);
+          enemy.cooldown = 1.62 * recovery;
+        } else if (phase === 7) {
+          startBossChargedShot(enemy, "echo-dive-barrage", dx, 0.6);
+          enemy.cooldown = 1.72 * recovery;
+        } else {
+          startBossChargedShot(enemy, "echo-afterimage-crossfire", dx, 0.72);
+          enemy.cooldown = 1.82 * recovery;
         }
       }
       enemy.cooldown = Math.max(0.48, enemy.cooldown * bossCurve.cooldown * (bossKind === "echo" ? ECHO_ATTACK_RECOVERY_FACTOR : 1));
@@ -12226,7 +12335,9 @@
         shotAimX: player.shotAimX,
         shotAimY: player.shotAimY,
       };
-      const echoDrawingSword = ["echoSlash", "echoCounter", "echoParryRiposte", "echoDash"].includes(enemy.bossAction);
+      const echoChargingBurstSword = enemy.bossAction === "chargeShot" && enemy.bossShotPattern === "echo-triple-burst";
+      const echoDrawingSword = ["echoSlash", "echoCounter", "echoParryRiposte", "echoDash"].includes(enemy.bossAction) || echoChargingBurstSword;
+      const echoDrawingShotgun = enemy.bossAction === "chargeShot" && ["echo-shotgun", "echo-dive-barrage", "echo-afterimage-crossfire"].includes(enemy.bossShotPattern);
       Object.assign(player, {
         vx: enemy.vx,
         vy: enemy.vy,
@@ -12238,8 +12349,8 @@
         attackTimer: echoDrawingSword ? Math.max(0.04, enemy.windup || 0.1) : 0,
         attackDuration: 0.4,
         attackDir: { x: enemy.facing, y: enemy.bossAction === "echoCounter" ? -0.24 : 0.08 },
-        chargedAttack: ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction),
-        recoilTimer: enemy.bossAction === "chargeShot" && enemy.bossShotPattern === "echo-shotgun" ? Math.max(0.04, enemy.windup || 0.1) : 0,
+        chargedAttack: ["echoCounter", "echoParryRiposte"].includes(enemy.bossAction) || echoChargingBurstSword,
+        recoilTimer: echoDrawingShotgun ? Math.max(0.04, enemy.windup || 0.1) : 0,
         shotAimX: enemy.facing,
         shotAimY: 0,
       });
@@ -15529,6 +15640,11 @@
     echoSpeedFactor: ECHO_SPEED_FACTOR,
     echoAttackRecoveryFactor: ECHO_ATTACK_RECOVERY_FACTOR,
     echoShotgunPelletCount: ECHO_SHOTGUN_PELLET_COUNT,
+    echoNewPatternCount: 3,
+    echoNewPatterns: ["echo-triple-burst", "echo-dive-barrage", "echo-afterimage-crossfire"],
+    echoChainBurstCount: ECHO_CHAIN_BURST_COUNT,
+    echoDiveVolleyCount: ECHO_DIVE_VOLLEY_COUNT,
+    echoAfterimageSourceCount: ECHO_AFTERIMAGE_SOURCE_COUNT,
     bossDashTelegraphs: true,
     bossDeathPickupSuppressed: true,
     adminFlightSpeed: INPUT_TUNING.moveSpeed * 2,
@@ -15923,6 +16039,11 @@
     echoSpeedFactor: String(ECHO_SPEED_FACTOR),
     echoAttackRecoveryFactor: String(ECHO_ATTACK_RECOVERY_FACTOR),
     echoShotgunPelletCount: String(ECHO_SHOTGUN_PELLET_COUNT),
+    echoNewPatternCount: "3",
+    echoNewPatterns: "echo-triple-burst,echo-dive-barrage,echo-afterimage-crossfire",
+    echoChainBurstCount: String(ECHO_CHAIN_BURST_COUNT),
+    echoDiveVolleyCount: String(ECHO_DIVE_VOLLEY_COUNT),
+    echoAfterimageSourceCount: String(ECHO_AFTERIMAGE_SOURCE_COUNT),
     bossDashTelegraphs: "true",
     bossDeathPickupSuppressed: "true",
     shieldBaseHp: String(SHIELD_BASE_HP),

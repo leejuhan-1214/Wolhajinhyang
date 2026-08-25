@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.20") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.21") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -143,7 +143,7 @@ if (!diagnostics.bossRetreatPreservesAttack || !diagnostics.bossPlatformAxisSepa
 if (diagnostics.bossArenaEdgeInset !== 64 || !diagnostics.bossMovementUsesFullArena || !diagnostics.bossFullArenaPursuit || !diagnostics.bossVisibleArenaLimits || !diagnostics.bossUsesStrictHomeArenaBounds || !diagnostics.bossBoundaryHopDisabled || !diagnostics.bossThinPlatformPassThrough) {
   throw new Error("boss arena still contains invisible movement blockers");
 }
-if (diagnostics.bossPatternDirector !== "adaptive-no-repeat" || !diagnostics.bossPhaseTwoFollowupCombos || diagnostics.bossPatternOrderCount !== 10 || diagnostics.weaverPatternVariants !== 5 || diagnostics.echoPatternVariants !== 6) {
+if (diagnostics.bossPatternDirector !== "adaptive-no-repeat" || !diagnostics.bossPhaseTwoFollowupCombos || diagnostics.bossPatternOrderCount !== 10 || diagnostics.weaverPatternVariants !== 5 || diagnostics.echoPatternVariants !== 9) {
   throw new Error("expanded boss pattern director is missing");
 }
 if (diagnostics.bossCrisisPatternThreshold !== 0.35 || diagnostics.bossCrisisPatternCount !== 10 || !diagnostics.bossCrisisPatternTelegraph || diagnostics.bossCrisisCooldownRange.join(",") !== "5.68,6.8") {
@@ -286,6 +286,9 @@ if (!diagnostics.echoParryEnabled || diagnostics.echoParryWindowSeconds !== 0.32
 }
 if (diagnostics.echoHp !== 66 || diagnostics.echoSpeedFactor !== 1.3 || diagnostics.echoAttackRecoveryFactor !== 0.78 || diagnostics.echoShotgunPelletCount !== 9 || diagnostics.echoSkillMultiplier !== 4 || !gameSource.includes('triggerEchoParry(enemy, "shotgun", { force: true })') || !gameSource.includes("bullet.cancelled || !bullet.piercing")) {
   throw new Error("strengthened echo combat tuning is missing");
+}
+if (diagnostics.echoNewPatternCount !== 3 || diagnostics.echoNewPatterns.join(",") !== "echo-triple-burst,echo-dive-barrage,echo-afterimage-crossfire" || diagnostics.echoChainBurstCount !== 3 || diagnostics.echoDiveVolleyCount !== 3 || diagnostics.echoAfterimageSourceCount !== 3) {
+  throw new Error("three new Echo patterns are missing");
 }
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {
   throw new Error("act 3 triple-projectile burst parry is missing");
