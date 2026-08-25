@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.19") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.20") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -281,10 +281,10 @@ if (!diagnostics.characterArchiveRenderer || diagnostics.characterArchivePages !
 if (!diagnostics.runnerSweptRushHitbox || diagnostics.runnerRushLeadingReach !== 16 || diagnostics.bossBurstParryEnabled) {
   throw new Error("runner rush symmetry or boss parry restriction missing");
 }
-if (!diagnostics.echoParryEnabled || diagnostics.echoParryWindowSeconds !== 0.32 || !diagnostics.echoParryReflectsShotgun || !diagnostics.echoReactiveShotgunParry || diagnostics.echoReactiveShotgunParryCooldown !== 1.55 || diagnostics.echoParryReturnProjectiles !== 3 || diagnostics.echoParryRiposteDamage !== 1 || diagnostics.mutantDebrisDamage !== 1) {
+if (!diagnostics.echoParryEnabled || diagnostics.echoParryWindowSeconds !== 0.32 || !diagnostics.echoParryReflectsShotgun || !diagnostics.echoReactiveShotgunParry || diagnostics.echoShotgunParryTrigger !== "hit-confirmed-any-action" || !diagnostics.echoShotgunParryCancelsPiercingPellets || diagnostics.echoReactiveShotgunParryCooldown !== 1.1 || diagnostics.echoParryReturnProjectiles !== 5 || diagnostics.echoParryRiposteDamage !== 1 || diagnostics.mutantDebrisDamage !== 1) {
   throw new Error("echo parry or mutant debris damage tuning is missing");
 }
-if (diagnostics.echoHp !== 60 || diagnostics.echoSpeedFactor !== 1.22 || diagnostics.echoAttackRecoveryFactor !== 0.86 || diagnostics.echoShotgunPelletCount !== 7 || diagnostics.echoSkillMultiplier !== 3.5 || !gameSource.includes("const reactiveEcho = !game.adminMode")) {
+if (diagnostics.echoHp !== 66 || diagnostics.echoSpeedFactor !== 1.3 || diagnostics.echoAttackRecoveryFactor !== 0.78 || diagnostics.echoShotgunPelletCount !== 9 || diagnostics.echoSkillMultiplier !== 4 || !gameSource.includes('triggerEchoParry(enemy, "shotgun", { force: true })') || !gameSource.includes("bullet.cancelled || !bullet.piercing")) {
   throw new Error("strengthened echo combat tuning is missing");
 }
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {

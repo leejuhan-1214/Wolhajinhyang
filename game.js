@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.19";
+  const GAME_VERSION = "3.6.20";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -165,12 +165,12 @@
   const ECHO_PARRY_WINDUP_SECONDS = 0.62;
   const ECHO_PARRY_OPEN_SECONDS = 0.42;
   const ECHO_PARRY_CLOSE_SECONDS = 0.1;
-  const ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN = 1.55;
-  const ECHO_SHOTGUN_PELLET_COUNT = 7;
-  const ECHO_PARRY_RETURN_PROJECTILES = 3;
-  const ECHO_SPEED_FACTOR = 1.22;
-  const ECHO_ATTACK_RECOVERY_FACTOR = 0.86;
-  const ECHO_SKILL_MULTIPLIER = 3.5;
+  const ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN = 1.1;
+  const ECHO_SHOTGUN_PELLET_COUNT = 9;
+  const ECHO_PARRY_RETURN_PROJECTILES = 5;
+  const ECHO_SPEED_FACTOR = 1.3;
+  const ECHO_ATTACK_RECOVERY_FACTOR = 0.78;
+  const ECHO_SKILL_MULTIPLIER = 4;
   const MUTANT_DEBRIS_DAMAGE = 1;
   const SHIELD_BREAK_SECONDS = 3.2;
   const SHIELD_GUARD_REGEN_SECONDS = 2.2;
@@ -374,7 +374,7 @@
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 60,
+      hp: 66,
       size: [34, 56],
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전"],
@@ -5911,32 +5911,6 @@
       game.hintTimer = 1.7;
     }
 
-    const reactiveEcho = !game.adminMode && enemies.find((enemy) => {
-      if (
-        !enemy.alive
-        || enemy.type !== "boss"
-        || enemy.bossKind !== "echo"
-        || isBossIntroLocked(enemy)
-        || enemy.homeZoneIndex !== game.zone
-        || enemy.windup > 0
-        || enemy.bossAction
-        || (enemy.echoReactiveParryCooldown || 0) > 0
-      ) return false;
-      const echoDX = enemy.x + enemy.w / 2 - (player.x + player.w / 2);
-      const echoDY = enemy.y + enemy.h / 2 - (player.y + player.h / 2);
-      const echoDistance = Math.max(1, Math.hypot(echoDX, echoDY));
-      const aimDot = aim.x * echoDX / echoDistance + aim.y * echoDY / echoDistance;
-      return echoDistance < 500 && aimDot > 0.84;
-    });
-    if (reactiveEcho) {
-      const echoDX = player.x + player.w / 2 - (reactiveEcho.x + reactiveEcho.w / 2);
-      beginEchoParry(reactiveEcho, echoDX, { reactiveShotgun: true });
-      reactiveEcho.echoReactiveParryCooldown = reactiveEcho.adaptivePhase
-        ? ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN * 0.78
-        : ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN;
-      reactiveEcho.cooldown = Math.max(reactiveEcho.cooldown, 0.82);
-    }
-
     for (let pellet = 0; pellet < pelletCount; pellet += 1) {
       const ratio = pelletCount === 1 ? 0 : pellet / (pelletCount - 1) - 0.5;
       const angle = Math.atan2(aim.y, aim.x) + ratio * spread + (hash(player.shotId * 17 + pellet) - 0.5) * 0.035;
@@ -6291,6 +6265,10 @@
 
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
+    if (enemy.echoParriedShotId === bullet.shotId) {
+      bullet.cancelled = true;
+      return true;
+    }
     if (enemy.hitShotId === bullet.shotId) return true;
     if (isBossIntroLocked(enemy)) {
       enemy.hitShotId = bullet.shotId;
@@ -6302,8 +6280,23 @@
       enemy.hitShotId = bullet.shotId;
       return true;
     }
+    if (
+      !game.adminMode
+      && enemy.type === "boss"
+      && enemy.bossKind === "echo"
+      && (enemy.echoReactiveParryCooldown || 0) <= 0
+    ) {
+      enemy.hitShotId = bullet.shotId;
+      enemy.echoParriedShotId = bullet.shotId;
+      bullet.cancelled = true;
+      triggerEchoParry(enemy, "shotgun", { force: true });
+      enemy.echoReactiveParryCooldown = ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN * (enemy.adaptivePhase ? 0.68 : 1);
+      return true;
+    }
     if (isEchoParryActive(enemy)) {
       enemy.hitShotId = bullet.shotId;
+      enemy.echoParriedShotId = bullet.shotId;
+      bullet.cancelled = true;
       triggerEchoParry(enemy, "shotgun");
       return true;
     }
@@ -6534,6 +6527,9 @@
       enemy.bossChargeDirection = 0;
       enemy.targetX = null;
       enemy.targetY = null;
+      enemy.echoParriedShotId = null;
+      enemy.echoReactiveParryCooldown = 0;
+      enemy.echoParrySuccessTimer = 0;
       if (isAdminRemovedEnemy(enemy)) {
         enemy.alive = false;
         enemy.hp = 0;
@@ -7454,19 +7450,20 @@
     );
   }
 
-  function beginEchoParry(enemy, dx, { reactiveShotgun = false } = {}) {
-    enemy.windup = reactiveShotgun ? ECHO_PARRY_OPEN_SECONDS : ECHO_PARRY_WINDUP_SECONDS;
+  function beginEchoParry(enemy, dx) {
+    enemy.windup = ECHO_PARRY_WINDUP_SECONDS;
     enemy.bossAction = "echoCounter";
     enemy.dashDirection = Math.sign(dx || enemy.facing || 1);
     enemy.dashRange = 520;
     enemy.echoParryDuration = ECHO_PARRY_WINDUP_SECONDS;
-    game.hint = reactiveShotgun ? "잔영-00 · 산탄 궤적 분석 · 거울 패링" : "잔영-00 · 거울 패링 준비";
+    game.hint = "잔영-00 · 거울 패링 준비";
     game.hintTimer = 1.05;
     sound.tone(620, 0.16, "triangle", 0.026, 1.55);
   }
 
-  function triggerEchoParry(enemy, source = "slash") {
-    if (!isEchoParryActive(enemy)) return false;
+  function triggerEchoParry(enemy, source = "slash", { force = false } = {}) {
+    if (!force && !isEchoParryActive(enemy)) return false;
+    if (!enemy?.alive || enemy.type !== "boss" || enemy.bossKind !== "echo") return false;
     const direction = Math.sign(player.x + player.w / 2 - (enemy.x + enemy.w / 2)) || enemy.facing || 1;
     enemy.echoParryCount = (enemy.echoParryCount || 0) + 1;
     enemy.bossAction = "echoParryRiposte";
@@ -7474,12 +7471,16 @@
     enemy.dashDirection = direction;
     enemy.dashRange = 360;
     enemy.cooldown = Math.max(enemy.cooldown, 1.18);
+    enemy.retreatTimer = 0;
+    enemy.pendingRetreatTimer = 0;
+    enemy.pendingRetreatDelay = 0;
+    enemy.echoParrySuccessTimer = 0.38;
     enemy.vx = -direction * 150;
     player.vx = -direction * 185;
     player.vy = Math.min(player.vy, -125);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.43, "#e9dcff", 28, 520, 0.46, 0);
     spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.43, "#63ffc6", 18, 360, 0.38, 0);
-    game.hint = source === "shotgun" ? "잔영-00 · 산탄 패링 · 역상탄 반격" : "잔영-00 · 발도 패링 · 즉시 반격";
+    game.hint = source === "shotgun" ? "잔영-00 · 산탄 완전 패링 · 오중 역상탄" : "잔영-00 · 발도 패링 · 즉시 반격";
     game.hintTimer = 1.35;
     game.freeze = Math.max(game.freeze, 0.07);
     game.flash = Math.max(game.flash, 0.12);
@@ -8926,6 +8927,7 @@
     if (bossKind === "echo") {
       enemy.echoMimicJumpCooldown = Math.max(0, (enemy.echoMimicJumpCooldown || 0) - dt);
       enemy.echoReactiveParryCooldown = Math.max(0, (enemy.echoReactiveParryCooldown || 0) - dt);
+      enemy.echoParrySuccessTimer = Math.max(0, (enemy.echoParrySuccessTimer || 0) - dt);
       const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
       const sampleRate = Math.min(1, dt * 4.8);
       analysis.slash = lerp(analysis.slash, player.attackTimer > 0 ? 1 : 0, sampleRate);
@@ -9741,7 +9743,7 @@
           for (const enemy of activeEnemies) {
             if (!enemy.alive || !overlaps(bullet, enemy)) continue;
             damageEnemyWithShotgun(enemy, bullet);
-            if (!bullet.piercing) remove = true;
+            if (bullet.cancelled || !bullet.piercing) remove = true;
             if (remove) break;
           }
         }
@@ -12263,6 +12265,33 @@
       if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
       drawPlayerBody(enemy.x, enemy.y, enemy.facing, enemy.hurt > 0 ? 0.92 : 1, false, "echo");
       ctx.restore();
+
+      if ((enemy.echoParrySuccessTimer || 0) > 0) {
+        const parryFlash = clamp(enemy.echoParrySuccessTimer / 0.38, 0, 1);
+        const parryX = enemy.x + enemy.w / 2;
+        const parryY = enemy.y + enemy.h * 0.43;
+        ctx.save();
+        ctx.translate(parryX, parryY);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = parryFlash;
+        ctx.strokeStyle = "#f7f2ff";
+        ctx.lineWidth = 3 + parryFlash * 4;
+        ctx.beginPath();
+        ctx.arc(0, 0, 34 + (1 - parryFlash) * 42, 0, TAU);
+        ctx.stroke();
+        ctx.strokeStyle = "#63ffc6";
+        ctx.lineWidth = 2;
+        for (let ray = 0; ray < 8; ray += 1) {
+          const angle = ray * TAU / 8 + game.time * 0.8;
+          const inner = 27 + (1 - parryFlash) * 12;
+          const outer = inner + 18 + parryFlash * 13;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       // 잔영의 분석 장치와 복제 프레임 표식은 플레이어와 같은 체형에서도 보스임을 구분해 준다.
       ctx.save();
@@ -15579,6 +15608,8 @@
     echoParryWindowSeconds: Number((ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2)),
     echoParryReflectsShotgun: true,
     echoReactiveShotgunParry: true,
+    echoShotgunParryTrigger: "hit-confirmed-any-action",
+    echoShotgunParryCancelsPiercingPellets: true,
     echoReactiveShotgunParryCooldown: ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN,
     echoParryReturnProjectiles: ECHO_PARRY_RETURN_PROJECTILES,
     echoParryRiposteDamage: 1,
@@ -15962,6 +15993,8 @@
     echoParryWindowSeconds: (ECHO_PARRY_OPEN_SECONDS - ECHO_PARRY_CLOSE_SECONDS).toFixed(2),
     echoParryReflectsShotgun: "true",
     echoReactiveShotgunParry: "true",
+    echoShotgunParryTrigger: "hit-confirmed-any-action",
+    echoShotgunParryCancelsPiercingPellets: "true",
     echoReactiveShotgunParryCooldown: String(ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN),
     echoParryReturnProjectiles: String(ECHO_PARRY_RETURN_PROJECTILES),
     echoParryRiposteDamage: "1",
