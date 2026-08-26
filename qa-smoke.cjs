@@ -80,7 +80,7 @@ const gameSource = fs.readFileSync("game.js", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.22") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.23") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -292,6 +292,9 @@ if (diagnostics.echoHp !== 66 || diagnostics.echoSpeedFactor !== 1.3 || diagnost
 }
 if (diagnostics.echoNewPatternCount !== 3 || diagnostics.echoNewPatterns.join(",") !== "echo-triple-burst,echo-dive-barrage,echo-afterimage-crossfire" || diagnostics.echoChainBurstCount !== 3 || diagnostics.echoDiveVolleyCount !== 3 || diagnostics.echoAfterimageSourceCount !== 3) {
   throw new Error("three new Echo patterns are missing");
+}
+if (diagnostics.echoStageLaserCount !== 0 || !diagnostics.echoStageLaserRemovalGuard) {
+  throw new Error(`Echo stage laser removal failed: ${diagnostics.echoStageLaserCount}`);
 }
 if (!diagnostics.burstTripleParryEnabled || diagnostics.burstTripleParryAct !== 3 || diagnostics.burstTripleParryProjectileCount !== 3) {
   throw new Error("act 3 triple-projectile burst parry is missing");

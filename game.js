@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.22";
+  const GAME_VERSION = "3.6.23";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -273,6 +273,7 @@
   let levelReady = false;
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
+  let echoStageLaserRemovals = 0;
   let enemyZoneAuditAccumulator = 0;
   let platformSpatialBuckets = [];
   let platformSpatialDirty = true;
@@ -2228,6 +2229,18 @@
     return hazard;
   }
 
+  function removeStageHazards(stageIndex, kind) {
+    let removed = 0;
+    for (let index = hazards.length - 1; index >= 0; index -= 1) {
+      const hazard = hazards[index];
+      const hazardZoneIndex = getZoneIndexAt(hazard.x + hazard.w / 2);
+      if (Math.floor(hazardZoneIndex / ZONES_PER_STAGE) !== stageIndex || hazard.kind !== kind) continue;
+      hazards.splice(index, 1);
+      removed += 1;
+    }
+    return removed;
+  }
+
   function addCheckpoint(x, y, label, checkpointKey = null) {
     checkpoints.push({ x, y, w: 32, h: 88, label, checkpointKey, active: false });
   }
@@ -3891,7 +3904,7 @@
         },
         {
           platforms: [[390, -245, 230], [980, -455, 220], [1630, -190, 250], [2310, -515, 220], [2980, -325, 240], [3520, -470, 210]],
-          hazards: [[690, "laser"], [1260, "spike"], [1960, "steam"], [2670, "laser"], [3290, "spike"], [3740, "laser"]],
+          hazards: [[690, "steam"], [1260, "spike"], [1960, "steam"], [2670, "spike"], [3290, "spike"], [3740, "steam"]],
         },
       ];
 
@@ -3990,8 +4003,6 @@
           .forEach(([x, y, w]) => addPlatform(origin + x, floorY + y, w, 24, x < 2000 ? "glass" : "mirror"));
         addBoostNode(origin + 1880, floorY - 78, 140, -570);
         addBoostNode(origin + 2080, floorY - 78, -140, -570);
-        addHazard(origin + 1930, floorY - 420, 24, 420, "laser", 0.4);
-        addHazard(origin + 2046, floorY - 420, 24, 420, "laser", 1.45);
       }
     }
 
@@ -4148,7 +4159,7 @@
         if (depthVariant >= 2) addHazard(origin + 500, floorY - 22, 260, 22, "spike");
         spawns.push([300, floorY], [840, floorY - 270], [1140, floorY - 445], [1500, floorY - 620, "drone"], [2130, floorY - 300], [2440, floorY - 500], [3080, floorY - 455], [3660, floorY]);
       } else if (zone.template === "memoryLabyrinth") {
-        // 5막 · 최고급: 바닥 섬, 좁은 거울 계단, 수직 레이저가 한 구역 안에서 연속된다.
+        // 5막 · 최고급: 바닥 섬, 좁은 거울 계단, 증기 분출이 한 구역 안에서 연속된다.
         addPlatform(origin, floorY, 520, WORLD_H - floorY, "mirror");
         addPlatform(origin + 940, floorY + 20, 470, WORLD_H - floorY - 20, "glass");
         addPlatform(origin + 1940, floorY - 15, 430, WORLD_H - floorY + 15, "mirror");
@@ -4167,7 +4178,7 @@
         addBoostNode(origin + 3540, floorY - 330, 150, -500);
         [820, 1600, 2540, 3390].forEach((x, index) => {
           const height = index % 2 ? 560 : 390;
-          addHazard(origin + x, floorY - height, 24, height, "laser", index * 0.7 + localZoneIndex * 0.17);
+          addHazard(origin + x, floorY - height, 28, height, "steam", index * 0.7 + localZoneIndex * 0.17);
         });
         addHazard(origin + 1410, floorY - 22, 260 + depthVariant * 40, 22, "spike");
         addHazard(origin + 3310, floorY - 22, 250, 22, "spike");
@@ -4283,7 +4294,7 @@
         [[270, -120, 420], [770, -300, 360], [1220, -470, 390], [1710, -250, 430], [2240, -470, 390], [2730, -300, 360], [3190, -120, 450]]
           .forEach(([x, y, w], index) => addPlatform(origin + x, floorY + y, w, 24, index < 4 ? "glass" : "mirror"));
         addBoostNode(origin + 1870, floorY - 75, 150, -680);
-        [1150, 2800].forEach((x, index) => addHazard(origin + x, floorY - 340, 24, 340, "laser", 0.45 + index * 1.1));
+        [1150, 2800].forEach((x, index) => addHazard(origin + x, floorY - 340, 28, 340, "steam", 0.45 + index * 1.1));
         spawns.push([380, floorY - 120], [880, floorY - 300], [1340, floorY - 470, "drone"], [1850, floorY - 250], [2360, floorY - 470], [2850, floorY - 300], [3320, floorY - 120]);
       } else if (zone.template === "midboss") {
         addMidBossArena(zone.stageIndex, origin, floorY, kind);
@@ -4312,7 +4323,7 @@
         addBoostNode(origin + 520, floorY - 110, 185, -610);
         addBoostNode(origin + 3380, ridge + 120, 250, -430);
         [1060, 1760, 2470, 3180].forEach((x, index) => {
-          addHazard(origin + x, floorY - (index % 2 ? 360 : 500), 24, index % 2 ? 360 : 500, "laser", index * 0.61 + localZoneIndex * 0.23);
+          addHazard(origin + x, floorY - (index % 2 ? 360 : 500), 28, index % 2 ? 360 : 500, "steam", index * 0.61 + localZoneIndex * 0.23);
         });
         addEnemy(localZoneIndex % 2 ? "mortar" : "shield", origin + 2860, floorY, 250);
         if (localZoneIndex === 1 || localZoneIndex === 4) {
@@ -4352,6 +4363,9 @@
     removeEmbeddedRepairPickups();
     restoreAdminPlacedObjects();
     restoreAdminSpawnedEnemies();
+    // 5막은 잔영과의 기동전 자체에 집중한다. 공개/로컬 관리자 편집에 남은
+    // 레이저까지 최종 생성 단계에서 제거해 어떤 기기에서도 다시 나타나지 않게 한다.
+    echoStageLaserRemovals = removeStageHazards(4, "laser");
     for (let index = pickups.length - 1; index >= 0; index -= 1) {
       if (adminRemovedObjectIds.has(pickups[index].id)) pickups.splice(index, 1);
     }
@@ -15635,6 +15649,9 @@
     proxyName: "대역-13",
     proxySelfInjection: true,
     proxyArenaLaserCount: 0,
+    echoStageLaserCount: hazards.filter((hazard) => hazard.kind === "laser" && Math.floor(getZoneIndexAt(hazard.x + hazard.w / 2) / ZONES_PER_STAGE) === 4).length,
+    echoStageLaserRemovalGuard: true,
+    echoStageLaserRemovals,
     echoAdaptiveCombatAI: true,
     echoSkillMultiplier: ECHO_SKILL_MULTIPLIER,
     echoHp: BOSS_DEFINITIONS.echo.hp,
@@ -16035,6 +16052,9 @@
     proxyName: "대역-13",
     proxySelfInjection: "true",
     proxyArenaLaserCount: "0",
+    echoStageLaserCount: String(hazards.filter((hazard) => hazard.kind === "laser" && Math.floor(getZoneIndexAt(hazard.x + hazard.w / 2) / ZONES_PER_STAGE) === 4).length),
+    echoStageLaserRemovalGuard: "true",
+    echoStageLaserRemovals: String(echoStageLaserRemovals),
     echoAdaptiveCombatAI: "true",
     echoSkillMultiplier: String(ECHO_SKILL_MULTIPLIER),
     echoHp: String(BOSS_DEFINITIONS.echo.hp),
