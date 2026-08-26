@@ -42,6 +42,9 @@ const difficultyNames = { chick: "쉬움", cadet: "보통", darkhorse: "어려�
 const difficultyButtons = Object.entries(difficultyNames).map(([key, label]) => {
   const button = element(); button.dataset.difficulty = key; button.textContent = label; return button;
 });
+const adminDifficultyButtons = Object.entries(difficultyNames).map(([key, label]) => {
+  const button = element(); button.dataset.adminDifficulty = key; button.textContent = label; return button;
+});
 const storage = new Map([["moonlit-echo-campaign-v1", JSON.stringify({
   version: 2, zonesPerStage: 24, checkpointKey: "2:12", respawnStage: 2, respawnZone: 60, respawnCheckpointIndex: 60,
   difficulty: "cadet", defeatedEnemyIds: [], kills: 0,
@@ -67,7 +70,11 @@ global.document = {
   documentElement: Object.assign(element("html"), { dataset: {} }),
   getElementById(id) { if (!elements.has(id)) elements.set(id, element(id)); return elements.get(id); },
   querySelector(selector) { return null; },
-  querySelectorAll(selector) { return selector === "[data-difficulty]" ? difficultyButtons : []; },
+  querySelectorAll(selector) {
+    if (selector === "[data-difficulty]") return difficultyButtons;
+    if (selector === "[data-admin-difficulty]") return adminDifficultyButtons;
+    return [];
+  },
   createDocumentFragment() { return element("fragment"); },
   createElement() { return element(); },
   addEventListener() {}, fullscreenElement: null, fullscreenEnabled: false,
@@ -81,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.24") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.25") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
@@ -99,6 +106,9 @@ if (diagnostics.difficultyMobCountScales.chick !== 0.5 || diagnostics.difficulty
 }
 if (!diagnostics.startScreenDifficultyFlashGuard || !diagnostics.legacyDifficultyNamesMigrated || !indexSource.includes('data-game-bootstrap="loading"') || !indexSource.includes('data-difficulty="weapon" aria-pressed="false">지옥</button>')) {
   throw new Error("title-screen difficulty flash guard is missing");
+}
+if (!diagnostics.adminRDifficultySelector || diagnostics.adminRDifficultyChoices.join(",") !== "chick,cadet,darkhorse,weapon" || !diagnostics.adminPlaytestPreservesPosition || !diagnostics.adminPlaytestReturnWithR || !diagnostics.adminPlaytestUsesSelectedDifficulty || !indexSource.includes('data-admin-difficulty="weapon"') || !gameSource.includes('toggleAdminCadetMode(button.dataset.adminDifficulty)')) {
+  throw new Error("admin R difficulty selector is incomplete");
 }
 if (!diagnostics.hellBossRemixEnabled || diagnostics.hellBossRemixBossCount !== 10 || diagnostics.hellBossRemixPatternCount !== 48 || diagnostics.hellBossFollowupDelayScale !== 0.62 || diagnostics.hellBossCrisisThreshold !== 0.55 || diagnostics.hellBossCrisisCooldownScale !== 0.72 || diagnostics.hellBossCooldownScale !== 0.78 || diagnostics.hellBossWindupScale !== 0.8) {
   throw new Error("Hell boss remix configuration is invalid");

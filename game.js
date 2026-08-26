@@ -48,6 +48,8 @@
   const adminZonePanel = document.getElementById("admin-zone-panel");
   const adminZoneClose = document.getElementById("admin-zone-close");
   const adminZoneGrid = document.getElementById("admin-zone-grid");
+  const adminDifficultyPanel = document.getElementById("admin-difficulty-panel");
+  const adminDifficultyClose = document.getElementById("admin-difficulty-close");
   const tutorialPanel = document.getElementById("tutorial-panel");
   const tutorialClose = document.getElementById("tutorial-close");
   const adminWorldEditor = document.getElementById("admin-world-editor");
@@ -70,6 +72,7 @@
   const touchJoystickKnob = touchJoystick?.querySelector?.(".touch-joystick-knob") || null;
   const touchFullscreenButton = document.querySelector?.("[data-touch-action='fullscreen']") || null;
   const difficultyButtons = [...(document.querySelectorAll?.("[data-difficulty]") || [])];
+  const adminDifficultyButtons = [...(document.querySelectorAll?.("[data-admin-difficulty]") || [])];
   const adminSpawnButtons = [...(document.querySelectorAll?.("[data-admin-spawn]") || [])];
   const adminWorldCreateButtons = [...(document.querySelectorAll?.("[data-admin-world-create]") || [])];
 
@@ -93,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.24";
+  const GAME_VERSION = "3.6.25";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -4942,6 +4945,7 @@
     syncAdminRemovedBossState();
     setAdminSpawnPanel(false);
     setAdminZonePanel(false);
+    setAdminDifficultyPanel(false);
     keys.clear();
     pressed.clear();
     startScreen.classList.remove("visible");
@@ -4957,6 +4961,7 @@
     if (!adminSpawnPanel) return false;
     const shouldOpen = Boolean(open && game.adminMode && game.mode === "playing");
     if (shouldOpen && adminZonePanel) adminZonePanel.hidden = true;
+    if (shouldOpen && adminDifficultyPanel) adminDifficultyPanel.hidden = true;
     adminSpawnPanel.hidden = !shouldOpen;
     adminSpawnPanel.classList.toggle?.("visible", shouldOpen);
     if (!shouldOpen) setAdminWorldEditor(false);
@@ -4970,6 +4975,7 @@
       adminSpawnPanel.hidden = false;
       adminSpawnPanel.classList.toggle?.("visible", true);
       if (adminZonePanel) adminZonePanel.hidden = true;
+      if (adminDifficultyPanel) adminDifficultyPanel.hidden = true;
       setAdminWorldEditor(true, selected);
       return true;
     }
@@ -5194,6 +5200,7 @@
     adminZonePanel.hidden = !shouldOpen;
     if (shouldOpen) {
       setAdminSpawnPanel(false);
+      if (adminDifficultyPanel) adminDifficultyPanel.hidden = true;
       for (const button of adminZoneGrid?.querySelectorAll?.("[data-admin-zone]") || []) {
         button.classList.toggle("current", Number(button.dataset.adminZone) === game.zone);
       }
@@ -5203,6 +5210,31 @@
 
   function toggleAdminZonePanel() {
     return setAdminZonePanel(adminZonePanel?.hidden !== false);
+  }
+
+  function setAdminDifficultyPanel(open) {
+    if (!adminDifficultyPanel) return false;
+    const shouldOpen = Boolean(open && adminModeUnlocked && game.adminMode && game.mode === "playing" && !game.tutorialOpen);
+    adminDifficultyPanel.hidden = !shouldOpen;
+    if (shouldOpen) {
+      setAdminSpawnPanel(false);
+      if (adminZonePanel) adminZonePanel.hidden = true;
+      setAdminWorldEditor(false);
+      for (const button of adminDifficultyButtons) {
+        const titleButton = difficultyButtons.find((item) => item.dataset.difficulty === button.dataset.adminDifficulty);
+        const label = button.querySelector?.("b");
+        if (label && titleButton?.textContent) label.textContent = titleButton.textContent;
+      }
+      keys.clear();
+      pressed.clear();
+      player.vx = 0;
+      player.vy = 0;
+    }
+    return shouldOpen;
+  }
+
+  function toggleAdminDifficultyPanel() {
+    return setAdminDifficultyPanel(adminDifficultyPanel?.hidden !== false);
   }
 
   function setAdminWorldEditor(open, object = selectedAdminWorldObject) {
@@ -5546,9 +5578,10 @@
     return true;
   }
 
-  function toggleAdminCadetMode() {
+  function toggleAdminCadetMode(difficultyKey = null) {
     if (!adminModeUnlocked || game.mode !== "playing" || (!game.adminMode && !game.adminCadetMode)) return false;
     const enteringCadetMode = game.adminMode;
+    if (enteringCadetMode && !difficultySettings[difficultyKey]) return toggleAdminDifficultyPanel();
     const preservedPosition = {
       x: player.x,
       y: player.y,
@@ -5562,17 +5595,17 @@
       respawnY: player.respawnY,
     };
     if (enteringCadetMode) {
+      const playtestDifficulty = difficultySettings[difficultyKey];
       game.adminPreviousDifficulty = game.difficulty;
       game.adminMode = false;
       game.adminCadetMode = true;
-      game.difficulty = "cadet";
+      game.difficulty = difficultyKey;
       game.adminCadetStartZone = getZoneIndexAt(player.x);
       game.adminCadetStartStage = getStageIndexAt(player.x);
-      const cadet = difficultySettings.cadet;
-      player.maxHp = cadet.hp;
-      player.hp = cadet.hp;
+      player.maxHp = playtestDifficulty.hp;
+      player.hp = playtestDifficulty.hp;
       player.invincible = 0.9;
-      game.hint = "현재 위치에서 보통 난이도 실전 시작 · R로 관리자 복귀";
+      game.hint = `현재 위치에서 ${playtestDifficulty.name} 난이도 실전 시작 · R로 관리자 복귀`;
     } else {
       game.adminCadetMode = false;
       game.adminMode = true;
@@ -5601,6 +5634,7 @@
     game.stage = preservedPosition.stage;
     game.zone = preservedPosition.zone;
     game.hintTimer = 3.2;
+    setAdminDifficultyPanel(false);
     setAdminSpawnPanel(false);
     sound.tone(enteringCadetMode ? 360 : 760, 0.14, "square", 0.035, enteringCadetMode ? 0.78 : 1.25);
     return true;
@@ -10024,7 +10058,7 @@
     }
 
     if (game.mode !== "playing") return;
-    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false) {
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || adminDifficultyPanel?.hidden === false) {
       game.shake = 0;
       game.flash = Math.max(0, game.flash - dt);
       game.screenFlipFlash = Math.max(0, game.screenFlipFlash - dt * 2.4);
@@ -14478,7 +14512,7 @@
       ctx.fillStyle = "#ffe4a0";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
       ctx.fillText("A/D 좌우 · SPACE 상승 · SHIFT 하강 · 공중 정지 · 벽 통과 · 이동 속도 2배", W / 2, 126);
-      ctx.fillText(`L 전체 ${TOTAL_ZONE_COUNT}개 구역 · 1~5 스테이지 · X 생성 · Z 적/회복 아이템/도약 발판 영구 삭제 · R 신참`, W / 2, 145);
+      ctx.fillText(`L 전체 ${TOTAL_ZONE_COUNT}개 구역 · 1~5 스테이지 · X 생성 · Z 적/회복 아이템/도약 발판 영구 삭제 · R 난이도 선택`, W / 2, 145);
       ctx.textAlign = "left";
     } else if (game.adminCadetMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.92)";
@@ -14488,7 +14522,7 @@
       ctx.font = "900 11px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = "#d9ffff";
-      ctx.fillText("CADET PLAYTEST // ADMIN POWERS SUSPENDED", W / 2, 106);
+      ctx.fillText(`ADMIN PLAYTEST // ${difficultySettings[game.difficulty]?.name || "보통"} 난이도`, W / 2, 106);
       ctx.fillStyle = "#9ed8dd";
       ctx.font = "800 9px 'Malgun Gothic', sans-serif";
       ctx.fillText("현재 위치 유지 · 적 공격·피해·봉쇄 활성화 · R 관리자 복귀", W / 2, 125);
@@ -15103,6 +15137,7 @@
       || game.tutorialOpen
       || adminSpawnPanel?.hidden === false
       || adminZonePanel?.hidden === false
+      || adminDifficultyPanel?.hidden === false
       || isAdminWorldEditing()
     ) return;
     const worldX = pointer.screenX + camera.x;
@@ -15391,7 +15426,7 @@
       requestCutsceneAdvance();
       return;
     }
-    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || isAdminWorldEditing()) return;
+    if (game.tutorialOpen || adminSpawnPanel?.hidden === false || adminZonePanel?.hidden === false || adminDifficultyPanel?.hidden === false || isAdminWorldEditing()) return;
     if (event.button === 0) startAttack();
     if (event.button === 2) startShotgun();
   });
@@ -15422,6 +15457,13 @@
       return;
     }
 
+    if (adminDifficultyPanel?.hidden === false) {
+      if (firstPress && ["KeyR", "Escape"].includes(event.code)) setAdminDifficultyPanel(false);
+      pressed.delete(event.code);
+      keys.delete(event.code);
+      return;
+    }
+
     if (firstPress && event.code === "Delete" && game.adminMode && game.mode === "playing" && isAdminWorldEditing()) {
       deleteAdminWorldSelection();
       pressed.delete("Delete");
@@ -15444,6 +15486,8 @@
     if (firstPress && event.code === "KeyR" && game.mode === "playing" && (game.adminMode || game.adminCadetMode)) {
       toggleAdminCadetMode();
       pressed.delete("KeyR");
+      keys.delete("KeyR");
+      return;
     }
     if (event.code === "Escape") {
       if (startScreenEditor?.hidden === false) setStartScreenEditor(false);
@@ -15465,6 +15509,7 @@
     pressed.clear();
     setAdminSpawnPanel(false);
     setAdminZonePanel(false);
+    setAdminDifficultyPanel(false);
     if (game.mode === "playing") togglePause();
   });
 
@@ -15521,6 +15566,7 @@
   adminProfileImportFile?.addEventListener("change", importAdminPortableProfileFile);
   adminProfileShare?.addEventListener("click", copyAdminPortableShareLink);
   adminZoneClose?.addEventListener("click", () => setAdminZonePanel(false));
+  adminDifficultyClose?.addEventListener("click", () => setAdminDifficultyPanel(false));
   tutorialClose?.addEventListener("click", closeTutorialPanel);
   for (const button of adminSpawnButtons) {
     button.addEventListener("click", () => spawnAdminSelection(button.dataset.adminSpawn));
@@ -15554,6 +15600,9 @@
   } else if (adminProfileImportedFromHash && adminStatus) {
     adminStatus.hidden = false;
     adminStatus.textContent = "공유 관리자 편집 데이터 적용 완료";
+  }
+  for (const button of adminDifficultyButtons) {
+    button.addEventListener("click", () => toggleAdminCadetMode(button.dataset.adminDifficulty));
   }
   prepareTutorialBriefing();
   buildLevel();
@@ -16004,6 +16053,11 @@
     adminCanvasEditReopensWithX: true,
     adminDeleteKeyEnabled: true,
     adminDeleteKeySafeInInputs: true,
+    adminRDifficultySelector: true,
+    adminRDifficultyChoices: Object.keys(difficultySettings),
+    adminPlaytestPreservesPosition: true,
+    adminPlaytestReturnWithR: true,
+    adminPlaytestUsesSelectedDifficulty: true,
     screenShakeScale: SCREEN_SHAKE_SCALE,
     screenShakeMaxAmplitude: MAX_SCREEN_SHAKE_AMPLITUDE,
     screenShakeDisabledInAdminMode: true,
@@ -16409,6 +16463,11 @@
     adminCanvasEditReopensWithX: "true",
     adminDeleteKeyEnabled: "true",
     adminDeleteKeySafeInInputs: "true",
+    adminRDifficultySelector: "true",
+    adminRDifficultyChoices: Object.keys(difficultySettings).join(","),
+    adminPlaytestPreservesPosition: "true",
+    adminPlaytestReturnWithR: "true",
+    adminPlaytestUsesSelectedDifficulty: "true",
     screenShakeScale: String(SCREEN_SHAKE_SCALE),
     screenShakeMaxAmplitude: String(MAX_SCREEN_SHAKE_AMPLITUDE),
     screenShakeDisabledInAdminMode: "true",

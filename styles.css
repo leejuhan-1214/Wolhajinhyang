@@ -940,7 +940,8 @@ button:focus-visible {
 .admin-spawn-panel[hidden] { display: none; }
 
 .tutorial-panel,
-.admin-zone-panel {
+.admin-zone-panel,
+.admin-difficulty-panel {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -957,10 +958,12 @@ button:focus-visible {
 }
 
 .tutorial-panel[hidden],
-.admin-zone-panel[hidden] { display: none; }
+.admin-zone-panel[hidden],
+.admin-difficulty-panel[hidden] { display: none; }
 
 .tutorial-panel header,
-.admin-zone-panel header {
+.admin-zone-panel header,
+.admin-difficulty-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -969,17 +972,20 @@ button:focus-visible {
 }
 
 .tutorial-panel header div,
-.admin-zone-panel header div { display: grid; gap: 4px; }
+.admin-zone-panel header div,
+.admin-difficulty-panel header div { display: grid; gap: 4px; }
 
 .tutorial-panel header small,
-.admin-zone-panel header small {
+.admin-zone-panel header small,
+.admin-difficulty-panel header small {
   color: var(--amber);
   font: 900 10px/1 monospace;
   letter-spacing: 0.18em;
 }
 
 .tutorial-panel header strong,
-.admin-zone-panel header strong { color: #f2ffff; font-size: 20px; }
+.admin-zone-panel header strong,
+.admin-difficulty-panel header strong { color: #f2ffff; font-size: 20px; }
 
 .tutorial-grid {
   display: grid;
@@ -1002,10 +1008,12 @@ button:focus-visible {
 .tutorial-grid article b { font-size: 12px; }
 .tutorial-grid article span { grid-column: 1 / -1; color: #8faab3; font-size: 10px; }
 .tutorial-panel > p,
-.admin-zone-panel > p { color: #8faab3; font-size: 10px; text-align: center; }
+.admin-zone-panel > p,
+.admin-difficulty-panel > p { color: #8faab3; font-size: 10px; text-align: center; }
 .tutorial-panel > button { display: block; min-width: 190px; margin: 14px auto 0; }
 
-#admin-zone-close {
+#admin-zone-close,
+#admin-difficulty-close {
   min-width: 36px;
   width: 36px;
   height: 32px;
@@ -1048,6 +1056,37 @@ button:focus-visible {
 .admin-zone-grid button.stage-start { border-left: 3px solid var(--amber); }
 .admin-zone-grid button b { font: 900 10px/1 monospace; }
 .admin-zone-grid button span { overflow: hidden; color: #829da7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+
+.admin-difficulty-panel { width: min(680px, calc(100% - 34px)); }
+
+.admin-difficulty-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-difficulty-grid button {
+  min-width: 0;
+  min-height: 88px;
+  display: grid;
+  place-content: center;
+  gap: 7px;
+  border-color: rgba(101, 245, 234, 0.34);
+  background: linear-gradient(145deg, rgba(12, 31, 45, 0.96), rgba(20, 22, 37, 0.96));
+  color: #e8ffff;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.admin-difficulty-grid button:hover,
+.admin-difficulty-grid button:focus-visible {
+  border-color: var(--amber);
+  background: linear-gradient(145deg, rgba(58, 46, 24, 0.98), rgba(29, 30, 38, 0.98));
+  color: #fff1bd;
+}
+
+.admin-difficulty-grid button b { font-size: 17px; }
+.admin-difficulty-grid button span { color: #91acb6; font-size: 10px; }
 
 .admin-spawn-panel header {
   display: flex;
@@ -1369,7 +1408,8 @@ button:focus-visible {
 
 @media (max-width: 760px), (max-height: 520px) {
   .tutorial-panel,
-  .admin-zone-panel { width: calc(100% - 12px); max-height: calc(100% - 12px); padding: 10px 11px; }
+  .admin-zone-panel,
+  .admin-difficulty-panel { width: calc(100% - 12px); max-height: calc(100% - 12px); padding: 10px 11px; }
   .tutorial-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
   .tutorial-grid article { min-height: 48px; padding: 5px; }
   .admin-zone-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }

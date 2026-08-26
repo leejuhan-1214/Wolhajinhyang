@@ -13,7 +13,7 @@
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.1.png" fetchpriority="high" />
     <style>html[data-game-bootstrap="loading"] #start-screen { visibility: hidden; }</style>
-    <link rel="stylesheet" href="styles.css?v=3.6.24" />
+    <link rel="stylesheet" href="styles.css?v=3.6.25" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -21,7 +21,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.24</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.25</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">쉬움</button>
@@ -100,6 +100,20 @@
         </header>
         <div id="admin-zone-grid" class="admin-zone-grid"></div>
         <p><kbd>L</kbd> 또는 <kbd>ESC</kbd>로 닫기 · 선택한 구역의 체크포인트로 즉시 이동합니다.</p>
+      </section>
+
+      <section id="admin-difficulty-panel" class="admin-difficulty-panel" aria-label="관리자 실전 난이도 선택" hidden>
+        <header>
+          <div><small>ADMIN PLAYTEST</small><strong>현재 위치에서 시험할 난이도를 선택하세요</strong></div>
+          <button id="admin-difficulty-close" type="button" aria-label="난이도 선택 닫기">×</button>
+        </header>
+        <div class="admin-difficulty-grid">
+          <button type="button" data-admin-difficulty="chick"><b>쉬움</b><span>체력 5 · 느린 적과 탄환</span></button>
+          <button type="button" data-admin-difficulty="cadet"><b>보통</b><span>체력 5 · 표준 전투 규칙</span></button>
+          <button type="button" data-admin-difficulty="darkhorse"><b>어려움</b><span>체력 5 · 빠른 적과 탄환</span></button>
+          <button type="button" data-admin-difficulty="weapon"><b>지옥</b><span>체력 5 · 강화 보스 연계</span></button>
+        </div>
+        <p>선택 즉시 현재 위치에서 실전이 시작됩니다. 실전 중 <kbd>R</kbd>을 누르면 관리자 모드로 복귀합니다.</p>
       </section>
 
       <section id="admin-spawn-panel" class="admin-spawn-panel" aria-label="관리자 적 생성 패널" hidden>
@@ -181,13 +195,13 @@
   <script>
     (async () => {
       try {
-        const response = await fetch("published-admin-profile.json?v=3.6.24", { cache: "no-store" });
+        const response = await fetch("published-admin-profile.json?v=3.6.25", { cache: "no-store" });
         if (response.ok) window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__ = await response.json();
       } catch (error) {
         console.info("공개 월드 편집본 없이 기본 맵을 시작합니다.", error?.message || error);
       }
       const gameScript = document.createElement("script");
-      gameScript.src = "game.js?v=3.6.24";
+      gameScript.src = "game.js?v=3.6.25";
       document.body.appendChild(gameScript);
     })();
   </script>
