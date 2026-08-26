@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.29";
+  const GAME_VERSION = "3.6.30";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -184,10 +184,11 @@
   const PLAYER_BURST_COOLDOWN = 1.8;
   const SENTRY_BURST_ROUNDS = 4;
   const SENTRY_BURST_INTERVAL = 0.115;
-  const WARDEN_PANEL_COOLDOWNS = Object.freeze([8, 6]);
+  const WARDEN_PANEL_COOLDOWNS = Object.freeze([7, 5]);
   const WARDEN_PANEL_SHOTS_PER_UNIT = 5;
-  const WARDEN_PANEL_SHOT_INTERVAL = 0.32;
-  const WARDEN_ATTACK_RECOVERY_SCALE = 0.78;
+  const WARDEN_PANEL_SHOT_INTERVAL = 0.3;
+  const WARDEN_ATTACK_RECOVERY_SCALE = 0.7;
+  const WARDEN_MOBILITY_SCALE = 1.18;
   const PLAYER_GROUND_SEAM_STEP_HEIGHT = 44;
   const PLAYER_PLATFORM_STEP_HEIGHT = 12;
   const ROUTE_TRANSITION_BUDGET_BY_STAGE = Object.freeze([
@@ -355,7 +356,7 @@
   const BOSS_DEFINITIONS = {
     warden: {
       name: "붉은 부유 지휘기 · 철각",
-      hp: 18,
+      hp: 32,
       size: [82, 102],
       accent: "#ff496c",
       patterns: ["육익 판넬 전개", "유도 포화", "판넬 교차사격", "중장 돌진", "대공 미사일", "제압 탄막"],
@@ -7851,24 +7852,28 @@
     const target = { x: enemy.targetX, y: enemy.targetY };
     switch (enemy.bossShotPattern) {
       case "warden-funnels":
-        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 5 : 4);
+        launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 6 : 5);
         break;
-      case "warden-volley":
-        [-0.2, 0, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
+      case "warden-volley": {
+        const spreads = enemy.bossKind === "warden" ? [-0.28, -0.14, 0, 0.14, 0.28] : [-0.2, 0, 0.2];
+        spreads.forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
+      }
       case "warden-crossfire":
-        [-0.24, 0, 0.24].forEach((spread) => fireHomingMissile(enemy, target, spread));
-        [-0.18, -0.06, 0.06, 0.18].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
+        [-0.3, -0.15, 0, 0.15, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        [-0.22, -0.11, 0, 0.11, 0.22].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
         break;
       case "warden-air":
         if (enemy.grounded) {
           enemy.vy = -590;
           enemy.vx = -enemy.bossChargeDirection * 230;
         }
-        [-0.14, 0.14].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        (enemy.bossKind === "warden" ? [-0.22, -0.07, 0.07, 0.22] : [-0.14, 0.14])
+          .forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       case "warden-suppress":
-        [-0.28, -0.09, 0.09, 0.28].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        (enemy.bossKind === "warden" ? [-0.32, -0.16, 0, 0.16, 0.32] : [-0.28, -0.09, 0.09, 0.28])
+          .forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       case "warden-core":
         fireWardenBeam(enemy, target);
@@ -8118,7 +8123,7 @@
         break;
       }
       case "warden-redline":
-        launchBossFunnels(enemy, 4);
+        launchBossFunnels(enemy, 6);
         [-0.3, -0.1, 0.1, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
         [-0.2, 0, 0.2].forEach((spread) => fireBullet(enemy, 455, spread, "phase", target));
         break;
@@ -9047,7 +9052,8 @@
     const enrage = hpRatio < 0.45 ? 1.16 : 1;
     const echoSpeedFactor = bossKind === "echo" ? ECHO_SPEED_FACTOR : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
-    const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor;
+    const wardenMobilityFactor = bossKind === "warden" ? WARDEN_MOBILITY_SCALE : 1;
+    const desiredSpeed = mobility[kind] * bossCurve.mobility * speedScale * enrage * echoSpeedFactor * wardenMobilityFactor;
     const homeArena = getBossArenaBounds(enemy);
     const arenaLeft = homeArena.left;
     const arenaRight = homeArena.right;
@@ -9210,7 +9216,7 @@
       enemy.funnelCooldown = Math.max(0, (enemy.funnelCooldown || 0) - dt);
       const activeFunnels = bullets.filter((bullet) => bullet.kind === "boss-funnel" && bullet.ownerId === enemy.id).length;
       if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < bossEngagementRange && activeFunnels === 0) {
-        launchBossFunnels(enemy, hpRatio < 0.5 ? 5 : 4);
+        launchBossFunnels(enemy, hpRatio < 0.5 ? 6 : 5);
         enemy.cooldown = Math.max(enemy.cooldown, 0.82 * bossCurve.cooldown);
         game.hint = "철각 · 육익 판넬 재전개";
         game.hintTimer = 1.45;
@@ -9578,6 +9584,9 @@
         } else if (enemy.bossPhase === 4) {
           startBossChargedShot(enemy, "warden-air", dx, 0.58);
           enemy.cooldown = 2 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
+        } else if (hpRatio < 0.5) {
+          startBossChargedShot(enemy, "warden-core", dx, 1.55);
+          enemy.cooldown = 2.65 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
         } else {
           startBossChargedShot(enemy, "warden-suppress", dx, 0.76);
           enemy.cooldown = 2.15 * recovery * WARDEN_ATTACK_RECOVERY_SCALE;
@@ -15994,7 +16003,11 @@
     wardenPanelShotsPerUnit: WARDEN_PANEL_SHOTS_PER_UNIT,
     wardenPanelShotInterval: WARDEN_PANEL_SHOT_INTERVAL,
     wardenAttackRecoveryScale: WARDEN_ATTACK_RECOVERY_SCALE,
-    wardenPanelCountByPhase: [4, 5],
+    wardenMobilityScale: WARDEN_MOBILITY_SCALE,
+    wardenPanelCountByPhase: [5, 6],
+    wardenMissileVolleyCount: 5,
+    wardenPhaseTwoRepeatingCoreBeam: true,
+    wardenHpHigherThanBreaker: BOSS_DEFINITIONS.warden.hp > BOSS_DEFINITIONS.breaker.hp,
     wardenPanelWaveOverlap: false,
     hunterShieldFrontUntilReflection: true,
     hunterShieldFlipsBehindOnBreak: true,
@@ -16452,10 +16465,14 @@
     bossDifficultyCurveProgressive: "true",
     wardenFloatingChassis: "true",
     wardenPanelPassiveCooldowns: WARDEN_PANEL_COOLDOWNS.join(","),
-    wardenPanelCountByPhase: "4,5",
+    wardenPanelCountByPhase: "5,6",
     wardenPanelShotsPerUnit: String(WARDEN_PANEL_SHOTS_PER_UNIT),
     wardenPanelShotInterval: String(WARDEN_PANEL_SHOT_INTERVAL),
     wardenAttackRecoveryScale: String(WARDEN_ATTACK_RECOVERY_SCALE),
+    wardenMobilityScale: String(WARDEN_MOBILITY_SCALE),
+    wardenMissileVolleyCount: "5",
+    wardenPhaseTwoRepeatingCoreBeam: "true",
+    wardenHpHigherThanBreaker: String(BOSS_DEFINITIONS.warden.hp > BOSS_DEFINITIONS.breaker.hp),
     wardenPanelWaveOverlap: "false",
     hunterShieldFrontUntilReflection: "true",
     hunterShieldFlipsBehindOnBreak: "true",

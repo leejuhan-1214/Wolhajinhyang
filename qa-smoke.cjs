@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.29") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.30") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -299,8 +299,11 @@ if (!diagnostics.enemyHitInterruptsFire || diagnostics.normalEnemyHitStunSeconds
 if (!gameSource.includes("function applyEnemyHitStun(enemy, duration)") || !gameSource.includes("if (enemy.hitStun > 0)")) {
   throw new Error("enemy hit-stun implementation missing");
 }
-if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "8,6" || diagnostics.wardenPanelShotsPerUnit !== 5 || diagnostics.wardenPanelShotInterval !== 0.32 || diagnostics.wardenAttackRecoveryScale !== 0.78) {
+if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "7,5" || diagnostics.wardenPanelShotsPerUnit !== 5 || diagnostics.wardenPanelShotInterval !== 0.3 || diagnostics.wardenAttackRecoveryScale !== 0.7) {
   throw new Error(`warden frequency tuning invalid: ${diagnostics.wardenPanelPassiveCooldowns}/${diagnostics.wardenPanelShotsPerUnit}/${diagnostics.wardenAttackRecoveryScale}`);
+}
+if (!diagnostics.wardenHpHigherThanBreaker || diagnostics.bossHp.warden !== 32 || diagnostics.midBossHp.breaker !== 24 || diagnostics.wardenPanelCountByPhase.join(",") !== "5,6" || diagnostics.wardenMissileVolleyCount !== 5 || diagnostics.wardenMobilityScale !== 1.18 || !diagnostics.wardenPhaseTwoRepeatingCoreBeam || !gameSource.includes('startBossChargedShot(enemy, "warden-core", dx, 1.55)')) {
+  throw new Error("Cheolgak is not decisively stronger than Swae-u");
 }
 if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
   throw new Error(`player step-up tuning invalid: ${diagnostics.playerGroundSeamStepHeight}/${diagnostics.playerPlatformStepHeight}`);
