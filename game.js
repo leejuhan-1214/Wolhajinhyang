@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.27";
+  const GAME_VERSION = "3.6.28";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -566,7 +566,7 @@
   const difficultySettings = {
     chick: { name: DIFFICULTY_DEFAULT_NAMES.chick, hp: 5, damage: 1, enemySpeed: 0.82, bulletSpeed: 0.82, bossHpScale: 0.5, mobCountScale: 0.5, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
     cadet: { name: DIFFICULTY_DEFAULT_NAMES.cadet, hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1, bossHpScale: 2 / 3, mobCountScale: 2 / 3, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
-    darkhorse: { name: DIFFICULTY_DEFAULT_NAMES.darkhorse, hp: 5, damage: 1, enemySpeed: 1.14, bulletSpeed: 1.12, bossHpScale: 1, mobCountScale: 1, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
+    darkhorse: { name: DIFFICULTY_DEFAULT_NAMES.darkhorse, hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1, bossHpScale: 1, mobCountScale: 1, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
     weapon: { name: DIFFICULTY_DEFAULT_NAMES.weapon, hp: 5, damage: 1, enemySpeed: 1.24, bulletSpeed: 1.2, bossHpScale: 1, mobCountScale: 1, bossCooldownScale: 0.78, bossWindupScale: 0.8, hellBossRemix: true },
   };
   let selectedDifficulty = "cadet";
@@ -14160,7 +14160,14 @@
     for (const stage of stages) {
       if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.adminMode || game.defeatedBosses.has(stage.bossKind));
     }
-    for (const enemy of enemies) if (enemy.x + enemy.w > left && enemy.x < right) drawEnemy(enemy);
+    const hideCombatEchoDuringDuelCutscene = game.cutscene?.visual === "duel";
+    for (const enemy of enemies) {
+      if (enemy.x + enemy.w <= left || enemy.x >= right) continue;
+      // The duel cutscene renders one dedicated ECHO-00 actor in screen space.
+      // Hide the dormant combat boss only for that scene so the two actors do not overlap.
+      if (hideCombatEchoDuringDuelCutscene && enemy.type === "boss" && enemy.bossKind === "echo") continue;
+      drawEnemy(enemy);
+    }
     for (const bullet of bullets) drawBullet(bullet);
     drawPlayer();
     for (const particle of particles) drawParticle(particle);
@@ -15845,6 +15852,12 @@
     difficultyNames: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.name])),
     difficultyPlayerHp: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.hp])),
     difficultyDamagePerHit: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.damage])),
+    difficultyEnemySpeedScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.enemySpeed])),
+    difficultyBulletSpeedScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.bulletSpeed])),
+    hardUsesLegacyNormalPacing: difficultySettings.darkhorse.enemySpeed === 1
+      && difficultySettings.darkhorse.bulletSpeed === 1
+      && difficultySettings.darkhorse.bossCooldownScale === 1
+      && difficultySettings.darkhorse.bossWindupScale === 1,
     difficultyBossHpScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.bossHpScale])),
     difficultyMobCountScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.mobCountScale])),
     difficultyMobCounts: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [
@@ -16053,6 +16066,7 @@
     bossHudPersistsAcrossArena: true,
     bossIntroCutsceneCount: Object.keys(BOSS_INTRO_CUTSCENE_IDS).length,
     cutsceneCompletionSavedAtEnd: true,
+    echoDuelCutsceneSingleActor: true,
     weaverPatternVariants: BOSS_DEFINITIONS.weaver.patterns.length,
     echoPatternVariants: BOSS_DEFINITIONS.echo.patterns.length,
     bossVisualDetailPass: true,
@@ -16230,6 +16244,12 @@
     difficultyNames: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.name}`).join(","),
     difficultyPlayerHp: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.hp}`).join(","),
     difficultyDamagePerHit: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.damage}`).join(","),
+    difficultyEnemySpeedScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.enemySpeed}`).join(","),
+    difficultyBulletSpeedScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.bulletSpeed}`).join(","),
+    hardUsesLegacyNormalPacing: String(difficultySettings.darkhorse.enemySpeed === 1
+      && difficultySettings.darkhorse.bulletSpeed === 1
+      && difficultySettings.darkhorse.bossCooldownScale === 1
+      && difficultySettings.darkhorse.bossWindupScale === 1),
     difficultyBossHpScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.bossHpScale}`).join(","),
     difficultyMobCountScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.mobCountScale}`).join(","),
     difficultyMobCounts: Object.entries(difficultySettings).map(([key, value]) => `${key}:${Math.round(zones.reduce((total, zone) => total + (zone.baseTargetEnemyCount || 0), 0) * value.mobCountScale)}`).join(","),
@@ -16487,6 +16507,7 @@
     bossHudPersistsAcrossArena: "true",
     bossIntroCutsceneCount: String(Object.keys(BOSS_INTRO_CUTSCENE_IDS).length),
     cutsceneCompletionSavedAtEnd: "true",
+    echoDuelCutsceneSingleActor: "true",
     weaverPatternVariants: String(BOSS_DEFINITIONS.weaver.patterns.length),
     echoPatternVariants: String(BOSS_DEFINITIONS.echo.patterns.length),
     bossVisualDetailPass: "true",

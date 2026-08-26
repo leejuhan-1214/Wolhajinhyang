@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.27") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.28") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -103,6 +103,9 @@ if (Object.values(diagnostics.difficultyPlayerHp).some((hp) => hp !== 5) || Obje
 }
 if (Object.values(diagnostics.difficultyNames).join(",") !== "쉬움,보통,어려움,지옥") {
   throw new Error(`difficulty names invalid: ${Object.values(diagnostics.difficultyNames)}`);
+}
+if (!diagnostics.hardUsesLegacyNormalPacing || diagnostics.difficultyEnemySpeedScales.darkhorse !== 1 || diagnostics.difficultyBulletSpeedScales.darkhorse !== 1) {
+  throw new Error("Hard mode must retain the legacy Normal enemy, bullet, and boss pacing");
 }
 if (diagnostics.difficultyBossHpScales.chick !== 0.5 || diagnostics.difficultyBossHpScales.cadet !== 2 / 3 || diagnostics.difficultyBossHpScales.darkhorse !== 1 || diagnostics.difficultyBossHpScales.weapon !== 1) {
   throw new Error("difficulty boss HP scales are invalid");
@@ -202,6 +205,9 @@ if (diagnostics.bossCrisisPatternThreshold !== 0.35 || diagnostics.bossCrisisPat
 }
 if (!diagnostics.bossIntroCombatGate || !diagnostics.bossIntroWaitsForDialogue || !diagnostics.bossDormantDamageLock || diagnostics.bossIntroCutsceneCount !== 10 || !diagnostics.cutsceneCompletionSavedAtEnd) {
   throw new Error("boss intro dialogue gate configuration invalid");
+}
+if (!diagnostics.echoDuelCutsceneSingleActor || !gameSource.includes('hideCombatEchoDuringDuelCutscene && enemy.type === "boss" && enemy.bossKind === "echo"')) {
+  throw new Error("Echo duel cutscene can render duplicate actors");
 }
 if (!diagnostics.bossHudVisibleFromZoneEntry || !diagnostics.bossHudPersistsAcrossArena || !gameSource.includes("enemy.homeZoneIndex === game.zone")) {
   throw new Error("boss HUD is not tied to the full boss zone");
