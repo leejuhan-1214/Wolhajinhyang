@@ -38,7 +38,7 @@ const canvas = element("game");
 canvas.width = 1280; canvas.height = 720; canvas.getContext = () => ctx;
 elements.set("game", canvas);
 
-const difficultyNames = { chick: "병아리", cadet: "신참내기", darkhorse: "다크호스", weapon: "인간흉기" };
+const difficultyNames = { chick: "쉬움", cadet: "보통", darkhorse: "어려움", weapon: "지옥" };
 const difficultyButtons = Object.entries(difficultyNames).map(([key, label]) => {
   const button = element(); button.dataset.difficulty = key; button.textContent = label; return button;
 });
@@ -77,12 +77,31 @@ global.requestAnimationFrame = (callback) => { animationCallback = callback; ret
 global.cancelAnimationFrame = () => {};
 
 const gameSource = fs.readFileSync("game.js", "utf8");
+const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.23") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.24") throw new Error(`wrong version ${diagnostics.version}`);
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
+}
+if (Object.values(diagnostics.difficultyPlayerHp).some((hp) => hp !== 5) || Object.values(diagnostics.difficultyDamagePerHit).some((damage) => damage !== 1)) {
+  throw new Error("all difficulty modes must use five player HP and one damage per hit");
+}
+if (Object.values(diagnostics.difficultyNames).join(",") !== "쉬움,보통,어려움,지옥") {
+  throw new Error(`difficulty names invalid: ${Object.values(diagnostics.difficultyNames)}`);
+}
+if (diagnostics.difficultyBossHpScales.chick !== 0.5 || diagnostics.difficultyBossHpScales.cadet !== 2 / 3 || diagnostics.difficultyBossHpScales.darkhorse !== 1 || diagnostics.difficultyBossHpScales.weapon !== 1) {
+  throw new Error("difficulty boss HP scales are invalid");
+}
+if (diagnostics.difficultyMobCountScales.chick !== 0.5 || diagnostics.difficultyMobCountScales.cadet !== 2 / 3 || diagnostics.difficultyMobCountScales.darkhorse !== 1 || diagnostics.difficultyMobCountScales.weapon !== 1 || !diagnostics.difficultyPopulationScaleApplied || !diagnostics.difficultyBossHpScaleApplied) {
+  throw new Error("difficulty enemy population scaling is invalid");
+}
+if (!diagnostics.startScreenDifficultyFlashGuard || !diagnostics.legacyDifficultyNamesMigrated || !indexSource.includes('data-game-bootstrap="loading"') || !indexSource.includes('data-difficulty="weapon" aria-pressed="false">지옥</button>')) {
+  throw new Error("title-screen difficulty flash guard is missing");
+}
+if (!diagnostics.hellBossRemixEnabled || diagnostics.hellBossRemixBossCount !== 10 || diagnostics.hellBossRemixPatternCount !== 48 || diagnostics.hellBossFollowupDelayScale !== 0.62 || diagnostics.hellBossCrisisThreshold !== 0.55 || diagnostics.hellBossCrisisCooldownScale !== 0.72 || diagnostics.hellBossCooldownScale !== 0.78 || diagnostics.hellBossWindupScale !== 0.8) {
+  throw new Error("Hell boss remix configuration is invalid");
 }
 if (!diagnostics.documentStoryAligned || diagnostics.documentStorySource !== "월하잔향 (1).hwpx" || diagnostics.documentStoryDialogueLines !== 216 || diagnostics.proxyName !== "대역-13") {
   throw new Error("HWPX story alignment diagnostics missing");

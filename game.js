@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.23";
+  const GAME_VERSION = "3.6.24";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -271,6 +271,7 @@
   let adminWorldTransform = null;
   let adminWorldUndoSnapshot = null;
   let levelReady = false;
+  let levelBuildDifficulty = null;
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
   let echoStageLaserRemovals = 0;
@@ -461,6 +462,21 @@
     "echo-dive-barrage": "echo-triple-burst",
     "echo-afterimage-crossfire": "echo-shotgun",
   });
+  const HELL_BOSS_REMIX_PATTERNS = Object.freeze({
+    breaker: ["warden-volley", "warden-air", "warden-suppress", "breaker-siege"],
+    hunter: ["hunter-shotgun", "hunter-rifle", "hunter-deadlock"],
+    oracle: ["oracle-burst", "oracle-needle", "oracle-cross", "oracle-ring", "oracle-verdict"],
+    revenant: ["revenant-sword-wave", "revenant-triple-wave", "revenant-shield-burst", "revenant-cross-wave"],
+    proxy: ["proxy-potion", "proxy-toxic-ring", "proxy-flask-rain", "proxy-quarantine"],
+    warden: ["warden-funnels", "warden-volley", "warden-crossfire", "warden-air", "warden-suppress", "warden-redline"],
+    furnace: ["furnace-mortar", "furnace-rifle", "furnace-volley", "furnace-eruption", "furnace-rain", "furnace-crimson-storm"],
+    weaver: ["weaver-fan", "weaver-lance", "weaver-orbit", "weaver-grand-ritual"],
+    censor: ["censor-volley", "censor-mortar", "censor-air", "censor-grid", "censor-blackout"],
+    echo: ["echo-shotgun", "echo-air", "echo-burst", "echo-triple-burst", "echo-dive-barrage", "echo-afterimage-crossfire", "echo-mirror-assault"],
+  });
+  const HELL_BOSS_CRISIS_THRESHOLD = 0.55;
+  const HELL_BOSS_CRISIS_COOLDOWN_SCALE = 0.72;
+  const HELL_BOSS_FOLLOWUP_DELAY_SCALE = 0.62;
   const BOSS_CRISIS_PATTERNS = Object.freeze({
     breaker: { pattern: "breaker-siege", duration: 1.18, recovery: 3.7 },
     hunter: { pattern: "hunter-deadlock", duration: 0.94, recovery: 3.25 },
@@ -531,11 +547,23 @@
     { name: "거울 지형 전환", interval: 4.05, amplitude: 138, speed: 220, accent: "#63ffc6" },
   ];
 
+  const DIFFICULTY_DEFAULT_NAMES = Object.freeze({
+    chick: "쉬움",
+    cadet: "보통",
+    darkhorse: "어려움",
+    weapon: "지옥",
+  });
+  const LEGACY_DIFFICULTY_NAMES = Object.freeze({
+    chick: "병아리",
+    cadet: "신참내기",
+    darkhorse: "다크호스",
+    weapon: "인간흉기",
+  });
   const difficultySettings = {
-    chick: { name: "병아리", hp: 5, damage: 0, enemySpeed: 0.82, bulletSpeed: 0.82 },
-    cadet: { name: "신참내기", hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1 },
-    darkhorse: { name: "다크호스", hp: 3, damage: 1, enemySpeed: 1.14, bulletSpeed: 1.12 },
-    weapon: { name: "인간흉기", hp: 1, damage: 99, enemySpeed: 1.24, bulletSpeed: 1.2 },
+    chick: { name: DIFFICULTY_DEFAULT_NAMES.chick, hp: 5, damage: 1, enemySpeed: 0.82, bulletSpeed: 0.82, bossHpScale: 0.5, mobCountScale: 0.5, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
+    cadet: { name: DIFFICULTY_DEFAULT_NAMES.cadet, hp: 5, damage: 1, enemySpeed: 1, bulletSpeed: 1, bossHpScale: 2 / 3, mobCountScale: 2 / 3, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
+    darkhorse: { name: DIFFICULTY_DEFAULT_NAMES.darkhorse, hp: 5, damage: 1, enemySpeed: 1.14, bulletSpeed: 1.12, bossHpScale: 1, mobCountScale: 1, bossCooldownScale: 1, bossWindupScale: 1, hellBossRemix: false },
+    weapon: { name: DIFFICULTY_DEFAULT_NAMES.weapon, hp: 5, damage: 1, enemySpeed: 1.24, bulletSpeed: 1.2, bossHpScale: 1, mobCountScale: 1, bossCooldownScale: 0.78, bossWindupScale: 0.8, hellBossRemix: true },
   };
   let selectedDifficulty = "cadet";
   const ADMIN_SEQUENCE = ["chick", "cadet", "chick", "weapon"];
@@ -3690,10 +3718,12 @@
       const points = [...spawnPoints];
       const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
       const stageBaseCounts = [8, 10, 12, 14, 16];
-      const targetCount = stageBaseCounts[zone.stageIndex]
+      const baseTargetCount = stageBaseCounts[zone.stageIndex]
         + section * 2
         + (localZoneIndex % 3 === 2 ? 1 : 0)
         + combatBonus;
+      const populationScale = difficultySettings[selectedDifficulty]?.mobCountScale || 1;
+      const targetCount = Math.max(1, Math.round(baseTargetCount * populationScale));
       const progressionPatterns = [
         [
           ["runner", "runner", "gunner"],
@@ -3732,7 +3762,7 @@
         : [[560, floorY], [1450, floorY], [2450, floorY], [3440, floorY]];
       const offsets = [-54, 54, -78, 78, -34, 34];
 
-      while (points.length < targetCount) {
+      while (points.length < baseTargetCount) {
         const reinforcement = points.length - spawnPoints.length;
         const anchorIndex = (reinforcement + localZoneIndex + section) % anchors.length;
         const [anchorX, anchorY] = anchors[anchorIndex];
@@ -3745,13 +3775,21 @@
         points.push([localX, anchorY, type]);
       }
 
-      points.forEach(([localX, surfaceY, forcedType], index) => {
+      const deployedPoints = targetCount >= points.length
+        ? points
+        : Array.from({ length: targetCount }, (_, index) => points[Math.min(
+          points.length - 1,
+          Math.floor((index + 0.5) * points.length / targetCount),
+        )]);
+
+      deployedPoints.forEach(([localX, surfaceY, forcedType], index) => {
         const type = forcedType || pattern[(index + localZoneIndex) % pattern.length];
         const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
         const enemy = addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
         enemy.placementWave = index >= spawnPoints.length ? "reinforcement" : "original";
         enemy.zonePlacementSignature = zone.code + ":" + index + ":" + type;
       });
+      zone.baseTargetEnemyCount = baseTargetCount;
       zone.targetEnemyCount = targetCount;
       zone.enemyComplexityTier = zone.stageIndex * 4 + section;
     }
@@ -4036,12 +4074,16 @@
 
     function configureBossEntity(boss, bossKind, floorY, isMidBoss = false) {
       const definition = BOSS_DEFINITIONS[bossKind];
+      const bossHpScale = difficultySettings[selectedDifficulty]?.bossHpScale || 1;
+      const scaledBossHp = Math.max(1, Number((definition.hp * bossHpScale).toFixed(3)));
       boss.bossKind = bossKind;
       boss.isMidBoss = isMidBoss;
       boss.w = definition.size[0];
       boss.h = definition.size[1];
-      boss.hp = definition.hp;
-      boss.maxHp = definition.hp;
+      boss.hp = scaledBossHp;
+      boss.maxHp = scaledBossHp;
+      boss.baseMaxHp = definition.hp;
+      boss.difficultyHpScale = bossHpScale;
       boss.y = floorY - boss.h;
       boss.originX = boss.x;
       boss.spawnX = boss.x;
@@ -4325,7 +4367,7 @@
         [1060, 1760, 2470, 3180].forEach((x, index) => {
           addHazard(origin + x, floorY - (index % 2 ? 360 : 500), 28, index % 2 ? 360 : 500, "steam", index * 0.61 + localZoneIndex * 0.23);
         });
-        addEnemy(localZoneIndex % 2 ? "mortar" : "shield", origin + 2860, floorY, 250);
+        spawns.push([2860, floorY, localZoneIndex % 2 ? "mortar" : "shield"]);
         if (localZoneIndex === 1 || localZoneIndex === 4) {
           combatRooms.push({
             left: origin + 340,
@@ -4378,6 +4420,7 @@
     applyAdminRemovedEnemyData();
     zoneDiversityMetrics = calculateZoneDiversityMetrics();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
+    levelBuildDifficulty = selectedDifficulty;
     rebuildAdminZoneGrid();
     initRain();
   }
@@ -4501,7 +4544,10 @@
     if (continueButton) continueButton.textContent = data.continueButton;
     difficultyButtons.forEach((button) => {
       const key = button.dataset.difficulty;
-      const name = data.difficulties[key];
+      const requestedName = data.difficulties[key];
+      const name = requestedName === LEGACY_DIFFICULTY_NAMES[key]
+        ? DIFFICULTY_DEFAULT_NAMES[key]
+        : requestedName;
       button.textContent = name;
       if (difficultySettings[key]) difficultySettings[key].name = name;
     });
@@ -4775,7 +4821,7 @@
     if (!resume) {
       try { window.localStorage?.removeItem(SAVE_KEY); } catch { /* Ignore unavailable storage. */ }
     }
-    if (!levelReady || game.mode !== "menu") {
+    if (!levelReady || game.mode !== "menu" || levelBuildDifficulty !== selectedDifficulty) {
       buildLevel();
       levelReady = true;
     }
@@ -5526,7 +5572,7 @@
       player.maxHp = cadet.hp;
       player.hp = cadet.hp;
       player.invincible = 0.9;
-      game.hint = "현재 위치에서 신참내기 실전 시작 · R로 관리자 복귀";
+      game.hint = "현재 위치에서 보통 난이도 실전 시작 · R로 관리자 복귀";
     } else {
       game.adminCadetMode = false;
       game.adminMode = true;
@@ -7550,20 +7596,38 @@
   }
 
   function queueBossPatternFollowup(enemy, releasedPattern) {
-    if (enemy.followupChainActive || enemy.hp / enemy.maxHp > 0.66 || (enemy.patternSerial || 0) % 2 !== 0) return;
-    const followupPattern = BOSS_FOLLOWUP_PATTERNS[releasedPattern];
+    if (enemy.followupChainActive) return;
+    const difficulty = difficultySettings[game.difficulty] || difficultySettings.cadet;
+    const hellRemix = difficulty.hellBossRemix;
+    if (!hellRemix && (enemy.hp / enemy.maxHp > 0.66 || (enemy.patternSerial || 0) % 2 !== 0)) return;
+    let followupPattern = BOSS_FOLLOWUP_PATTERNS[releasedPattern];
+    if (hellRemix) {
+      const remixPool = HELL_BOSS_REMIX_PATTERNS[enemy.bossKind] || [];
+      if (remixPool.length > 0) {
+        const startIndex = ((enemy.patternSerial || 0) + (enemy.crisisPatternCount || 0)) % remixPool.length;
+        for (let offset = 0; offset < remixPool.length; offset += 1) {
+          const candidate = remixPool[(startIndex + offset) % remixPool.length];
+          if (candidate !== releasedPattern) {
+            followupPattern = candidate;
+            break;
+          }
+        }
+      }
+    }
     if (!followupPattern) return;
     enemy.followupPattern = followupPattern;
-    enemy.followupTimer = 0.48 + enemy.stageIndex * 0.025;
+    enemy.followupTimer = (0.48 + enemy.stageIndex * 0.025) * (hellRemix ? HELL_BOSS_FOLLOWUP_DELAY_SCALE : 1);
   }
 
   function startBossCrisisPattern(enemy, dx) {
     const crisis = BOSS_CRISIS_PATTERNS[enemy.bossKind];
     if (!crisis) return false;
+    const difficulty = difficultySettings[game.difficulty] || difficultySettings.cadet;
+    const hellRemix = difficulty.hellBossRemix;
     startBossChargedShot(enemy, crisis.pattern, dx, crisis.duration);
     enemy.crisisPatternCount = (enemy.crisisPatternCount || 0) + 1;
-    enemy.crisisPatternCooldown = 6.8 - Math.min(1.6, enemy.stageIndex * 0.28);
-    enemy.cooldown = crisis.recovery;
+    enemy.crisisPatternCooldown = (6.8 - Math.min(1.6, enemy.stageIndex * 0.28)) * (hellRemix ? HELL_BOSS_CRISIS_COOLDOWN_SCALE : 1);
+    enemy.cooldown = crisis.recovery * (hellRemix ? difficulty.bossCooldownScale : 1);
     enemy.followupPattern = null;
     enemy.followupTimer = 0;
     enemy.followupChainActive = false;
@@ -7576,8 +7640,9 @@
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
     const rank = enemy.stageIndex;
     const curve = getBossDifficultyCurve(rank);
+    const difficulty = difficultySettings[game.difficulty] || difficultySettings.cadet;
     const echoPrediction = enemy.bossKind === "echo";
-    duration *= curve.windup * (echoPrediction ? 0.72 : 1);
+    duration *= curve.windup * (echoPrediction ? 0.72 : 1) * (difficulty.bossWindupScale || 1);
     enemy.windup = duration;
     enemy.bossAction = "chargeShot";
     enemy.bossShotPattern = pattern;
@@ -9182,7 +9247,7 @@
 
     if (
       !retreating
-      && hpRatio <= 0.35
+      && hpRatio <= (difficultySettings[game.difficulty]?.hellBossRemix ? HELL_BOSS_CRISIS_THRESHOLD : 0.35)
       && enemy.crisisPatternCooldown <= 0
       && enemy.cooldown <= 0
       && enemy.windup <= 0
@@ -9446,8 +9511,10 @@
           enemy.cooldown = 1.82 * recovery;
         }
       }
-      enemy.cooldown = Math.max(0.48, enemy.cooldown * bossCurve.cooldown * (bossKind === "echo" ? ECHO_ATTACK_RECOVERY_FACTOR : 1));
-      if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup *= bossCurve.windup;
+      const difficultyBossCooldownScale = difficultySettings[game.difficulty]?.bossCooldownScale || 1;
+      const difficultyBossWindupScale = difficultySettings[game.difficulty]?.bossWindupScale || 1;
+      enemy.cooldown = Math.max(0.42, enemy.cooldown * bossCurve.cooldown * (bossKind === "echo" ? ECHO_ATTACK_RECOVERY_FACTOR : 1) * difficultyBossCooldownScale);
+      if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup *= bossCurve.windup * difficultyBossWindupScale;
     }
 
     if (enemy.bossAction === "mutantCombo" && enemy.comboHitsRemaining > 0) {
@@ -15491,6 +15558,7 @@
   prepareTutorialBriefing();
   buildLevel();
   levelReady = true;
+  document.documentElement.dataset.gameBootstrap = "ready";
   if (!window.__MOONLIT_ECHO_DISABLE_LIVE_SYNC__) startLiveWorldSync();
   window.__MOONLIT_ECHO_CHARACTER_ARCHIVE__ = (pageIndex = 0) => {
     characterArchivePage = clamp(Math.floor(Number(pageIndex) || 0), 0, CHARACTER_ARCHIVE_PAGES.length - 1);
@@ -15619,9 +15687,33 @@
     activeEnemyBulletCollisionOnly: true,
     combatTerrainActiveEnemyOnly: true,
     enemyWorldCullIntervalSeconds: 0.5,
+    difficultyNames: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.name])),
+    difficultyPlayerHp: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.hp])),
+    difficultyDamagePerHit: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.damage])),
+    difficultyBossHpScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.bossHpScale])),
+    difficultyMobCountScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.mobCountScale])),
+    activeDifficulty: levelBuildDifficulty || selectedDifficulty,
+    activeBossHpScale: difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1,
+    activeMobCountScale: difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1,
+    difficultyPopulationScaleApplied: zones.filter((zone) => Number.isFinite(zone.baseTargetEnemyCount)).every((zone) => (
+      zone.targetEnemyCount === Math.max(1, Math.round(zone.baseTargetEnemyCount * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1)))
+    )),
+    difficultyBossHpScaleApplied: enemies.filter((enemy) => enemy.type === "boss" && !enemy.adminSpawned).every((enemy) => (
+      Math.abs(enemy.maxHp - BOSS_DEFINITIONS[enemy.bossKind].hp * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1)) < 0.001
+    )),
+    startScreenDifficultyFlashGuard: document.documentElement.dataset.gameBootstrap === "ready",
+    legacyDifficultyNamesMigrated: true,
+    hellBossRemixEnabled: difficultySettings.weapon.hellBossRemix,
+    hellBossRemixBossCount: Object.keys(HELL_BOSS_REMIX_PATTERNS).length,
+    hellBossRemixPatternCount: Object.values(HELL_BOSS_REMIX_PATTERNS).reduce((total, patterns) => total + patterns.length, 0),
+    hellBossFollowupDelayScale: HELL_BOSS_FOLLOWUP_DELAY_SCALE,
+    hellBossCrisisThreshold: HELL_BOSS_CRISIS_THRESHOLD,
+    hellBossCrisisCooldownScale: HELL_BOSS_CRISIS_COOLDOWN_SCALE,
+    hellBossCooldownScale: difficultySettings.weapon.bossCooldownScale,
+    hellBossWindupScale: difficultySettings.weapon.bossWindupScale,
     midBossHp: Object.fromEntries(stages.map((stage) => [stage.midBossKind, BOSS_DEFINITIONS[stage.midBossKind].hp])),
     bossHp: Object.fromEntries(stages.map((stage) => [stage.bossKind, BOSS_DEFINITIONS[stage.bossKind].hp])),
-    bossHpScale: 0.75,
+    bossHpScale: difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1,
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => ({ ...entry })),
     bossDifficultyCurveProgressive: true,
     wardenFloatingChassis: true,
@@ -15777,6 +15869,7 @@
     bossPhaseTwoFollowupCombos: true,
     bossPatternOrderCount: Object.keys(BOSS_PATTERN_ORDERS).length,
     bossCrisisPatternThreshold: 0.35,
+    hellBossCrisisPatternThreshold: HELL_BOSS_CRISIS_THRESHOLD,
     bossCrisisPatternCount: Object.keys(BOSS_CRISIS_PATTERNS).length,
     bossCrisisPatternTelegraph: true,
     bossCrisisCooldownRange: [5.68, 6.8],
@@ -15954,6 +16047,30 @@
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
     enemyWorldCullIntervalSeconds: "0.5",
+    difficultyNames: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.name}`).join(","),
+    difficultyPlayerHp: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.hp}`).join(","),
+    difficultyDamagePerHit: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.damage}`).join(","),
+    difficultyBossHpScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.bossHpScale}`).join(","),
+    difficultyMobCountScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.mobCountScale}`).join(","),
+    activeDifficulty: String(levelBuildDifficulty || selectedDifficulty),
+    activeBossHpScale: String(difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1),
+    activeMobCountScale: String(difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1),
+    difficultyPopulationScaleApplied: String(zones.filter((zone) => Number.isFinite(zone.baseTargetEnemyCount)).every((zone) => (
+      zone.targetEnemyCount === Math.max(1, Math.round(zone.baseTargetEnemyCount * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1)))
+    ))),
+    difficultyBossHpScaleApplied: String(enemies.filter((enemy) => enemy.type === "boss" && !enemy.adminSpawned).every((enemy) => (
+      Math.abs(enemy.maxHp - BOSS_DEFINITIONS[enemy.bossKind].hp * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1)) < 0.001
+    ))),
+    startScreenDifficultyFlashGuard: String(document.documentElement.dataset.gameBootstrap === "ready"),
+    legacyDifficultyNamesMigrated: "true",
+    hellBossRemixEnabled: String(difficultySettings.weapon.hellBossRemix),
+    hellBossRemixBossCount: String(Object.keys(HELL_BOSS_REMIX_PATTERNS).length),
+    hellBossRemixPatternCount: String(Object.values(HELL_BOSS_REMIX_PATTERNS).reduce((total, patterns) => total + patterns.length, 0)),
+    hellBossFollowupDelayScale: String(HELL_BOSS_FOLLOWUP_DELAY_SCALE),
+    hellBossCrisisThreshold: String(HELL_BOSS_CRISIS_THRESHOLD),
+    hellBossCrisisCooldownScale: String(HELL_BOSS_CRISIS_COOLDOWN_SCALE),
+    hellBossCooldownScale: String(difficultySettings.weapon.bossCooldownScale),
+    hellBossWindupScale: String(difficultySettings.weapon.bossWindupScale),
     enemyPlacementDensity: "artillery-tower-formations-v3.0.0",
     enemyBaseCountByStage: "8,10,12,14,16",
     stageCombatPressure: STAGE_COMBAT_PRESSURE.join(","),
@@ -16024,7 +16141,7 @@
     platformCount: String(platforms.length),
     midBossHp: stages.map((stage) => `${stage.midBossKind}:${BOSS_DEFINITIONS[stage.midBossKind].hp}`).join(","),
     bossHp: stages.map((stage) => `${stage.bossKind}:${BOSS_DEFINITIONS[stage.bossKind].hp}`).join(","),
-    bossHpScale: "0.75",
+    bossHpScale: String(difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1),
     bossDifficultyCurve: BOSS_DIFFICULTY_CURVE.map((entry) => [entry.mobility, entry.cooldown, entry.windup, entry.reaction].join("/")).join(","),
     bossDifficultyCurveProgressive: "true",
     wardenFloatingChassis: "true",
@@ -16171,6 +16288,7 @@
     bossPhaseTwoFollowupCombos: "true",
     bossPatternOrderCount: String(Object.keys(BOSS_PATTERN_ORDERS).length),
     bossCrisisPatternThreshold: "0.35",
+    hellBossCrisisPatternThreshold: String(HELL_BOSS_CRISIS_THRESHOLD),
     bossCrisisPatternCount: String(Object.keys(BOSS_CRISIS_PATTERNS).length),
     bossCrisisPatternTelegraph: "true",
     bossCrisisCooldownRange: "5.68,6.8",
