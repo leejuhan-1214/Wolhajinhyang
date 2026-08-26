@@ -88,7 +88,13 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.25") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.26") throw new Error(`wrong version ${diagnostics.version}`);
+const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
+const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
+const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
+if (!indexSource.includes('title-screen-v3.6.26.png') || titleThumbnailWidth !== 1920 || titleThumbnailHeight !== 1080 || titleThumbnail.length > 10 * 1024 * 1024 || !fs.readFileSync('styles.css', 'utf8').includes('visibility: hidden;')) {
+  throw new Error("v3.6.26 title-only opening artwork is not active");
+}
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }

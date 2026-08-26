@@ -1669,12 +1669,12 @@ button:focus-visible {
   }
 }
 
-/* v3.6.1 illustrated title screen ------------------------------------------------ */
+/* v3.6.26 illustrated title screen ----------------------------------------------- */
 #start-screen {
   overflow: hidden;
   background:
     linear-gradient(90deg, rgba(2, 7, 15, 0.1) 0 46%, rgba(2, 7, 15, 0.02) 62%, rgba(2, 7, 15, 0.12)),
-    url("title-screen-v3.6.1.png?v=3.6.1") center / cover no-repeat;
+    url("title-screen-v3.6.26.png?v=3.6.26") center / cover no-repeat;
   backdrop-filter: none;
   text-align: left;
 }
@@ -1710,6 +1710,7 @@ button:focus-visible {
     0 3px 0 rgba(2, 8, 16, 0.95),
     0 0 20px rgba(116, 226, 255, 0.42),
     5px 5px 0 rgba(255, 69, 65, 0.16);
+  visibility: hidden;
 }
 
 #start-screen h1::after {
