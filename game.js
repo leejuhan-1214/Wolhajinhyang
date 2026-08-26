@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.28";
+  const GAME_VERSION = "3.6.29";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -493,6 +493,8 @@
     censor: { pattern: "censor-blackout", duration: 1.12, recovery: 3.55 },
     echo: { pattern: "echo-mirror-assault", duration: 0.84, recovery: 3.15 },
   });
+  const BOSS_BEAM_CHARGE_PATTERNS = new Set(["warden-core", "breaker-laser", "breaker-siege"]);
+  const BOSS_BEAM_CHARGE_GAIN = Object.freeze({ breaker: 0.11, warden: 0.14 });
 
   const STAGE_COMBAT_PRESSURE = [0.82, 0.94, 1.06, 1.18, 1.32];
   const STAGE_BULLET_PRESSURE = [0.88, 0.96, 1.03, 1.10, 1.16];
@@ -918,22 +920,34 @@
 
   const PRIMARY_STORY_ZONE_INDICES = Object.freeze([2, 4, 6, 9, 12, 14]);
   const EXTENDED_STORY_ZONE_INDICES = Object.freeze([3, 10, 13]);
-  const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
-    id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
-    stageIndex,
-    x: getStageZonePosition(stageIndex, PRIMARY_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2, 0, -620),
-    lines,
-  }))).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
-    id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
-    stageIndex,
-    x: getStageZonePosition(stageIndex, EXTENDED_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2, 0, -620),
-    lines,
-  })))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => ({
-    id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
-    stageIndex,
-    x: eventIndex === 0 ? getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX - 1, 0.42) : getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX + 1, 0.55),
-    lines,
-  }))));
+  const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
+    const localZoneIndex = PRIMARY_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
+    return {
+      id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
+      stageIndex,
+      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
+      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
+      lines,
+    };
+  })).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
+    const localZoneIndex = EXTENDED_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
+    return {
+      id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
+      stageIndex,
+      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
+      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
+      lines,
+    };
+  }))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
+    const localZoneIndex = eventIndex === 0 ? MID_BOSS_ZONE_INDEX - 1 : MID_BOSS_ZONE_INDEX + 1;
+    return {
+      id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
+      stageIndex,
+      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
+      x: getStageZonePosition(stageIndex, localZoneIndex, eventIndex === 0 ? 0.42 : 0.55),
+      lines,
+    };
+  })));
 
   const CUTSCENE_EVENTS = [
     {
@@ -1565,23 +1579,26 @@
       const master = this.context.createGain();
       const filter = this.context.createBiquadFilter();
       const base = style === "breaker" ? 82 : 58;
+      const peakGain = BOSS_BEAM_CHARGE_GAIN[style] || BOSS_BEAM_CHARGE_GAIN.warden;
       filter.type = "bandpass";
-      filter.Q.setValueAtTime(5.5, now);
+      filter.Q.setValueAtTime(6.8, now);
       filter.frequency.setValueAtTime(base * 2.2, now);
-      filter.frequency.exponentialRampToValueAtTime(base * 8.2, now + duration);
+      filter.frequency.exponentialRampToValueAtTime(base * 10.4, now + duration);
       master.gain.setValueAtTime(0.0001, now);
-      master.gain.exponentialRampToValueAtTime(style === "breaker" ? 0.046 : 0.058, now + duration * 0.76);
+      master.gain.exponentialRampToValueAtTime(peakGain, now + duration * 0.72);
+      master.gain.setValueAtTime(peakGain, now + duration * 0.9);
       master.gain.exponentialRampToValueAtTime(0.0001, now + duration);
       filter.connect(master).connect(this.outputNode());
-      [1, 2.03, 3.96].forEach((ratio, index) => {
+      [0.72, 1, 2.03, 3.96].forEach((ratio, index) => {
         const oscillator = this.context.createOscillator();
-        oscillator.type = index === 0 ? "sawtooth" : index === 1 ? "triangle" : "sine";
+        oscillator.type = index <= 1 ? "sawtooth" : index === 2 ? "triangle" : "sine";
         oscillator.frequency.setValueAtTime(base * ratio, now);
-        oscillator.frequency.exponentialRampToValueAtTime(base * ratio * (style === "breaker" ? 2.8 : 3.4), now + duration);
+        oscillator.frequency.exponentialRampToValueAtTime(base * ratio * (style === "breaker" ? 3.4 : 4.2), now + duration);
         oscillator.connect(filter);
         oscillator.start(now);
         oscillator.stop(now + duration + 0.03);
       });
+      this.noise(duration * 0.92, style === "breaker" ? 0.024 : 0.03, style === "breaker" ? 480 : 360, "bandpass", 0, 4.2);
     }
 
     beamFire(style = "warden") {
@@ -5031,7 +5048,7 @@
       game.burstUnlocked = true;
       game.storyQueue = [];
       if (!game.tutorialActive && !game.adminMode) {
-        queueStory(INTRO_STORY, { stageIndex: 0, minX: TUTORIAL_END_X + 260, maxX: stages[0].end });
+        queueStory(INTRO_STORY, getIntroStoryContext());
       }
       if (checkpoints[0]) setRespawnCheckpoint(checkpoints[0], 0);
       camera.x = 0;
@@ -5145,7 +5162,7 @@
     game.zoneTitle = 0;
     game.hint = "기동 훈련 완료 · 초승 훈련장을 나가 첫 작전을 시작하세요";
     game.hintTimer = 5;
-    queueStory(INTRO_STORY, { stageIndex: 0, minX: TUTORIAL_END_X + 260, maxX: stages[0].end });
+    queueStory(INTRO_STORY, getIntroStoryContext());
     syncTutorialDataset();
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.cyan, 32, 440, 0.75, 260);
     sound.checkpoint();
@@ -5884,11 +5901,29 @@
     return Number.isInteger(item?.stageIndex) ? item.stageIndex : null;
   }
 
+  function getStoryZoneContext(zoneIndex) {
+    const safeZoneIndex = clamp(Number(zoneIndex) || 0, 0, zones.length - 1);
+    const zone = zones[safeZoneIndex];
+    return {
+      stageIndex: zone.stageIndex,
+      zoneIndex: safeZoneIndex,
+      minX: zone.x,
+      maxX: zone.end,
+    };
+  }
+
+  function getIntroStoryContext() {
+    const minX = TUTORIAL_END_X + 260;
+    return { ...getStoryZoneContext(getZoneIndexAt(minX)), minX };
+  }
+
   function isStoryContextValid(item) {
     if (!item || game.tutorialActive || !game.tutorialCompleted || game.adminMode) return false;
     const currentStageIndex = getStageIndexAt(player.x);
+    const currentZoneIndex = getZoneIndexAt(player.x);
     const contextStageIndex = getStoryStageIndex(item);
     if (contextStageIndex !== null && contextStageIndex !== currentStageIndex) return false;
+    if (Number.isInteger(item.zoneIndex) && item.zoneIndex !== currentZoneIndex) return false;
     const minX = Number.isFinite(item.minX) ? item.minX : -Infinity;
     const maxX = Number.isFinite(item.maxX) ? item.maxX : Infinity;
     return player.x >= minX && player.x < maxX;
@@ -5909,12 +5944,14 @@
     }
 
     const currentStageIndex = getStageIndexAt(player.x);
+    const currentZoneIndex = getZoneIndexAt(player.x);
     while (!game.story && game.storyQueue.length > 0) {
       const next = game.storyQueue[0];
       const contextStageIndex = getStoryStageIndex(next);
       const staleStage = contextStageIndex !== null && contextStageIndex < currentStageIndex;
       const stalePosition = Number.isFinite(next.maxX) && player.x >= next.maxX;
-      if (!staleStage && !stalePosition) break;
+      const wrongZone = Number.isInteger(next.zoneIndex) && next.zoneIndex !== currentZoneIndex;
+      if (!staleStage && !stalePosition && !wrongZone) break;
       game.storyQueue.shift();
     }
 
@@ -6013,7 +6050,7 @@
     const introCutsceneId = getBossIntroCutsceneId(enemy);
     const introEvent = CUTSCENE_EVENT_BY_ID.get(introCutsceneId);
     if (!introCutsceneId || !introEvent || player.x < introEvent.x || !game.cutsceneSeen.has(introCutsceneId)) return true;
-    return Boolean(game.cutscene || game.story || game.storyQueue.length > 0);
+    return Boolean(game.cutscene);
   }
 
   function holdBossUntilIntroEnds(enemy, dt, dx) {
@@ -6615,7 +6652,7 @@
       if (enemy.isMidBoss) {
         game.hint = `${BOSS_DEFINITIONS[kind].name} 격파 · 후반 작전 구역 개방`;
         game.hintTimer = 6;
-        queueStory(MIDBOSS_VICTORY_STORIES[rank], { stageIndex: rank, minX: stages[rank].x, maxX: stages[rank].end });
+        queueStory(MIDBOSS_VICTORY_STORIES[rank], getStoryZoneContext(enemy.homeZoneIndex ?? getZoneIndexAt(enemy.originX)));
         saveCampaign();
         if (deathIsNearPlayer) sound.tone(118, 0.62, "sawtooth", 0.065, 0.42);
         return;
@@ -6656,7 +6693,7 @@
           { speaker: "한서린과 잔영-00", text: "작전 4호 종료. 폐기된 모든 이름을 생존자 명단으로 정정한다.", tone: "operative", duration: 6.0 },
         ],
       ];
-      queueStory(victoryStories[rank], { stageIndex: rank, minX: stages[rank].x, maxX: stages[rank].end });
+      queueStory(victoryStories[rank], getStoryZoneContext(enemy.homeZoneIndex ?? getZoneIndexAt(enemy.originX)));
       saveCampaign();
       if (deathIsNearPlayer) sound.tone(80, 0.8, "sawtooth", 0.07, 0.3);
     } else if (NORMAL_ENEMY_REPAIR_DROP_CHANCE > 0 && countKill && !silent && player.hp < player.maxHp) {
@@ -7801,7 +7838,7 @@
       duration,
       0,
     );
-    if (pattern === "warden-core" || pattern === "breaker-laser" || pattern === "breaker-siege") {
+    if (BOSS_BEAM_CHARGE_PATTERNS.has(pattern)) {
       sound.beamCharge(duration, pattern === "warden-core" ? "warden" : "breaker");
     } else {
       sound.tone(105 + rank * 22, duration * 0.7, "sawtooth", 0.018, 1.7);
@@ -10232,6 +10269,7 @@
     }
 
     const narrationStageIndex = getStageIndexAt(player.x);
+    const narrationZoneIndex = getZoneIndexAt(player.x);
     const narrationIdle = !game.story && game.storyQueue.length === 0;
     const storyContextEnabled = game.tutorialCompleted && !game.tutorialActive && !game.adminMode && narrationIdle;
     let startedCutscene = false;
@@ -10246,9 +10284,9 @@
     }
     if (storyContextEnabled && !startedCutscene) {
       for (const event of STORY_EVENTS) {
-        if (event.stageIndex !== narrationStageIndex || player.x < event.x || game.storySeen.has(event.id)) continue;
+        if (event.stageIndex !== narrationStageIndex || event.zoneIndex !== narrationZoneIndex || player.x < event.x || game.storySeen.has(event.id)) continue;
         game.storySeen.add(event.id);
-        queueStory(event.lines, { stageIndex: event.stageIndex, minX: event.x, maxX: stages[event.stageIndex].end });
+        queueStory(event.lines, { ...getStoryZoneContext(event.zoneIndex), minX: event.x });
         break;
       }
     }
@@ -11570,27 +11608,76 @@
       const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
       const muzzleY = enemy.y + enemy.h * 0.42;
       const accent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red;
+      const beamCharge = BOSS_BEAM_CHARGE_PATTERNS.has(enemy.bossShotPattern);
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      ctx.strokeStyle = `${accent}${Math.round((0.3 + progress * 0.55) * 255).toString(16).padStart(2, "0")}`;
-      ctx.lineWidth = 2 + progress * 3;
-      ctx.setLineDash([6 + progress * 8, 9 - progress * 4]);
-      ctx.beginPath();
-      ctx.moveTo(muzzleX, muzzleY);
-      ctx.lineTo(enemy.targetX, enemy.targetY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      for (let ring = 0; ring < 3; ring += 1) {
-        const radius = 34 - progress * 24 + ring * 8;
-        ctx.globalAlpha = clamp(0.85 - ring * 0.2 + Math.sin(game.time * 24 + ring) * 0.12, 0.15, 1);
+      if (beamCharge) {
+        const aimX = enemy.targetX - muzzleX;
+        const aimY = enemy.targetY - muzzleY;
+        const aimLength = Math.max(1, Math.hypot(aimX, aimY));
+        const beamDX = aimX / aimLength;
+        const beamDY = aimY / aimLength;
+        const beamLength = enemy.bossShotPattern === "warden-core" ? 1900 : 1550;
+        const dangerWidth = enemy.bossShotPattern === "warden-core" ? 100 : 70;
+        const endX = muzzleX + beamDX * beamLength;
+        const endY = muzzleY + beamDY * beamLength;
+        const beamColor = enemy.bossShotPattern === "warden-core" ? "255, 48, 79" : "255, 205, 112";
+        ctx.globalAlpha = 0.08 + progress * 0.16;
+        ctx.strokeStyle = `rgb(${beamColor})`;
+        ctx.lineWidth = dangerWidth;
+        ctx.beginPath();
+        ctx.moveTo(muzzleX, muzzleY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.globalAlpha = 0.54 + progress * 0.38;
+        ctx.lineWidth = 3 + progress * 4;
+        ctx.setLineDash([24 - progress * 8, 15]);
+        ctx.beginPath();
+        ctx.moveTo(muzzleX, muzzleY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let marker = 1; marker <= 5; marker += 1) {
+          const distance = marker * beamLength / 6;
+          const markerX = muzzleX + beamDX * distance;
+          const markerY = muzzleY + beamDY * distance;
+          const sideX = -beamDY * (11 + progress * 7);
+          const sideY = beamDX * (11 + progress * 7);
+          ctx.beginPath();
+          ctx.moveTo(markerX - beamDX * 15 + sideX, markerY - beamDY * 15 + sideY);
+          ctx.lineTo(markerX + beamDX * 15, markerY + beamDY * 15);
+          ctx.lineTo(markerX - beamDX * 15 - sideX, markerY - beamDY * 15 - sideY);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = enemy.bossShotPattern === "warden-core" ? "#ff304f" : "#ffcd70";
+        ctx.font = "900 12px 'Malgun Gothic', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`차지 빔 ${Math.round(progress * 100)}%`, muzzleX, muzzleY - 58);
+        ctx.fillRect(muzzleX - 43, muzzleY - 43, 86 * progress, 5);
+      } else {
+        ctx.strokeStyle = `${accent}${Math.round((0.3 + progress * 0.55) * 255).toString(16).padStart(2, "0")}`;
+        ctx.lineWidth = 2 + progress * 3;
+        ctx.setLineDash([6 + progress * 8, 9 - progress * 4]);
+        ctx.beginPath();
+        ctx.moveTo(muzzleX, muzzleY);
+        ctx.lineTo(enemy.targetX, enemy.targetY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.strokeStyle = beamCharge && enemy.bossShotPattern === "warden-core" ? "#ff304f" : accent;
+      for (let ring = 0; ring < (beamCharge ? 5 : 3); ring += 1) {
+        const radius = (beamCharge ? 48 : 34) - progress * (beamCharge ? 37 : 24) + ring * 8;
+        ctx.globalAlpha = clamp(0.9 - ring * 0.14 + Math.sin(game.time * 28 + ring) * 0.12, 0.15, 1);
+        ctx.lineWidth = beamCharge ? 3 : 2;
         ctx.beginPath();
         ctx.arc(muzzleX, muzzleY, radius, 0, TAU);
         ctx.stroke();
       }
       ctx.globalAlpha = 0.55 + progress * 0.45;
-      ctx.fillStyle = accent;
+      ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
-      ctx.arc(muzzleX, muzzleY, 4 + progress * 9, 0, TAU);
+      ctx.arc(muzzleX, muzzleY, (beamCharge ? 7 : 4) + progress * (beamCharge ? 14 : 9), 0, TAU);
       ctx.fill();
       ctx.restore();
     } else if (
@@ -16082,6 +16169,11 @@
     breakerHalfHpLaser: true,
     breakerBeamDamage: 1,
     wardenBeamDamage: 2,
+    bossBeamChargePatterns: [...BOSS_BEAM_CHARGE_PATTERNS],
+    breakerBeamChargePeakGain: BOSS_BEAM_CHARGE_GAIN.breaker,
+    wardenBeamChargePeakGain: BOSS_BEAM_CHARGE_GAIN.warden,
+    bossBeamFullLaneTelegraph: true,
+    bossBeamChargePercentLabel: true,
     enemyViewportDespawn: false,
     enemyWorldKillPlaneOnly: true,
     initialOffscreenEnemyCleanup: true,
@@ -16181,6 +16273,12 @@
     landingImpactSfx: true,
     storyStageContext: true,
     storyQueueContext: true,
+    storyZoneBoundTriggers: STORY_EVENTS.every((event) => Number.isInteger(event.zoneIndex)
+      && event.x >= zones[event.zoneIndex].x
+      && event.x < zones[event.zoneIndex].end),
+    storyZoneBoundEventCount: STORY_EVENTS.length,
+    storyQueueDiscardedOnZoneExit: true,
+    bossCombatIgnoresStoryOverlay: true,
     documentStorySource: "월하잔향 (1).hwpx",
     documentStoryDialogueLines: 216,
     documentStoryAligned: true,
@@ -16523,6 +16621,11 @@
     breakerHalfHpLaser: "true",
     breakerBeamDamage: "1",
     wardenBeamDamage: "2",
+    bossBeamChargePatterns: [...BOSS_BEAM_CHARGE_PATTERNS].join(","),
+    breakerBeamChargePeakGain: String(BOSS_BEAM_CHARGE_GAIN.breaker),
+    wardenBeamChargePeakGain: String(BOSS_BEAM_CHARGE_GAIN.warden),
+    bossBeamFullLaneTelegraph: "true",
+    bossBeamChargePercentLabel: "true",
     enemyViewportDespawn: "false",
     enemyWorldKillPlaneOnly: "true",
     initialOffscreenEnemyCleanup: "true",
@@ -16609,6 +16712,12 @@
     landingImpactSfx: "true",
     storyStageContext: "true",
     storyQueueContext: "true",
+    storyZoneBoundTriggers: String(STORY_EVENTS.every((event) => Number.isInteger(event.zoneIndex)
+      && event.x >= zones[event.zoneIndex].x
+      && event.x < zones[event.zoneIndex].end)),
+    storyZoneBoundEventCount: String(STORY_EVENTS.length),
+    storyQueueDiscardedOnZoneExit: "true",
+    bossCombatIgnoresStoryOverlay: "true",
     documentStorySource: "월하잔향.hwpx",
     documentStoryDialogueLines: "216",
     documentStoryAligned: "true",

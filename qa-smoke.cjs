@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.28") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.29") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -165,6 +165,9 @@ if (!diagnostics.adminNearestSelectionAutoHidesCatalog || !diagnostics.adminCanv
 if (!diagnostics.bossArenaLocksPlayerBothSides || !diagnostics.bossArenaLocksDuringIntro || !diagnostics.bossArenaUnlocksOnDefeat || !diagnostics.bossArenaLockUsesVisibleLimits || !gameSource.includes("constrainPlayerToActiveBossArena();")) {
   throw new Error("boss arena player containment is incomplete");
 }
+if (diagnostics.bossBeamChargePatterns.join(",") !== "warden-core,breaker-laser,breaker-siege" || diagnostics.breakerBeamChargePeakGain < 0.1 || diagnostics.wardenBeamChargePeakGain < 0.13 || !diagnostics.bossBeamFullLaneTelegraph || !diagnostics.bossBeamChargePercentLabel || !gameSource.includes("차지 빔 ${Math.round(progress * 100)}%")) {
+  throw new Error("Swae-u or Cheolgak beam charge warning is too quiet or unclear");
+}
 if (!diagnostics.bossArenaWideEngagementRange || !diagnostics.bossCornerRetreatRecovery || diagnostics.bossCornerIdleRecoverySeconds !== 1.4 || !diagnostics.bossTransientActionRelease || !gameSource.includes("distance < bossEngagementRange")) {
   throw new Error("boss corner attack recovery is incomplete");
 }
@@ -205,6 +208,9 @@ if (diagnostics.bossCrisisPatternThreshold !== 0.35 || diagnostics.bossCrisisPat
 }
 if (!diagnostics.bossIntroCombatGate || !diagnostics.bossIntroWaitsForDialogue || !diagnostics.bossDormantDamageLock || diagnostics.bossIntroCutsceneCount !== 10 || !diagnostics.cutsceneCompletionSavedAtEnd) {
   throw new Error("boss intro dialogue gate configuration invalid");
+}
+if (!diagnostics.storyZoneBoundTriggers || diagnostics.storyZoneBoundEventCount !== 54 || !diagnostics.storyQueueDiscardedOnZoneExit || !diagnostics.bossCombatIgnoresStoryOverlay || !gameSource.includes("event.zoneIndex !== narrationZoneIndex") || !gameSource.includes("return Boolean(game.cutscene);")) {
+  throw new Error("story playback is not bound to its zone or still blocks boss combat");
 }
 if (!diagnostics.echoDuelCutsceneSingleActor || !gameSource.includes('hideCombatEchoDuringDuelCutscene && enemy.type === "boss" && enemy.bossKind === "echo"')) {
   throw new Error("Echo duel cutscene can render duplicate actors");
