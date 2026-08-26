@@ -93,7 +93,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.21";
+  const GAME_VERSION = "3.6.22";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -6290,6 +6290,7 @@
       !game.adminMode
       && enemy.type === "boss"
       && enemy.bossKind === "echo"
+      && !bullet.piercing
       && (enemy.echoReactiveParryCooldown || 0) <= 0
     ) {
       enemy.hitShotId = bullet.shotId;
@@ -6299,7 +6300,7 @@
       enemy.echoReactiveParryCooldown = ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN * (enemy.adaptivePhase ? 0.68 : 1);
       return true;
     }
-    if (isEchoParryActive(enemy)) {
+    if (!bullet.piercing && isEchoParryActive(enemy)) {
       enemy.hitShotId = bullet.shotId;
       enemy.echoParriedShotId = bullet.shotId;
       bullet.cancelled = true;
@@ -15725,7 +15726,8 @@
     echoParryReflectsShotgun: true,
     echoReactiveShotgunParry: true,
     echoShotgunParryTrigger: "hit-confirmed-any-action",
-    echoShotgunParryCancelsPiercingPellets: true,
+    echoShotgunParryCancelsPiercingPellets: false,
+    echoOverchargedShotgunBypassesParry: true,
     echoReactiveShotgunParryCooldown: ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN,
     echoParryReturnProjectiles: ECHO_PARRY_RETURN_PROJECTILES,
     echoParryRiposteDamage: 1,
@@ -16115,7 +16117,8 @@
     echoParryReflectsShotgun: "true",
     echoReactiveShotgunParry: "true",
     echoShotgunParryTrigger: "hit-confirmed-any-action",
-    echoShotgunParryCancelsPiercingPellets: "true",
+    echoShotgunParryCancelsPiercingPellets: "false",
+    echoOverchargedShotgunBypassesParry: "true",
     echoReactiveShotgunParryCooldown: String(ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN),
     echoParryReturnProjectiles: String(ECHO_PARRY_RETURN_PROJECTILES),
     echoParryRiposteDamage: "1",
