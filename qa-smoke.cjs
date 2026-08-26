@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.26") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.27") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -110,11 +110,27 @@ if (diagnostics.difficultyBossHpScales.chick !== 0.5 || diagnostics.difficultyBo
 if (diagnostics.difficultyMobCountScales.chick !== 0.5 || diagnostics.difficultyMobCountScales.cadet !== 2 / 3 || diagnostics.difficultyMobCountScales.darkhorse !== 1 || diagnostics.difficultyMobCountScales.weapon !== 1 || !diagnostics.difficultyPopulationScaleApplied || !diagnostics.difficultyBossHpScaleApplied) {
   throw new Error("difficulty enemy population scaling is invalid");
 }
+const hardMobCount = diagnostics.difficultyMobCounts.darkhorse;
+if (diagnostics.difficultyMobCounts.chick !== Math.round(hardMobCount * 0.5) || diagnostics.difficultyMobCounts.cadet !== Math.round(hardMobCount * 2 / 3) || diagnostics.difficultyMobCounts.weapon !== hardMobCount) {
+  throw new Error(`difficulty mob totals are not exact hard-mode ratios: ${JSON.stringify(diagnostics.difficultyMobCounts)}`);
+}
+if (Object.values(diagnostics.difficultyBossCounts).some((count) => count !== 10) || Object.entries(diagnostics.difficultyTotalEnemyCounts).some(([key, count]) => count !== diagnostics.difficultyMobCounts[key] + 10) || diagnostics.difficultyMobSelection !== "deterministic-random-subset-of-hard") {
+  throw new Error("difficulty total enemy counts or randomized removal are invalid");
+}
+if (!diagnostics.difficultyMobBuildMatchesTarget || diagnostics.builtAuthoredMobCount !== diagnostics.difficultyMobCounts.cadet || diagnostics.builtBossCount !== 10) {
+  throw new Error(`built enemy population does not match selected difficulty: ${diagnostics.builtAuthoredMobCount}/${diagnostics.builtBossCount}`);
+}
 if (!diagnostics.startScreenDifficultyFlashGuard || !diagnostics.legacyDifficultyNamesMigrated || !indexSource.includes('data-game-bootstrap="loading"') || !indexSource.includes('data-difficulty="weapon" aria-pressed="false">지옥</button>')) {
   throw new Error("title-screen difficulty flash guard is missing");
 }
-if (!diagnostics.adminRDifficultySelector || diagnostics.adminRDifficultyChoices.join(",") !== "chick,cadet,darkhorse,weapon" || !diagnostics.adminPlaytestPreservesPosition || !diagnostics.adminPlaytestReturnWithR || !diagnostics.adminPlaytestUsesSelectedDifficulty || !indexSource.includes('data-admin-difficulty="weapon"') || !gameSource.includes('toggleAdminCadetMode(button.dataset.adminDifficulty)')) {
+if (!diagnostics.adminRDifficultySelector || diagnostics.adminRDifficultyChoices.join(",") !== "chick,cadet,darkhorse,weapon" || !diagnostics.adminPlaytestPreservesPosition || !diagnostics.adminPlaytestReturnWithR || !diagnostics.adminPlaytestUsesSelectedDifficulty || !diagnostics.adminPlaytestRebuildsDifficultyPopulation || !diagnostics.adminPlaytestRebuildsBossHp || !indexSource.includes('data-admin-difficulty="weapon"') || !gameSource.includes('toggleAdminCadetMode(button.dataset.adminDifficulty)')) {
   throw new Error("admin R difficulty selector is incomplete");
+}
+for (const bossKind of Object.keys(diagnostics.difficultyBossHpByKind.darkhorse)) {
+  const hardHp = diagnostics.difficultyBossHpByKind.darkhorse[bossKind];
+  if (diagnostics.difficultyBossHpByKind.chick[bossKind] !== hardHp * 0.5 || Math.abs(diagnostics.difficultyBossHpByKind.cadet[bossKind] - hardHp * 2 / 3) > 0.001 || diagnostics.difficultyBossHpByKind.weapon[bossKind] !== hardHp) {
+    throw new Error(`boss HP ratio invalid for ${bossKind}`);
+  }
 }
 if (!diagnostics.hellBossRemixEnabled || diagnostics.hellBossRemixBossCount !== 10 || diagnostics.hellBossRemixPatternCount !== 48 || diagnostics.hellBossFollowupDelayScale !== 0.62 || diagnostics.hellBossCrisisThreshold !== 0.55 || diagnostics.hellBossCrisisCooldownScale !== 0.72 || diagnostics.hellBossCooldownScale !== 0.78 || diagnostics.hellBossWindupScale !== 0.8) {
   throw new Error("Hell boss remix configuration is invalid");
@@ -384,4 +400,8 @@ console.log(JSON.stringify({
   burstTripleParryAct: diagnostics.burstTripleParryAct,
   flameSwordAct: diagnostics.flameSwordAct,
   gongmunSwordWaveOrientation: diagnostics.gongmunSwordWaveOrientation,
+  difficultyMobCounts: diagnostics.difficultyMobCounts,
+  difficultyBossCounts: diagnostics.difficultyBossCounts,
+  difficultyTotalEnemyCounts: diagnostics.difficultyTotalEnemyCounts,
+  builtAuthoredMobCount: diagnostics.builtAuthoredMobCount,
 }));

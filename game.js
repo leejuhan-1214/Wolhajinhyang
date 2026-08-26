@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.26";
+  const GAME_VERSION = "3.6.27";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -275,6 +275,7 @@
   let adminWorldUndoSnapshot = null;
   let levelReady = false;
   let levelBuildDifficulty = null;
+  let difficultyPopulationStats = { hardMobCount: 0, targetMobCount: 0, removedMobCount: 0 };
   let lastResetAt = -Infinity;
   let initialOffscreenEnemyRemovals = 0;
   let echoStageLaserRemovals = 0;
@@ -2579,7 +2580,7 @@
   function configureCombatRooms() {
     const anchorTypes = ["shield", "drone", "mortar", "piercer"];
     combatRooms.forEach((room, roomIndex) => {
-      const members = enemies.filter((enemy) => enemy.type !== "boss" && enemy.originX > room.left && enemy.originX < room.right);
+      const members = enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && enemy.originX > room.left && enemy.originX < room.right);
       const preferred = anchorTypes.map((_, offset) => anchorTypes[(roomIndex + offset) % anchorTypes.length]);
       const formationAnchorType = preferred.find((type) => members.some((enemy) => enemy.type === type)) || members[0]?.type || "shield";
       const formation = SQUAD_FORMATIONS[formationAnchorType] || SQUAD_FORMATIONS.shield;
@@ -3300,8 +3301,12 @@
       ? record.bossKind
       : stages[stageIndex].bossKind;
     const definition = BOSS_DEFINITIONS[enemy.bossKind];
-    enemy.hp = definition.hp;
-    enemy.maxHp = definition.hp;
+    const bossHpScale = difficultySettings[selectedDifficulty]?.bossHpScale || 1;
+    const scaledBossHp = Math.max(1, Number((definition.hp * bossHpScale).toFixed(3)));
+    enemy.hp = scaledBossHp;
+    enemy.maxHp = scaledBossHp;
+    enemy.baseMaxHp = definition.hp;
+    enemy.difficultyHpScale = bossHpScale;
     if (enemy.bossKind === "echo") {
       enemy.w = player.w;
       enemy.h = player.h;
@@ -3720,13 +3725,10 @@
       const section = getStageSection(localZoneIndex);
       const points = [...spawnPoints];
       const combatBonus = zone.template === "crusher" || zone.template === "gauntlet" ? 1 : 0;
-      const stageBaseCounts = [8, 10, 12, 14, 16];
-      const baseTargetCount = stageBaseCounts[zone.stageIndex]
+      const baseTargetCount = [8, 10, 12, 14, 16][zone.stageIndex]
         + section * 2
         + (localZoneIndex % 3 === 2 ? 1 : 0)
         + combatBonus;
-      const populationScale = difficultySettings[selectedDifficulty]?.mobCountScale || 1;
-      const targetCount = Math.max(1, Math.round(baseTargetCount * populationScale));
       const progressionPatterns = [
         [
           ["runner", "runner", "gunner"],
@@ -3778,22 +3780,50 @@
         points.push([localX, anchorY, type]);
       }
 
-      const deployedPoints = targetCount >= points.length
-        ? points
-        : Array.from({ length: targetCount }, (_, index) => points[Math.min(
-          points.length - 1,
-          Math.floor((index + 0.5) * points.length / targetCount),
-        )]);
+      const enemyHeights = {
+        runner: 52,
+        gunner: 58,
+        machinegun: 60,
+        turret: 50,
+        mortarTurret: 62,
+        piercer: 58,
+        mortar: 64,
+        drone: 34,
+        shield: 66,
+      };
+      const normalizedPoints = points.map(([localX, surfaceY, forcedType], index) => {
+        const type = forcedType || pattern[(index + localZoneIndex) % pattern.length];
+        const height = enemyHeights[type] || 60;
+        const spawnY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY - height;
+        const outsideVerticalScreen = spawnY + height <= 0 || spawnY >= H;
+        return outsideVerticalScreen ? [localX, floorY, type] : [localX, surfaceY, type];
+      });
 
-      deployedPoints.forEach(([localX, surfaceY, forcedType], index) => {
+      const pointScores = normalizedPoints.map(([localX, surfaceY, forcedType], index) => hash(
+        (zone.globalIndex + 1) * 104729
+        + Math.round(localX) * 37.17
+        + Math.round(surfaceY) * 19.31
+        + String(forcedType || "auto").length * 997
+        + index * 6151,
+      ));
+      const hardPointIndexes = new Set(pointScores
+        .map((score, index) => ({ score, index }))
+        .sort((a, b) => a.score - b.score || a.index - b.index)
+        .slice(0, baseTargetCount)
+        .map((entry) => entry.index));
+
+      normalizedPoints.forEach(([localX, surfaceY, forcedType], index) => {
+        if (!hardPointIndexes.has(index)) return;
         const type = forcedType || pattern[(index + localZoneIndex) % pattern.length];
         const actualY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY;
         const enemy = addEnemy(type, zone.x + localX, actualY, 110 + zone.stageIndex * 35);
+        enemy.difficultySelectionScore = pointScores[index];
         enemy.placementWave = index >= spawnPoints.length ? "reinforcement" : "original";
         enemy.zonePlacementSignature = zone.code + ":" + index + ":" + type;
       });
       zone.baseTargetEnemyCount = baseTargetCount;
-      zone.targetEnemyCount = targetCount;
+      zone.targetEnemyCount = baseTargetCount;
+      zone.difficultyPopulationSelection = "deterministic-random-subset";
       zone.enemyComplexityTier = zone.stageIndex * 4 + section;
     }
 
@@ -4418,14 +4448,79 @@
       if (adminRemovedObjectIds.has(boostNodes[index].id)) boostNodes.splice(index, 1);
     }
     rebuildPlatformSpatialIndex();
-    configureCombatRooms();
     auditEnemyZoneContainment();
     applyAdminRemovedEnemyData();
+    applyDifficultyPopulationScale();
+    configureCombatRooms();
     zoneDiversityMetrics = calculateZoneDiversityMetrics();
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     levelBuildDifficulty = selectedDifficulty;
+    syncDifficultyRuntimeDataset();
     rebuildAdminZoneGrid();
     initRain();
+  }
+
+  function applyDifficultyPopulationScale() {
+    const scale = difficultySettings[selectedDifficulty]?.mobCountScale || 1;
+    const candidates = enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId);
+    const scoreFor = (enemy) => Number.isFinite(enemy.difficultySelectionScore)
+      ? enemy.difficultySelectionScore
+      : hash(enemy.originX * 0.017 + enemy.spawnY * 0.031 + String(enemy.id || enemy.type).length * 97.3);
+    const compareCandidates = (a, b) => scoreFor(a) - scoreFor(b) || a.originX - b.originX || String(a.id).localeCompare(String(b.id));
+    const targetMobCount = Math.round(candidates.length * scale);
+    const groups = new Map();
+    for (const enemy of candidates) {
+      const zoneIndex = Number.isInteger(enemy.homeZoneIndex) ? enemy.homeZoneIndex : getZoneIndexAt(enemy.originX);
+      if (!groups.has(zoneIndex)) groups.set(zoneIndex, []);
+      groups.get(zoneIndex).push(enemy);
+    }
+
+    const retained = new Set();
+    for (const group of groups.values()) {
+      group.sort(compareCandidates);
+      if (group[0]) retained.add(group[0]);
+    }
+    const effectiveTarget = Math.max(retained.size, targetMobCount);
+    const remaining = candidates.filter((enemy) => !retained.has(enemy)).sort(compareCandidates);
+    for (let index = 0; retained.size < effectiveTarget && index < remaining.length; index += 1) retained.add(remaining[index]);
+
+    const candidateSet = new Set(candidates);
+    for (let index = enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = enemies[index];
+      if (candidateSet.has(enemy) && !retained.has(enemy)) enemies.splice(index, 1);
+    }
+
+    for (const zone of zones) {
+      const group = groups.get(zone.globalIndex) || [];
+      zone.availableHardEnemyCount = group.length;
+      zone.targetEnemyCount = group.reduce((count, enemy) => count + (retained.has(enemy) ? 1 : 0), 0);
+    }
+    difficultyPopulationStats = {
+      hardMobCount: candidates.length,
+      targetMobCount: retained.size,
+      removedMobCount: candidates.length - retained.size,
+    };
+  }
+
+  function syncDifficultyRuntimeDataset() {
+    const activeDifficulty = levelBuildDifficulty || selectedDifficulty;
+    const builtAuthoredMobCount = enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.adminSpawned && !enemy.summonedByBossId).length;
+    const builtDifficultyMobCount = enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId).length;
+    const builtBossCount = enemies.filter((enemy) => enemy.alive && enemy.type === "boss" && !enemy.adminSpawned).length;
+    Object.assign(document.documentElement.dataset, {
+      activeDifficulty: String(activeDifficulty),
+      activeBossHpScale: String(difficultySettings[activeDifficulty]?.bossHpScale || 1),
+      activeMobCountScale: String(difficultySettings[activeDifficulty]?.mobCountScale || 1),
+      builtAuthoredMobCount: String(builtAuthoredMobCount),
+      builtDifficultyMobCount: String(builtDifficultyMobCount),
+      builtBossCount: String(builtBossCount),
+      activeDifficultyHardMobCount: String(difficultyPopulationStats.hardMobCount),
+      activeDifficultyTargetMobCount: String(difficultyPopulationStats.targetMobCount),
+      difficultyMobBuildMatchesTarget: String(builtDifficultyMobCount === difficultyPopulationStats.targetMobCount),
+      difficultyBossHpScaleApplied: String(enemies.filter((enemy) => enemy.type === "boss" && !enemy.adminSpawned).every((enemy) => (
+        Math.abs(enemy.maxHp - BOSS_DEFINITIONS[enemy.bossKind].hp * (difficultySettings[activeDifficulty]?.bossHpScale || 1)) < 0.001
+      ))),
+    });
   }
 
   function calculateZoneDiversityMetrics() {
@@ -5597,6 +5692,9 @@
     if (enteringCadetMode) {
       const playtestDifficulty = difficultySettings[difficultyKey];
       game.adminPreviousDifficulty = game.difficulty;
+      selectedDifficulty = difficultyKey;
+      buildLevel();
+      levelReady = true;
       game.adminMode = false;
       game.adminCadetMode = true;
       game.difficulty = difficultyKey;
@@ -5609,9 +5707,13 @@
     } else {
       game.adminCadetMode = false;
       game.adminMode = true;
-      game.difficulty = difficultySettings[game.adminPreviousDifficulty]
+      const restoredDifficulty = difficultySettings[game.adminPreviousDifficulty]
         ? game.adminPreviousDifficulty
         : selectedDifficulty;
+      selectedDifficulty = restoredDifficulty;
+      buildLevel();
+      levelReady = true;
+      game.difficulty = restoredDifficulty;
       const restored = difficultySettings[game.difficulty];
       player.maxHp = restored.hp;
       player.hp = restored.hp;
@@ -5711,8 +5813,12 @@
     if (type === "boss") {
       enemy.bossKind = stages[stageIndex].bossKind;
       const definition = BOSS_DEFINITIONS[enemy.bossKind];
-      enemy.hp = definition.hp;
-      enemy.maxHp = definition.hp;
+      const bossHpScale = difficultySettings[selectedDifficulty]?.bossHpScale || 1;
+      const scaledBossHp = Math.max(1, Number((definition.hp * bossHpScale).toFixed(3)));
+      enemy.hp = scaledBossHp;
+      enemy.maxHp = scaledBossHp;
+      enemy.baseMaxHp = definition.hp;
+      enemy.difficultyHpScale = bossHpScale;
       if (enemy.bossKind === "echo") {
         enemy.w = player.w;
         enemy.h = player.h;
@@ -15741,12 +15847,30 @@
     difficultyDamagePerHit: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.damage])),
     difficultyBossHpScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.bossHpScale])),
     difficultyMobCountScales: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.mobCountScale])),
+    difficultyMobCounts: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [
+      key,
+      Math.round(zones.reduce((total, zone) => total + (zone.baseTargetEnemyCount || 0), 0) * value.mobCountScale),
+    ])),
+    difficultyBossCounts: Object.fromEntries(Object.keys(difficultySettings).map((key) => [key, Object.keys(BOSS_DEFINITIONS).length])),
+    difficultyTotalEnemyCounts: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [
+      key,
+      Math.round(zones.reduce((total, zone) => total + (zone.baseTargetEnemyCount || 0), 0) * value.mobCountScale) + Object.keys(BOSS_DEFINITIONS).length,
+    ])),
+    difficultyBossHpByKind: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [
+      key,
+      Object.fromEntries(Object.entries(BOSS_DEFINITIONS).map(([bossKind, definition]) => [bossKind, Number((definition.hp * value.bossHpScale).toFixed(3))])),
+    ])),
+    difficultyMobSelection: "deterministic-random-subset-of-hard",
+    builtAuthoredMobCount: enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.adminSpawned && !enemy.summonedByBossId).length,
+    builtDifficultyMobCount: enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId).length,
+    builtBossCount: enemies.filter((enemy) => enemy.alive && enemy.type === "boss" && !enemy.adminSpawned).length,
+    activeDifficultyHardMobCount: difficultyPopulationStats.hardMobCount,
+    activeDifficultyTargetMobCount: difficultyPopulationStats.targetMobCount,
+    difficultyMobBuildMatchesTarget: enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId).length === difficultyPopulationStats.targetMobCount,
     activeDifficulty: levelBuildDifficulty || selectedDifficulty,
     activeBossHpScale: difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1,
     activeMobCountScale: difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1,
-    difficultyPopulationScaleApplied: zones.filter((zone) => Number.isFinite(zone.baseTargetEnemyCount)).every((zone) => (
-      zone.targetEnemyCount === Math.max(1, Math.round(zone.baseTargetEnemyCount * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1)))
-    )),
+    difficultyPopulationScaleApplied: zones.reduce((total, zone) => total + (zone.targetEnemyCount || 0), 0) === difficultyPopulationStats.targetMobCount,
     difficultyBossHpScaleApplied: enemies.filter((enemy) => enemy.type === "boss" && !enemy.adminSpawned).every((enemy) => (
       Math.abs(enemy.maxHp - BOSS_DEFINITIONS[enemy.bossKind].hp * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1)) < 0.001
     )),
@@ -16058,6 +16182,8 @@
     adminPlaytestPreservesPosition: true,
     adminPlaytestReturnWithR: true,
     adminPlaytestUsesSelectedDifficulty: true,
+    adminPlaytestRebuildsDifficultyPopulation: true,
+    adminPlaytestRebuildsBossHp: true,
     screenShakeScale: SCREEN_SHAKE_SCALE,
     screenShakeMaxAmplitude: MAX_SCREEN_SHAKE_AMPLITUDE,
     screenShakeDisabledInAdminMode: true,
@@ -16106,12 +16232,20 @@
     difficultyDamagePerHit: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.damage}`).join(","),
     difficultyBossHpScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.bossHpScale}`).join(","),
     difficultyMobCountScales: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.mobCountScale}`).join(","),
+    difficultyMobCounts: Object.entries(difficultySettings).map(([key, value]) => `${key}:${Math.round(zones.reduce((total, zone) => total + (zone.baseTargetEnemyCount || 0), 0) * value.mobCountScale)}`).join(","),
+    difficultyBossCounts: Object.keys(difficultySettings).map((key) => `${key}:${Object.keys(BOSS_DEFINITIONS).length}`).join(","),
+    difficultyTotalEnemyCounts: Object.entries(difficultySettings).map(([key, value]) => `${key}:${Math.round(zones.reduce((total, zone) => total + (zone.baseTargetEnemyCount || 0), 0) * value.mobCountScale) + Object.keys(BOSS_DEFINITIONS).length}`).join(","),
+    difficultyMobSelection: "deterministic-random-subset-of-hard",
+    builtAuthoredMobCount: String(enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.adminSpawned && !enemy.summonedByBossId).length),
+    builtDifficultyMobCount: String(enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId).length),
+    builtBossCount: String(enemies.filter((enemy) => enemy.alive && enemy.type === "boss" && !enemy.adminSpawned).length),
+    activeDifficultyHardMobCount: String(difficultyPopulationStats.hardMobCount),
+    activeDifficultyTargetMobCount: String(difficultyPopulationStats.targetMobCount),
+    difficultyMobBuildMatchesTarget: String(enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && !enemy.summonedByBossId).length === difficultyPopulationStats.targetMobCount),
     activeDifficulty: String(levelBuildDifficulty || selectedDifficulty),
     activeBossHpScale: String(difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1),
     activeMobCountScale: String(difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1),
-    difficultyPopulationScaleApplied: String(zones.filter((zone) => Number.isFinite(zone.baseTargetEnemyCount)).every((zone) => (
-      zone.targetEnemyCount === Math.max(1, Math.round(zone.baseTargetEnemyCount * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.mobCountScale || 1)))
-    ))),
+    difficultyPopulationScaleApplied: String(zones.reduce((total, zone) => total + (zone.targetEnemyCount || 0), 0) === difficultyPopulationStats.targetMobCount),
     difficultyBossHpScaleApplied: String(enemies.filter((enemy) => enemy.type === "boss" && !enemy.adminSpawned).every((enemy) => (
       Math.abs(enemy.maxHp - BOSS_DEFINITIONS[enemy.bossKind].hp * (difficultySettings[levelBuildDifficulty || selectedDifficulty]?.bossHpScale || 1)) < 0.001
     ))),
@@ -16468,6 +16602,8 @@
     adminPlaytestPreservesPosition: "true",
     adminPlaytestReturnWithR: "true",
     adminPlaytestUsesSelectedDifficulty: "true",
+    adminPlaytestRebuildsDifficultyPopulation: "true",
+    adminPlaytestRebuildsBossHp: "true",
     screenShakeScale: String(SCREEN_SHAKE_SCALE),
     screenShakeMaxAmplitude: String(MAX_SCREEN_SHAKE_AMPLITUDE),
     screenShakeDisabledInAdminMode: "true",
