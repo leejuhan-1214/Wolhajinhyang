@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.30") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.31") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -106,6 +106,9 @@ if (Object.values(diagnostics.difficultyNames).join(",") !== "쉬움,보통,어�
 }
 if (!diagnostics.hardUsesLegacyNormalPacing || diagnostics.difficultyEnemySpeedScales.darkhorse !== 1 || diagnostics.difficultyBulletSpeedScales.darkhorse !== 1) {
   throw new Error("Hard mode must retain the legacy Normal enemy, bullet, and boss pacing");
+}
+if (diagnostics.activeEnemyZoneRadius !== 0 || diagnostics.activeEnemiesOutsidePlayerZone !== 0 || !diagnostics.offZoneEnemyAttacksDisabled || !diagnostics.offZoneEnemyProjectilesPurged || !diagnostics.enemyProjectileOwnerZoneTracking || !gameSource.includes("normalizeEnemyHomeZone(enemy) === currentZoneIndex") || !gameSource.includes("getEnemyProjectileZone(bullet) !== currentPlayerZoneIndex")) {
+  throw new Error("enemies or projectiles outside the current zone can still attack");
 }
 if (diagnostics.difficultyBossHpScales.chick !== 0.5 || diagnostics.difficultyBossHpScales.cadet !== 2 / 3 || diagnostics.difficultyBossHpScales.darkhorse !== 1 || diagnostics.difficultyBossHpScales.weapon !== 1) {
   throw new Error("difficulty boss HP scales are invalid");

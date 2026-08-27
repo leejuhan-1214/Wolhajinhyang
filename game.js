@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.30";
+  const GAME_VERSION = "3.6.31";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -2120,16 +2120,36 @@
     return ejected;
   }
 
+  function getCurrentPlayerZoneIndex() {
+    return getZoneIndexAt(clamp(player.x + player.w / 2, 0, WORLD_W - 1));
+  }
+
+  function getEnemyProjectileZone(bullet) {
+    if (Number.isInteger(bullet.ownerZone)) return bullet.ownerZone;
+    if (bullet.ownerId) {
+      const owner = enemies.find((enemy) => enemy.id === bullet.ownerId);
+      if (owner) {
+        bullet.ownerZone = normalizeEnemyHomeZone(owner);
+        return bullet.ownerZone;
+      }
+    }
+    const centerX = Number.isFinite(bullet.x) ? bullet.x + (bullet.w || 0) / 2 : player.x;
+    bullet.ownerZone = getZoneIndexAt(clamp(centerX, 0, WORLD_W - 1));
+    return bullet.ownerZone;
+  }
+
+  function tagEnemyProjectilesCreatedSince(startIndex, ownerZone) {
+    for (let index = startIndex; index < bullets.length; index += 1) {
+      const bullet = bullets[index];
+      if (bullet.enemy && !Number.isInteger(bullet.ownerZone)) bullet.ownerZone = ownerZone;
+    }
+  }
+
   function getActiveEnemies() {
-    const minZone = Math.max(0, game.zone - 1);
-    const maxZone = Math.min(zones.length - 1, game.zone + 1);
-    return enemies.filter((enemy) => {
-      if (!enemy.alive) return false;
-      if (Math.abs(enemy.x + enemy.w / 2 - (player.x + player.w / 2)) < (zones[game.zone]?.width || ZONE_W) * 1.2) return true;
-      return Number.isInteger(enemy.homeZoneIndex)
-        && enemy.homeZoneIndex >= minZone
-        && enemy.homeZoneIndex <= maxZone;
-    });
+    const currentZoneIndex = getCurrentPlayerZoneIndex();
+    return enemies.filter((enemy) => (
+      enemy.alive && normalizeEnemyHomeZone(enemy) === currentZoneIndex
+    ));
   }
 
   function enforceEnemyLockdowns(collection = enemies) {
@@ -6140,6 +6160,7 @@
 
     const reactiveOracle = enemies.find((enemy) => {
       if (!enemy.alive || enemy.type !== "boss" || enemy.bossKind !== "oracle" || (enemy.shotgunSwapCooldown || 0) > 0) return false;
+      if (normalizeEnemyHomeZone(enemy) !== getCurrentPlayerZoneIndex()) return false;
       const oracleDX = enemy.x + enemy.w / 2 - (player.x + player.w / 2);
       const oracleDY = enemy.y + enemy.h / 2 - (player.y + player.h / 2);
       const oracleDistance = Math.max(1, Math.hypot(oracleDX, oracleDY));
@@ -7115,6 +7136,7 @@
       kind: "rain-core-burst",
       gravity: 0,
       color: "#ff7b62",
+      ownerZone: bullet.ownerZone,
     });
     for (let ring = 0; ring < 3; ring += 1) {
       spawnParticles(centerX, centerY, ring === 0 ? "#fff0c7" : ring === 1 ? "#ff7b62" : "#ff304f", 34 - ring * 6, 440 + ring * 180, 0.72 + ring * 0.12, 60);
@@ -7148,6 +7170,7 @@
       kind: "rain-drop",
       gravity: 820,
       color: "#ff566c",
+      ownerZone: controller.ownerZone,
     });
   }
 
@@ -7297,6 +7320,7 @@
         kind: "missile-spark",
         gravity: 0,
         color: "#ff496c",
+        ownerZone: missile.ownerZone,
       });
     }
   }
@@ -7352,13 +7376,14 @@
       spell,
       ownerId: enemy.id,
       ownerStage: enemy.stageIndex,
+      ownerZone: normalizeEnemyHomeZone(enemy),
       gravity: 0,
       color: "#d7a0ff",
     });
     sound.tone(320, delay, "sine", 0.017, 1.7);
   }
 
-  function fireMagicFireball(x, y, target, spread = 0) {
+  function fireMagicFireball(x, y, target, spread = 0, ownerZone = null) {
     const angle = Math.atan2(target.y - y, target.x - x) + spread;
     const speed = 385 * difficultySettings[game.difficulty].bulletSpeed;
     bullets.push({
@@ -7373,6 +7398,7 @@
       kind: "fireball",
       gravity: 0,
       color: "#ff7b42",
+      ownerZone,
     });
   }
 
@@ -7393,12 +7419,12 @@
       [-0.18, 0, 0.18].forEach((spread) => fireMagicFireball(centerX, centerY, {
         x: player.x + player.w / 2,
         y: player.y + player.h / 2,
-      }, spread));
+      }, spread, sigil.ownerZone));
     } else {
       fireMagicFireball(centerX, centerY, {
         x: player.x + player.w / 2,
         y: player.y + player.h / 2,
-      });
+      }, 0, sigil.ownerZone);
     }
     spawnParticles(centerX, centerY, sigil.spell === "teleport" ? "#f4e0ff" : "#ff9a5e", 22, 340, 0.48, 0);
   }
@@ -7414,7 +7440,7 @@
     sound.tone(92, 0.18, "sawtooth", 0.04, 0.5);
   }
 
-  function firePointBullet(x, y, target, speed = 430, spread = 0, kind = "standard", color = palette.red) {
+  function firePointBullet(x, y, target, speed = 430, spread = 0, kind = "standard", color = palette.red, ownerZone = null) {
     const angle = Math.atan2(target.y - y, target.x - x) + spread;
     const scaledSpeed = speed * difficultySettings[game.difficulty].bulletSpeed;
     bullets.push({
@@ -7431,6 +7457,7 @@
       gravity: 0,
       color,
       damage: 1,
+      ownerZone,
     });
   }
 
@@ -7455,6 +7482,7 @@
         harmless: true,
         kind: "boss-funnel",
         ownerId: enemy.id,
+        ownerZone: normalizeEnemyHomeZone(enemy),
         orbitIndex: index,
         orbitCount: count,
         formationSide,
@@ -7470,7 +7498,7 @@
     const originX = enemy.x + enemy.w / 2;
     const originY = enemy.y + enemy.h * 0.42;
     const target = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
-    [-0.12, 0, 0.12].forEach((spread) => firePointBullet(originX, originY, target, 520, spread, "reflected-shotgun", "#a6f7ff"));
+    [-0.12, 0, 0.12].forEach((spread) => firePointBullet(originX, originY, target, 520, spread, "reflected-shotgun", "#a6f7ff", normalizeEnemyHomeZone(enemy)));
     enemy.reflectTimer = 0;
     enemy.reflectBreakTimer = HUNTER_REFLECT_BREAK_SECONDS;
     spawnParticles(originX, originY, "#a6f7ff", 22, 390, 0.48, 0);
@@ -7650,6 +7678,7 @@
       color: bullet.potionVariant % 2 ? "#ce72ff" : "#78ff8b",
       damageTimer: 0,
       particleTimer: 0,
+      ownerZone: bullet.ownerZone,
     });
     spawnParticles(centerX, centerY, bullet.color, 24, 360, 0.62, 180);
     game.shake = Math.max(game.shake, 9);
@@ -9930,8 +9959,14 @@
   }
 
   function updateBullets(dt, activeEnemies = getActiveEnemies()) {
+    const currentPlayerZoneIndex = getCurrentPlayerZoneIndex();
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
       const bullet = bullets[i];
+
+      if (bullet.enemy && bullet.kind !== "training-round" && getEnemyProjectileZone(bullet) !== currentPlayerZoneIndex) {
+        bullets.splice(i, 1);
+        continue;
+      }
 
       if (bullet.kind === "boss-funnel") {
         bullet.life -= dt;
@@ -9960,6 +9995,7 @@
             0,
             "funnel-shot",
             "#ff496c",
+            bullet.ownerZone,
           );
           bullet.shotsLeft -= 1;
           bullet.shotTimer = WARDEN_PANEL_SHOT_INTERVAL + bullet.orbitIndex * 0.016;
@@ -10256,12 +10292,17 @@
       }
     }
 
-    const activeEnemies = getActiveEnemies();
-    updateCombatTerrain(dt, activeEnemies);
-    enforceEnemyLockdowns(activeEnemies);
+    const enemiesBeforePlayerMovement = getActiveEnemies();
+    updateCombatTerrain(dt, enemiesBeforePlayerMovement);
+    enforceEnemyLockdowns(enemiesBeforePlayerMovement);
     updatePlayer(dt);
     updateTutorialStage(dt);
-    for (const enemy of activeEnemies) updateEnemy(enemy, dt);
+    const activeEnemies = getActiveEnemies();
+    for (const enemy of activeEnemies) {
+      const firstNewProjectileIndex = bullets.length;
+      updateEnemy(enemy, dt);
+      tagEnemyProjectilesCreatedSince(firstNewProjectileIndex, normalizeEnemyHomeZone(enemy));
+    }
     resolveEnemySeparation(activeEnemies);
     resolvePlayerEnemyOverlap(activeEnemies);
     updateCombatRooms();
@@ -15944,6 +15985,11 @@
     platformSpatialBucketWidth: "variable-zone-index",
     activeEnemyBulletCollisionOnly: true,
     combatTerrainActiveEnemyOnly: true,
+    activeEnemyZoneRadius: 0,
+    activeEnemiesOutsidePlayerZone: getActiveEnemies().filter((enemy) => normalizeEnemyHomeZone(enemy) !== getCurrentPlayerZoneIndex()).length,
+    offZoneEnemyAttacksDisabled: true,
+    offZoneEnemyProjectilesPurged: true,
+    enemyProjectileOwnerZoneTracking: true,
     enemyWorldCullIntervalSeconds: 0.5,
     difficultyNames: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.name])),
     difficultyPlayerHp: Object.fromEntries(Object.entries(difficultySettings).map(([key, value]) => [key, value.hp])),
@@ -16351,6 +16397,11 @@
     platformSpatialBucketWidth: "variable-zone-index",
     activeEnemyBulletCollisionOnly: "true",
     combatTerrainActiveEnemyOnly: "true",
+    activeEnemyZoneRadius: "0",
+    activeEnemiesOutsidePlayerZone: String(getActiveEnemies().filter((enemy) => normalizeEnemyHomeZone(enemy) !== getCurrentPlayerZoneIndex()).length),
+    offZoneEnemyAttacksDisabled: "true",
+    offZoneEnemyProjectilesPurged: "true",
+    enemyProjectileOwnerZoneTracking: "true",
     enemyWorldCullIntervalSeconds: "0.5",
     difficultyNames: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.name}`).join(","),
     difficultyPlayerHp: Object.entries(difficultySettings).map(([key, value]) => `${key}:${value.hp}`).join(","),
