@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.31") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.32") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -137,6 +137,9 @@ for (const bossKind of Object.keys(diagnostics.difficultyBossHpByKind.darkhorse)
   if (diagnostics.difficultyBossHpByKind.chick[bossKind] !== hardHp * 0.5 || Math.abs(diagnostics.difficultyBossHpByKind.cadet[bossKind] - hardHp * 2 / 3) > 0.001 || diagnostics.difficultyBossHpByKind.weapon[bossKind] !== hardHp) {
     throw new Error(`boss HP ratio invalid for ${bossKind}`);
   }
+}
+if (diagnostics.bossHp.furnace !== 54 || diagnostics.difficultyBossHpByKind.chick.furnace !== 27 || diagnostics.difficultyBossHpByKind.cadet.furnace !== 36 || diagnostics.difficultyBossHpByKind.darkhorse.furnace !== 54 || diagnostics.difficultyBossHpByKind.weapon.furnace !== 54) {
+  throw new Error("Crimson Furnace HP is not doubled across every difficulty");
 }
 if (!diagnostics.hellBossRemixEnabled || diagnostics.hellBossRemixBossCount !== 10 || diagnostics.hellBossRemixPatternCount !== 48 || diagnostics.hellBossFollowupDelayScale !== 0.62 || diagnostics.hellBossCrisisThreshold !== 0.55 || diagnostics.hellBossCrisisCooldownScale !== 0.72 || diagnostics.hellBossCooldownScale !== 0.78 || diagnostics.hellBossWindupScale !== 0.8) {
   throw new Error("Hell boss remix configuration is invalid");

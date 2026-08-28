@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.31";
+  const GAME_VERSION = "3.6.32";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -363,7 +363,7 @@
     },
     furnace: {
       name: "용광 심장 · 홍련",
-      hp: 27,
+      hp: 54,
       size: [72, 98],
       accent: "#ff7b62",
       patterns: ["공중 4연 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
