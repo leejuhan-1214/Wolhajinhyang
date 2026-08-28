@@ -88,7 +88,7 @@ const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(gameSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.6.32") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== "3.6.33") throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
@@ -331,6 +331,9 @@ if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZon
 }
 if (!diagnostics.mortarExactMarkedImpact || !diagnostics.mortarBallisticTargetLock || !/lockedImpactX:[\s\S]{0,180}impactTimer:/.test(gameSource)) {
   throw new Error("mortar marked-position targeting is missing");
+}
+if (!diagnostics.mortarAirbornePlayerCollision || gameSource.includes("!lockedMortarInFlight && overlaps(bullet, player)") || !gameSource.includes("bullet.enemy && !bullet.harmless && overlaps(bullet, player)")) {
+  throw new Error("airborne mortar shells still fail to damage the player");
 }
 if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82 || diagnostics.turretChargeDisplay !== "muzzle-convergence") {
   throw new Error(`turret prefire charge invalid: ${diagnostics.turretChargeSeconds}`);

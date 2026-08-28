@@ -13,7 +13,7 @@
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.26.png" fetchpriority="high" />
     <style>html[data-game-bootstrap="loading"] #start-screen { visibility: hidden; }</style>
-    <link rel="stylesheet" href="styles.css?v=3.6.32" />
+    <link rel="stylesheet" href="styles.css?v=3.6.33" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -21,7 +21,7 @@
 
       <section id="start-screen" class="overlay visible">
         <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.32</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.6.33</div>
         <div class="difficulty-select" aria-label="난이도 선택">
           <span>난이도</span>
           <button type="button" data-difficulty="chick" aria-pressed="false">쉬움</button>
@@ -195,13 +195,13 @@
   <script>
     (async () => {
       try {
-        const response = await fetch("published-admin-profile.json?v=3.6.32", { cache: "no-store" });
+        const response = await fetch("published-admin-profile.json?v=3.6.33", { cache: "no-store" });
         if (response.ok) window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__ = await response.json();
       } catch (error) {
         console.info("공개 월드 편집본 없이 기본 맵을 시작합니다.", error?.message || error);
       }
       const gameScript = document.createElement("script");
-      gameScript.src = "game.js?v=3.6.32";
+      gameScript.src = "game.js?v=3.6.33";
       document.body.appendChild(gameScript);
     })();
   </script>
