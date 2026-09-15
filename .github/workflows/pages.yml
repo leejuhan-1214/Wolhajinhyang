@@ -24,8 +24,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Run game smoke test
-        run: node qa-smoke.cjs
+      - name: Run game and motion regression tests
+        run: node qa-motion.cjs
 
       - name: Verify release root and cache version
         shell: bash

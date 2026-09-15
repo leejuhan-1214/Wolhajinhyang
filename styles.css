@@ -702,7 +702,7 @@ button:focus-visible {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
-  --touch-unit: clamp(40px, 7vmin, 66px);
+  --touch-unit: clamp(44px, 8vmin, 64px);
 }
 
 .touch-controls button {
@@ -749,8 +749,8 @@ button:focus-visible {
 
 .touch-joystick {
   position: absolute;
-  left: max(10px, env(safe-area-inset-left));
-  bottom: max(10px, env(safe-area-inset-bottom));
+  left: calc(12px + env(safe-area-inset-left));
+  bottom: calc(12px + env(safe-area-inset-bottom));
   width: clamp(108px, 25vmin, 156px);
   height: clamp(108px, 25vmin, 156px);
   pointer-events: auto;
@@ -820,8 +820,8 @@ button:focus-visible {
 
 .touch-actions {
   position: absolute;
-  right: max(10px, env(safe-area-inset-right));
-  bottom: max(10px, env(safe-area-inset-bottom));
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
   width: calc(var(--touch-unit) * 2.85);
   height: calc(var(--touch-unit) * 2.72);
   pointer-events: none;
@@ -902,20 +902,20 @@ button:focus-visible {
 
 .touch-pause {
   position: absolute;
-  top: max(8px, env(safe-area-inset-top));
-  right: max(8px, env(safe-area-inset-right));
-  width: calc(var(--touch-unit) * 0.64) !important;
-  height: calc(var(--touch-unit) * 0.52) !important;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(8px + env(safe-area-inset-right));
+  width: 44px !important;
+  height: 44px !important;
   border-radius: 8px !important;
   font-size: clamp(10px, 1.8vmin, 15px) !important;
 }
 
 .touch-fullscreen {
   position: absolute;
-  top: max(8px, env(safe-area-inset-top));
-  left: max(8px, env(safe-area-inset-left));
-  width: calc(var(--touch-unit) * 0.64) !important;
-  height: calc(var(--touch-unit) * 0.52) !important;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  width: 44px !important;
+  height: 44px !important;
   border-radius: 8px !important;
   border-color: rgba(255, 205, 112, 0.7) !important;
   background: rgba(54, 39, 17, 0.86) !important;
@@ -1795,6 +1795,38 @@ button:focus-visible {
   font-size: clamp(13px, 1.35vw, 22px);
 }
 
+#start-screen #start-button {
+  border-color: rgba(142, 232, 240, 0.86);
+  background: linear-gradient(105deg, rgba(16, 42, 52, 0.96), rgba(8, 24, 34, 0.92));
+}
+
+#start-screen #start-button::before,
+#start-screen .difficulty-select button.selected::before {
+  border-left-color: #a1f6eb;
+  background: linear-gradient(90deg, rgba(139, 246, 236, 0.13), transparent 48%);
+}
+
+#start-screen .difficulty-select button.selected::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 4px;
+  height: 4px;
+  background: #cafff8;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+#start-screen button:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(1.08);
+}
+
+#start-screen button:focus-visible {
+  box-shadow: inset 0 0 0 2px #d8fffa, 0 0 18px rgba(84, 226, 255, 0.2);
+}
+
 #start-screen .difficulty-select {
   bottom: 7.8%;
   display: grid;
@@ -1928,5 +1960,51 @@ button:focus-visible {
   #start-screen .version-badge {
     right: max(7px, env(safe-area-inset-right));
     bottom: max(5px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (pointer: coarse) {
+  .touch-controls button {
+    transition: background 100ms ease, border-color 100ms ease, transform 100ms ease;
+  }
+
+  .touch-controls .touch-pause,
+  .touch-controls .touch-fullscreen {
+    background: rgba(7, 20, 30, 0.86) !important;
+    border-color: rgba(153, 201, 214, 0.54) !important;
+    box-shadow: inset 0 1px rgba(215, 248, 253, 0.08), 0 3px 12px rgba(0, 0, 0, 0.22);
+  }
+
+  #pause-screen .volume-panel {
+    gap: 10px;
+  }
+
+  #pause-screen input[type="range"] {
+    height: 28px;
+    touch-action: pan-x;
+  }
+
+  #pause-screen #resume-button {
+    min-height: 44px;
+  }
+
+  .touch-attack-hint {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    background: rgba(3, 12, 20, 0.64);
+    color: rgba(217, 246, 247, 0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay.visible,
+  .overlay::before {
+    animation: none;
+  }
+
+  button,
+  .touch-controls button,
+  .stage-card,
+  .key-grid > div {
+    transition: none;
   }
 }

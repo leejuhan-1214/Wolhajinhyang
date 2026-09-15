@@ -1,13 +1,13 @@
 {
   "name": "moonlit-echo",
-  "version": "3.6.33",
+  "version": "3.7.0",
   "private": true,
   "description": "샷건 반동과 발도술을 결합한 오리지널 2D 횡스크롤 액션 게임",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
     "check": "node --check game.js",
-    "test": "node qa-smoke.cjs"
+    "test": "node qa-motion.cjs"
   },
   "engines": {
     "node": ">=20"

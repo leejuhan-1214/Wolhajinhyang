@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.6.33";
+  const GAME_VERSION = "3.7.0";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -142,6 +142,9 @@
     attackControl: 0.62,
     jumpBuffer: 0.16,
     coyoteTime: 0.14,
+    actionBuffer: 0.1,
+    wallJumpGrace: 0.1,
+    strideRadiansPerPixel: 0.037,
     joystickDeadzone: 0.08,
   });
   const EMPOWERED_SLASH_BONUS = 0.5;
@@ -1350,6 +1353,8 @@
     squash: 0,
     stepTimer: 0,
     runCycle: 0,
+    queuedAction: null,
+    wallJumpLock: 0,
   };
 
   function applyBossRewards({ refill = false } = {}) {
@@ -5014,6 +5019,8 @@
       squash: 0,
       stepTimer: 0,
       runCycle: 0,
+      queuedAction: null,
+      wallJumpLock: 0,
     });
     Object.assign(game, {
       mode: "playing",
@@ -5763,6 +5770,8 @@
     player.attackTimer = 0;
     player.attackCooldown = 0;
     player.adminEraseAttackId = -1;
+    player.queuedAction = null;
+    player.wallJumpLock = 0;
     player.x = preservedPosition.x;
     player.y = preservedPosition.y;
     player.vx = preservedPosition.vx;
@@ -5804,6 +5813,8 @@
     player.attackTimer = 0;
     player.attackCooldown = 0;
     player.airJumpAvailable = true;
+    player.queuedAction = null;
+    player.wallJumpLock = 0;
     bullets.length = 0;
     game.cutscene = null;
     game.story = null;
@@ -5986,6 +5997,7 @@
 
   function startCutscene(event) {
     if (!event || game.cutsceneSeen.has(event.id)) return;
+    player.queuedAction = null;
     game.cutscene = event;
     game.cutsceneShotIndex = 0;
     game.cutsceneTimer = event.shots[0]?.duration || 5;
@@ -6139,8 +6151,19 @@
     return { x: player.facing, y: 0 };
   }
 
+  function queueCombatAction(kind, aim, remaining) {
+    if (remaining > 0 && remaining <= INPUT_TUNING.actionBuffer && !game.adminMode) {
+      player.queuedAction = { kind, aim: aim ? { ...aim } : null, time: INPUT_TUNING.actionBuffer };
+    }
+  }
+
   function startShotgun(aimOverride = null) {
-    if (game.mode !== "playing" || player.shotgunCooldown > 0 || player.shells <= 0) return;
+    if (game.mode !== "playing") return;
+    if (player.shotgunCooldown > 0 || player.shells <= 0) {
+      queueCombatAction("shotgun", aimOverride, Math.max(player.shotgunCooldown, player.shells <= 0 ? player.shotgunReload : 0));
+      return;
+    }
+    player.queuedAction = null;
     markTutorialSignal("shotgun");
     const aim = aimOverride || getPointerAim();
     const overcharged = player.shotgunCharge >= 3;
@@ -6213,7 +6236,12 @@
   }
 
   function startAttack(aimOverride = null) {
-    if (game.mode !== "playing" || player.attackCooldown > 0 || player.attackTimer > 0) return;
+    if (game.mode !== "playing") return;
+    if (player.attackCooldown > 0 || player.attackTimer > 0) {
+      queueCombatAction("slash", aimOverride, Math.max(player.attackCooldown, player.attackTimer));
+      return;
+    }
+    player.queuedAction = null;
     markTutorialSignal("slash");
 
     if (aimOverride) {
@@ -6735,6 +6763,7 @@
     player.vx = player.x < sourceX ? -430 : 430;
     player.vy = -460;
     player.attackTimer = 0;
+    player.queuedAction = null;
     game.shake = 18;
     game.flash = 0.16;
     spawnParticles(player.x + player.w / 2, player.y + player.h / 2, palette.red, 16, 420, 0.6, 800);
@@ -6748,6 +6777,8 @@
   }
 
   function respawn() {
+    player.queuedAction = null;
+    player.wallJumpLock = 0;
     game.deaths += 1;
     resetBossRealityEffects();
     const checkpointIndex = Number.isInteger(player.respawnCheckpointIndex) && player.respawnCheckpointIndex >= 0
@@ -8367,6 +8398,8 @@
 
   function updatePlayer(dt) {
     const wasGrounded = player.grounded;
+    const movementStartX = player.x;
+    const previousRunCycle = player.runCycle;
     const impactVelocity = player.vy;
     player.attackTimer = Math.max(0, player.attackTimer - dt);
     player.attackCooldown = Math.max(0, player.attackCooldown - dt);
@@ -8381,12 +8414,25 @@
     player.buffTimer = Math.max(0, player.buffTimer - dt);
     player.shotgunCooldown = Math.max(0, player.shotgunCooldown - dt);
     player.recoilTimer = Math.max(0, player.recoilTimer - dt);
+    player.wallJumpLock = Math.max(0, (player.wallJumpLock || 0) - dt);
     const wasReloading = player.shotgunReload > 0;
     player.shotgunReload = Math.max(0, player.shotgunReload - dt);
     if (wasReloading && player.shotgunReload <= 0 && player.shells < player.maxShells) {
       player.shells += 1;
       if (player.shells < player.maxShells) player.shotgunReload = 0.48;
       sound.tone(310, 0.05, "square", 0.018, 1.35);
+    }
+    if (player.queuedAction) {
+      const action = player.queuedAction;
+      action.time -= dt;
+      const ready = action.kind === "slash"
+        ? player.attackCooldown <= 0 && player.attackTimer <= 0
+        : player.shotgunCooldown <= 0 && player.shells > 0;
+      if (ready) {
+        player.queuedAction = null;
+        if (action.kind === "slash") startAttack(action.aim);
+        else startShotgun(action.aim);
+      } else if (action.time <= 0) player.queuedAction = null;
     }
     player.squash = moveToward(player.squash, 0, dt * 1.7);
     player.stepTimer -= dt;
@@ -8420,7 +8466,6 @@
       player.airJumpAvailable = true;
       player.landingImpactArmed = false;
       if (horizontal !== 0) player.facing = horizontal > 0 ? 1 : -1;
-      player.runCycle += Math.hypot(player.vx, player.vy) * dt * 0.052;
     } else {
     const left = keys.has("KeyA") || keys.has("ArrowLeft") || (moveStick.active && moveStick.x < -0.06);
     const right = keys.has("KeyD") || keys.has("ArrowRight") || (moveStick.active && moveStick.x > 0.06);
@@ -8435,7 +8480,7 @@
     ));
     const snowSpeed = standingOnSnow ? 0.58 : 1;
 
-    if (Math.abs(direction) > 0.04) {
+    if (Math.abs(direction) > 0.04 && player.wallJumpLock <= 0) {
       player.facing = direction > 0 ? 1 : -1;
       const control = player.attackTimer > 0 ? INPUT_TUNING.attackControl : player.grounded ? 1 : INPUT_TUNING.airControl;
       const buffSpeed = player.buffTimer > 0 ? 1.22 : 1;
@@ -8444,7 +8489,7 @@
         direction * INPUT_TUNING.moveSpeed * buffSpeed * snowSpeed,
         INPUT_TUNING.groundAcceleration * control * (standingOnSnow ? 0.72 : 1) * dt,
       );
-    } else if (player.attackTimer <= 0) {
+    } else if (player.attackTimer <= 0 && player.wallJumpLock <= 0) {
       player.vx = moveToward(
         player.vx,
         0,
@@ -8464,6 +8509,7 @@
       player.vx = wallDirection * 520;
       player.vy = -690;
       player.facing = wallDirection;
+      player.wallJumpLock = INPUT_TUNING.wallJumpGrace;
       player.airJumpAvailable = true;
       player.landingImpactArmed = true;
       player.jumpBuffer = 0;
@@ -8506,7 +8552,8 @@
     player.vy = Math.min(player.vy + GRAVITY * dt, 1150);
     resolvePlayerCollision(dt);
 
-    player.runCycle += Math.abs(player.vx) * dt * 0.052;
+    const groundedTravel = player.grounded && wasGrounded ? Math.abs(player.x - movementStartX) : 0;
+    player.runCycle += groundedTravel * INPUT_TUNING.strideRadiansPerPixel;
     if (player.grounded && !wasGrounded) {
       if (player.landingImpactArmed && impactVelocity > 260) {
         player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
@@ -8517,8 +8564,9 @@
       }
       player.landingImpactArmed = false;
     }
-    if (player.grounded && Math.abs(player.vx) > 105 && player.stepTimer <= 0) {
-      player.stepTimer = 0.12 + 48 / Math.abs(player.vx);
+    const footPlanted = Math.floor(player.runCycle / Math.PI) !== Math.floor(previousRunCycle / Math.PI);
+    if (player.grounded && Math.abs(player.vx) > 105 && footPlanted && player.stepTimer <= 0) {
+      player.stepTimer = 0.1;
       const heelX = player.x + player.w / 2 - player.facing * 10;
       spawnParticles(heelX, player.y + player.h - 2, "#5f7b82", 3, 72, 0.22, 170);
       if (USE_RECORDED_SFX) recordedSfx.footstep(Math.abs(player.vx), game.stage);
@@ -10208,7 +10256,10 @@
   }
 
   function updateCamera(dt) {
-    camera.lookX = lerp(camera.lookX, player.vx * 0.38, 1 - Math.pow(0.00008, dt));
+    const lead = player.recoilTimer > 0 || player.attackTimer > 0
+      ? camera.lookX
+      : clamp(player.vx * 0.25, -112, 112);
+    camera.lookX = lerp(camera.lookX, lead, 1 - Math.exp(-6 * dt));
     const targetX = clamp(player.x + player.w / 2 - W * 0.42 + camera.lookX, 0, WORLD_W - W);
     const targetY = clamp(player.y + player.h / 2 - H * 0.58, 0, WORLD_H - H);
     camera.x = lerp(camera.x, targetX, 1 - Math.pow(0.00008, dt));
@@ -10924,23 +10975,25 @@
     const poseEase = (value) => value * value * (3 - value * 2);
     const sampleLoop = (values, phase) => {
       const base = Math.floor(phase);
-      const fraction = poseEase(phase - base);
-      const current = values[((base % values.length) + values.length) % values.length];
-      const next = values[((base + 1) % values.length + values.length) % values.length];
-      return lerp(current, next, fraction);
+      const fraction = phase - base;
+      const at = (offset) => values[((base + offset) % values.length + values.length) % values.length];
+      const previous = at(-1);
+      const current = at(0);
+      const next = at(1);
+      const after = at(2);
+      // Cubic in-betweens preserve velocity across the twelve key poses.
+      return 0.5 * (2 * current + (next - previous) * fraction
+        + (2 * previous - 5 * current + 4 * next - after) * fraction * fraction
+        + (3 * current - previous - 3 * next + after) * fraction * fraction * fraction);
     };
     // Twelve designed poses are blended with eased in-betweens, then snapped at
     // the joints. This preserves pixel clarity without the old paper-doll stepping.
     const runPosePhase = player.runCycle / (TAU / 12);
-    const runFrame = ((Math.floor(runPosePhase) % 12) + 12) % 12;
     const runStride = [0.78, 0.62, 0.36, 0.05, -0.3, -0.62, -0.8, -0.6, -0.32, 0.02, 0.38, 0.66];
     const runBob = [0, 0.55, 1.45, 2.15, 1.8, 0.85, 0.05, 0.5, 1.35, 2.05, 1.7, 0.72];
-    const idleFrame = Math.floor(game.time * 6) % 8;
-    const idleBob = [0, 0, 0.45, 0.45, 0.45, 0, 0, 0];
+    const idleBreath = Math.sin(game.time * 2.1) * 0.35;
     const stride = sampleLoop(runStride, runPosePhase);
-    const bob = running
-      ? sampleLoop(runBob, runPosePhase) * (0.72 + runBlend * 0.58)
-      : idleBob[idleFrame];
+    const bob = lerp(idleBreath, sampleLoop(runBob, runPosePhase) * 0.8, runBlend);
     const squashX = 1 + player.squash * 0.42;
     const squashY = 1 - player.squash * 0.52;
     const attacking = player.attackTimer > 0;
@@ -10948,6 +11001,8 @@
     const shooting = player.recoilTimer > 0;
     const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
     const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
+    const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
+    const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
     const attackLunge = attacking
       ? attackProgress < 0.22
         ? -poseEase(attackProgress / 0.22) * 4.5
@@ -10956,13 +11011,24 @@
           : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
       : 0;
     const attackImpact = attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
-    const baseLean = running ? 0.09 + speedRatio * 0.06 : clamp(player.vx * facing / 1400, -0.08, 0.1);
-    const actionLean = attacking ? lerp(-0.14, 0.28, poseEase(clamp(attackProgress / 0.62, 0, 1))) : shooting ? -0.2 * shotKick : 0;
+    const baseLean = clamp(player.vx * facing / 2100, -0.15, 0.15);
+    const actionLean = attacking
+      ? attackProgress < 0.22
+        ? lerp(0, -0.12, poseEase(attackProgress / 0.22))
+        : attackProgress < 0.64
+          ? lerp(-0.12, 0.2, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(0.2, 0, poseEase((attackProgress - 0.64) / 0.36))
+      : -0.14 * shotKick + shotSettle * 0.035;
     const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
+    const bodyOffsetX = attackLunge * 0.48 - shotKick * 4;
+    const bodyOffsetY = -bob + shotKick * 2 + attackImpact * 1.4;
+    const bodyScaleX = squashX * (1 + attackImpact * 0.035);
+    const bodyScaleY = squashY * (1 - attackImpact * 0.025);
+    const bodyLean = baseLean + actionLean;
 
-    ctx.translate(attackLunge - shotKick * 11, -bob + shotKick * 3 - attackImpact * 2.5);
-    ctx.scale(squashX * (1 + attackImpact * 0.055), squashY * (1 - attackImpact * 0.035));
-    ctx.rotate(baseLean + actionLean);
+    ctx.translate(bodyOffsetX, bodyOffsetY);
+    ctx.scale(bodyScaleX, bodyScaleY);
+    ctx.rotate(bodyLean);
 
     if (ghost) {
       ctx.fillStyle = bodyCyan;
@@ -10985,7 +11051,8 @@
       const length = Math.hypot(dx, dy);
       ctx.save();
       ctx.translate(Math.round(x1), Math.round(y1));
-      ctx.rotate(Math.atan2(dx, dy));
+      // Canvas rotates +Y toward -X; negate the angle to connect the real joints.
+      ctx.rotate(-Math.atan2(dx, dy));
       ctx.fillStyle = "#07101a";
       ctx.fillRect(-width / 2 - 1, -1, width + 2, Math.ceil(length) + 2);
       ctx.fillStyle = color;
@@ -10997,7 +11064,7 @@
       ctx.restore();
     }
 
-    function drawJointedLimb(px, py, upperLength, lowerLength, width, upperAngle, kneeBend, color, foot = false, hand = false) {
+    function drawJointedLimb(px, py, upperLength, lowerLength, width, upperAngle, kneeBend, color, foot = false, hand = false, footAngle = null) {
       const kneeX = Math.round(px + Math.sin(upperAngle) * upperLength);
       const kneeY = Math.round(py + Math.cos(upperAngle) * upperLength);
       const lowerAngle = upperAngle - kneeBend;
@@ -11014,7 +11081,7 @@
       ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
       ctx.fillRect(Math.round(kneeX - 1), Math.round(kneeY - 1), 2, 2);
       if (foot) {
-        const toeLift = player.grounded ? 0 : clamp(-player.vy / 700, -0.35, 0.35);
+        const toeLift = footAngle ?? (player.grounded ? -bodyLean : clamp(-player.vy / 700, -0.35, 0.35));
         ctx.save();
         ctx.translate(Math.round(endX), Math.round(endY));
         ctx.rotate(toeLift);
@@ -11036,72 +11103,65 @@
       return { x: endX, y: endY, angle: lowerAngle };
     }
 
-    function legPose(phase, layer) {
+    function legPose(layer) {
       if (walling) {
         return layer === "back"
-          ? { upper: -0.72, knee: -0.88 }
+          ? { upper: -0.4, knee: 0.6 }
           : { upper: 0.82, knee: 1.12 };
       }
-      if (!player.grounded && player.vy < -140) {
-        return layer === "back"
-          ? { upper: -0.52, knee: -0.12 }
-          : { upper: 0.84, knee: 1.28 };
-      }
-      if (!player.grounded && Math.abs(player.vy) <= 140) {
-        return layer === "back"
-          ? { upper: -0.18, knee: 0.62 }
-          : { upper: 0.42, knee: 1.12 };
-      }
       if (!player.grounded) {
+        const rise = poseEase(clamp(-player.vy / 560, 0, 1));
+        const fall = poseEase(clamp(player.vy / 680, 0, 1));
         return layer === "back"
-          ? { upper: 0.42, knee: 0.88 }
-          : { upper: -0.52, knee: -0.6 };
+          ? { upper: -0.18 - rise * 0.32 + fall * 0.46, knee: 0.62 - rise * 0.25 + fall * 0.16 }
+          : { upper: 0.42 + rise * 0.42 - fall * 0.56, knee: 1.12 + rise * 0.2 - fall * 0.66 };
       }
-      if (shooting) {
-        return layer === "back"
-          ? { upper: -0.66 - shotKick * 0.16, knee: 0.42 + shotKick * 0.46 }
-          : { upper: 0.62, knee: 0.34 + shotKick * 0.28 };
-      }
-      if (attacking) {
-        if (attackProgress < 0.22) {
-          const t = poseEase(attackProgress / 0.22);
-          return layer === "back"
-            ? { upper: lerp(-0.08, -0.42, t), knee: lerp(0.2, 0.72, t) }
-            : { upper: lerp(0.08, 0.28, t), knee: lerp(0.18, 0.58, t) };
-        }
-        if (attackProgress < 0.64) {
-          const t = poseEase((attackProgress - 0.22) / 0.42);
-          return layer === "back"
-            ? { upper: lerp(-0.42, -0.68, t), knee: lerp(0.72, 0.86, t) }
-            : { upper: lerp(0.28, 0.76, t), knee: lerp(0.58, 0.18, t) };
-        }
-        const t = poseEase((attackProgress - 0.64) / 0.36);
-        return layer === "back"
-          ? { upper: lerp(-0.68, -0.04, t), knee: lerp(0.86, 0.16, t) }
-          : { upper: lerp(0.76, 0.04, t), knee: lerp(0.18, 0.16, t) };
-      }
-      const runLegPoses = [
-        { upper: 0.7, knee: 0.16 }, { upper: 0.58, knee: 0.22 },
-        { upper: 0.36, knee: 0.5 }, { upper: 0.04, knee: 0.88 },
-        { upper: -0.3, knee: 1.12 }, { upper: -0.58, knee: 0.72 },
-        { upper: -0.7, knee: 0.2 }, { upper: -0.54, knee: 0.15 },
-        { upper: -0.3, knee: 0.2 }, { upper: 0.06, knee: 0.46 },
-        { upper: 0.38, knee: 0.7 }, { upper: 0.62, knee: 0.48 },
-      ];
-      const posePhase = phase + (layer === "back" ? 6 : 0);
-      const poseIndex = Math.floor(posePhase);
-      const poseT = poseEase(posePhase - Math.floor(posePhase));
-      const currentPose = runLegPoses[((poseIndex % 12) + 12) % 12];
-      const nextPose = runLegPoses[((poseIndex + 1) % 12 + 12) % 12];
-      const pose = {
-        upper: lerp(currentPose.upper, nextPose.upper, poseT),
-        knee: lerp(currentPose.knee, nextPose.knee, poseT),
-      };
-      const landingBend = player.squash * 0.8;
-      return {
-        upper: pose.upper * runBlend + (layer === "back" ? -0.04 : 0.04) * (1 - runBlend),
-        knee: (pose.knee + landingBend) * runBlend + (1 - runBlend) * 0.16,
-      };
+    }
+
+    function drawPlantedLeg(layer, width, color) {
+      const hipX = layer === "back" ? -5 : 5;
+      const hipY = -19;
+      const phase = (((runPosePhase + (layer === "back" ? 6 : 0)) / 12) % 1 + 1) % 1;
+      const contact = phase < 0.58;
+      const recovery = clamp((phase - 0.58) / 0.42, 0, 1);
+      const travelSign = player.vx * facing < 0 ? -1 : 1;
+      // The supporting foot travels straight back along the floor; the other
+      // lifts at the heel, folds at the knee and returns over an arc.
+      const strideX = contact ? lerp(12, -12, phase / 0.58) : lerp(-12, 12, poseEase(recovery));
+      const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * 10;
+      const actionStance = Math.max(attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
+      let footX = lerp(layer === "back" ? -6 : 7, strideX * travelSign, runBlend);
+      footX = lerp(footX, layer === "back" ? -13 : 16, actionStance);
+      const footY = -4 - footLift * runBlend;
+      // Inverse the torso transform so planted soles do not slide vertically
+      // when breathing, recoiling, leaning or compressing on landing.
+      const localX = (footX - bodyOffsetX) / bodyScaleX;
+      const localY = (footY - bodyOffsetY) / bodyScaleY;
+      const endX = localX * Math.cos(bodyLean) + localY * Math.sin(bodyLean);
+      const endY = -localX * Math.sin(bodyLean) + localY * Math.cos(bodyLean);
+      const dx = endX - hipX;
+      const dy = endY - hipY;
+      const upperLength = 12;
+      const lowerLength = 12;
+      const reach = clamp(Math.hypot(dx, dy), 1, upperLength + lowerLength - 0.1);
+      const axis = Math.atan2(dx, dy);
+      const upperAngle = axis + Math.acos(clamp((upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach), -1, 1));
+      const kneeX = hipX + Math.sin(upperAngle) * upperLength;
+      const kneeY = hipY + Math.cos(upperAngle) * upperLength;
+      const lowerAngle = Math.atan2(endX - kneeX, endY - kneeY);
+      const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.35 * runBlend;
+      drawJointedLimb(hipX, hipY, upperLength, lowerLength, width, upperAngle, upperAngle - lowerAngle, color, true, false, -bodyLean + toeRoll);
+    }
+
+    function drawArmTo(shoulderX, shoulderY, targetX, targetY, length, width, color) {
+      const dx = targetX - shoulderX;
+      const dy = targetY - shoulderY;
+      const reach = clamp(Math.hypot(dx, dy), 1, length * 2 - 0.1);
+      const upper = Math.atan2(dx, dy) - Math.acos(reach / (length * 2));
+      const elbowX = shoulderX + Math.sin(upper) * length;
+      const elbowY = shoulderY + Math.cos(upper) * length;
+      const lower = Math.atan2(targetX - elbowX, targetY - elbowY);
+      return drawJointedLimb(shoulderX, shoulderY, length, length, width, upper, upper - lower, color, false, true);
     }
 
     // 어깨에 고정된 제복형 외투. 실루엣은 긴 망토처럼 보이지만
@@ -11131,10 +11191,15 @@
       ctx.fillRect(-12, -42, 24, 3);
     }
 
-    const backPose = legPose(runPosePhase, "back");
-    const frontPose = legPose(runPosePhase, "front");
-    drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
-    drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformFront, true);
+    if (player.grounded) {
+      drawPlantedLeg("back", 7, uniformBack);
+      drawPlantedLeg("front", 8, uniformFront);
+    } else {
+      const backPose = legPose("back");
+      const frontPose = legPose("front");
+      drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
+      drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformFront, true);
+    }
 
     // 등에 고정된 전술 신호 장치와 작은 안테나.
     ctx.fillStyle = "#0a131f";
@@ -11142,25 +11207,25 @@
     ctx.fillStyle = "#3c5868";
     ctx.fillRect(-16, -39, 4, 13);
     ctx.fillStyle = bodyCyan;
-    ctx.globalAlpha = 0.4 + Math.sin(game.time * 5) * 0.18;
+    ctx.globalAlpha = alpha * (0.4 + Math.sin(game.time * 5) * 0.18);
     ctx.fillRect(-15, -42, 2, 3);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = "#526d79";
     ctx.beginPath();
     ctx.moveTo(-14, -43);
     const equipmentLag = running
-      ? -2 - Math.round((stride + 1) * 0.8)
+      ? -2 - (stride + 1) * 0.8
       : attacking
-        ? -Math.round(attackLunge * 0.24)
+        ? -attackLunge * 0.24
         : shooting
-          ? Math.round(shotKick * 4)
+          ? shotKick * 4
           : 0;
-    ctx.lineTo(-18 + equipmentLag, -54 + (running ? runFrame % 2 : 0));
+    ctx.lineTo(-18 + equipmentLag, -54 + stride * runBlend * 0.6);
     ctx.stroke();
 
     // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
     ctx.save();
-    ctx.translate(-7 + equipmentLag * 0.25, -23 + (running ? runFrame % 2 : 0));
+    ctx.translate(-7 + equipmentLag * 0.25, -23 + stride * runBlend * 0.4);
     ctx.rotate(2.66 + stride * runBlend * 0.035);
     ctx.fillStyle = "#070d16";
     ctx.fillRect(0, -3, 42, 7);
@@ -11237,7 +11302,7 @@
     ctx.arc(2, -31, 2.4, 0, TAU);
     ctx.fill();
 
-    // Pixel-scale fabric seams, fasteners, and field gear keep the human silhouette readable.
+    // Beveled armor seams and small fasteners preserve the mechanical silhouette.
     ctx.strokeStyle = "rgba(151, 196, 205, 0.5)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -11265,6 +11330,12 @@
     ctx.fillRect(5, -18, 3, 2);
 
     const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
+    const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
+    const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
+    const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - 0.38) * 9;
+    const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - 0.38) * 9;
+    const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (7 - shotKick * 3), shotPoseBlend);
+    const shotHandY = lerp(restHandY, -32 + Math.sin(weaponAngle) * 7, shotPoseBlend);
     const rearArm = shooting
       ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
       : attacking
@@ -11272,8 +11343,22 @@
         : running
           ? -stride * 0.58 * runBlend + 0.14
           : 0.28;
-    drawJointedLimb(-10, -38, 8, 8, 5, rearArm, shooting ? 0.48 : attacking ? -0.62 : -0.42, uniformRearArm, false, true);
+    if (shooting && !attacking) {
+      const restRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
+      const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle + 0.42) * 8;
+      const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle + 0.42) * 8;
+      drawArmTo(lerp(-10, 6, shotPoseBlend), -38,
+        lerp(restRearX, shotHandX + Math.cos(weaponAngle) * 14, shotPoseBlend),
+        lerp(restRearY, shotHandY + Math.sin(weaponAngle) * 14 + 2, shotPoseBlend),
+        lerp(8, 13, shotPoseBlend), 5, uniformRearArm);
+    } else {
+      drawJointedLimb(-10, -38, 8, 8, 5, rearArm, attacking ? -0.62 : -0.42, uniformRearArm, false, true);
+    }
 
+    ctx.save();
+    ctx.translate(0, -43);
+    ctx.rotate(-bodyLean * 0.45 - shotSettle * 0.04);
+    ctx.translate(0, 43);
     ctx.fillStyle = "#8da0aa";
     ctx.fillRect(-10, -57, 19, 16);
     ctx.fillStyle = "#354a58";
@@ -11308,14 +11393,15 @@
     ctx.fillRect(-6, -44, 3, 2);
     ctx.fillRect(3, -44, 3, 2);
 
-    // Hair, jaw shadow, eye, nose, and a tiny comms implant are drawn as individual pixels.
+    // Rigid helmet crown, cheek plates and sensor optics: no hair or skin pixels.
     ctx.fillStyle = "#263842";
     ctx.fillRect(-10, -57, 12, 3);
     ctx.fillRect(-11, -55, 4, 5);
-    // Short pixel clusters trail the head by one pose, giving hair secondary motion.
-    const hairLag = running ? equipmentLag : (!player.grounded ? -3 : 0);
-    ctx.fillRect(-12 + hairLag, -56, 5, 3);
-    ctx.fillRect(-14 + hairLag, -53 + (running ? runFrame % 2 : 0), 5, 2);
+    ctx.fillRect(-12, -56, 5, 3);
+    ctx.fillRect(-14, -53, 5, 2);
+    ctx.fillStyle = "#657e89";
+    ctx.fillRect(-9, -58, 13, 1);
+    ctx.fillRect(-14, -52, 2, 4);
     ctx.fillStyle = "#c9d6d4";
     ctx.fillRect(-8, -48, 3, 4);
     ctx.fillStyle = "#738c92";
@@ -11323,14 +11409,17 @@
     ctx.fillStyle = "#101923";
     ctx.fillRect(1, -50, 3, 2);
     ctx.fillRect(7, -47, 2, 1);
-    ctx.fillStyle = "#d68678";
+    ctx.fillStyle = "#273d4a";
+    ctx.fillRect(3, -46, 5, 2);
+    ctx.fillStyle = "#a5b9bd";
     ctx.fillRect(4, -45, 3, 1);
     ctx.fillStyle = bodyCyan;
     ctx.fillRect(-12, -49, 2, 2);
     ctx.fillStyle = "#506873";
     ctx.fillRect(-10, -46, 2, 3);
+    ctx.restore();
 
-    let armAngle = running ? stride * 0.5 : -0.15;
+    let armAngle = locomotionArmAngle;
     let bladeAngle = -1.1;
     if (!player.grounded) armAngle = -0.48;
     if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
@@ -11345,14 +11434,16 @@
         bladeAngle = lerp(-2.05, 0.92, t);
       } else {
         const t = poseEase((attackProgress - 0.62) / 0.38);
-        armAngle = lerp(1.3, -0.08, t);
+        armAngle = lerp(1.3, locomotionArmAngle, t);
         bladeAngle = lerp(0.92, -0.16, t);
       }
       armAngle += player.attackDir.y * 0.72;
       bladeAngle += player.attackDir.y * 0.9;
     }
 
-    const frontHand = drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : shooting ? 0.46 : 0.38, uniformFrontArm, false, !attacking);
+    const frontHand = shooting && !attacking
+      ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 6, uniformFrontArm)
+      : drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : 0.38, uniformFrontArm, false, !attacking);
     if (attacking) {
       ctx.save();
       ctx.translate(frontHand.x, frontHand.y);
@@ -11421,9 +11512,9 @@
       ctx.restore();
     } else if (shooting) {
       ctx.save();
-      const recoilOffset = shotKick * 12;
-      ctx.translate(frontHand.x - Math.cos(shotAimAngle) * recoilOffset, frontHand.y - Math.sin(shotAimAngle) * recoilOffset);
-      ctx.rotate(shotAimAngle);
+      ctx.translate(frontHand.x, frontHand.y);
+      ctx.rotate(weaponAngle);
+      ctx.scale(0.78, 0.78);
 
       // M-12 compact combat shotgun: stock, receiver, loading port, pump,
       // twin barrel, sights and chamber indicator are separate pixel clusters.
@@ -11452,9 +11543,10 @@
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(6, 7, 4, 0.15, Math.PI - 0.15); ctx.stroke();
       ctx.fillStyle = "#263c47";
-      ctx.fillRect(15, -6, 19, 12);
+      const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
+      ctx.fillRect(15 - pumpTravel, -6, 19, 12);
       ctx.fillStyle = "#58727c";
-      for (let grip = 18; grip < 33; grip += 4) ctx.fillRect(grip, -5, 2, 10);
+      for (let grip = 18; grip < 33; grip += 4) ctx.fillRect(grip - pumpTravel, -5, 2, 10);
       ctx.fillStyle = "#111c26";
       ctx.fillRect(32, -5, 24, 4);
       ctx.fillRect(32, 1, 24, 4);
@@ -11494,7 +11586,7 @@
       ctx.restore();
 
       ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = clamp(player.recoilTimer * 9, 0, 1);
+      ctx.globalAlpha = alpha * clamp(1 - shotProgress / 0.18, 0, 1);
       ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : palette.white;
       ctx.beginPath();
       ctx.moveTo(58, -10); ctx.lineTo(91, 0); ctx.lineTo(58, 10); ctx.closePath(); ctx.fill();
@@ -11973,13 +12065,44 @@
     const motion = Math.sin(enemy.anim * 5.2);
     const shell = flash ? "#ffffff" : "#1b202b";
     const limb = (x1, y1, x2, y2, width, color = shell) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
+      const leg = y1 >= 55 && y2 > y1 + 18;
+      let jointX = (x1 + x2) / 2;
+      let jointY = (y1 + y2) / 2;
+      if (leg) {
+        const movement = clamp(Math.abs(enemy.vx) / 120, 0, 1);
+        const cycle = ((((enemy.x - enemy.originX) * enemy.facing * 0.13 + (x1 < 0 ? Math.PI : 0)) / TAU) % 1 + 1) % 1;
+        const swing = clamp((cycle - 0.6) / 0.4, 0, 1);
+        const ease = swing * swing * (3 - 2 * swing);
+        const travel = cycle < 0.6 ? 1 - cycle / 0.3 : -1 + 2 * ease;
+        x2 = x1 + Math.sign(x1) * 4 + travel * 12 * movement;
+        y2 -= Math.sin(swing * Math.PI) * 9 * movement;
+        jointX = (x1 + x2) / 2 + 5 + Math.sin(swing * Math.PI) * 4 * movement;
+        jointY = y1 + (y2 - y1) * 0.52;
+      }
       ctx.lineCap = "round";
+      ctx.strokeStyle = "#080c12";
+      ctx.lineWidth = width + 3;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
+      ctx.lineTo(jointX, jointY);
       ctx.lineTo(x2, y2);
       ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(199,217,222,0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1 - 1, y1 + 1); ctx.lineTo(jointX - 1, jointY - 2); ctx.stroke();
+      ctx.fillStyle = "#111921";
+      ctx.beginPath(); ctx.arc(jointX, jointY, width * 0.4, 0, TAU); ctx.fill();
+      ctx.fillStyle = accent;
+      ctx.fillRect(jointX - 1, jointY - 1, 2, 2);
+      if (leg) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x2 - width * 0.4, y2 - 2, width + 7, 5);
+        ctx.fillStyle = "#a6b2b8";
+        ctx.fillRect(x2 + width * 0.2, y2 - 1, width * 0.5 + 4, 1);
+      }
       ctx.lineCap = "butt";
     };
 
@@ -12067,12 +12190,15 @@
       ctx.fillStyle = "#14222b"; ctx.fillRect(-13, 25, 30, 19);
       ctx.fillStyle = "#a6f7ff"; ctx.fillRect(-8, 29, 20, 4);
       const reflectionBroken = (enemy.reflectBreakTimer || 0) > 0;
-      const shieldSide = reflectionBroken ? -1 : 1;
-      const shieldX = shieldSide * 39;
+      const shieldFlip = reflectionBroken
+        ? Math.min(clamp((HUNTER_REFLECT_BREAK_SECONDS - enemy.reflectBreakTimer) / 0.18, 0, 1), clamp(enemy.reflectBreakTimer / 0.18, 0, 1))
+        : 0;
+      const shieldEase = shieldFlip * shieldFlip * (3 - 2 * shieldFlip);
+      const shieldX = lerp(39, -39, shieldEase);
       // 산탄 반사 전에는 방패를 진행 방향 정면에 고정하고, 반사 직후에는 관성으로 등 뒤로 젖힌다.
       ctx.save();
       ctx.translate(shieldX, 40);
-      ctx.rotate(reflectionBroken ? -0.74 : 0.08);
+      ctx.rotate(lerp(0.08, -0.74, shieldEase));
       ctx.fillStyle = reflectionBroken ? "rgba(255,73,108,0.16)" : "rgba(166,247,255,0.24)";
       ctx.strokeStyle = reflectionBroken ? "#ff496c" : "#a6f7ff";
       ctx.lineWidth = 3;
@@ -12377,6 +12503,194 @@
       ctx.strokeStyle = "rgba(211,160,255,0.58)"; ctx.lineWidth = 1.5;
       for (let rune = -2; rune <= 2; rune += 1) { ctx.beginPath(); ctx.moveTo(rune * 9, 46); ctx.lineTo(rune * 7, 62); ctx.lineTo(rune * 10, 71); ctx.stroke(); }
       ctx.fillStyle = accent; ctx.fillRect(-18, 38, 36, 3); ctx.fillRect(-2, 35, 4, 10);
+    }
+
+    // Restrained edge light and recessed mechanics keep each silhouette readable at game scale.
+    ctx.lineWidth = 1;
+    if (["warden", "breaker", "furnace", "hunter", "revenant"].includes(rawBossKind)) {
+      const trim = rawBossKind === "warden" ? "#e5a1b0" : rawBossKind === "breaker" ? "#bca97b" : rawBossKind === "furnace" ? "#d6a68a" : "#b0c4cc";
+      ctx.strokeStyle = trim;
+      ctx.globalAlpha = 0.65;
+      ctx.beginPath();
+      ctx.moveTo(-19, 28); ctx.lineTo(-12, 24); ctx.lineTo(-8, 28);
+      ctx.moveTo(9, 28); ctx.lineTo(17, 25); ctx.lineTo(21, 32);
+      ctx.moveTo(-17, 53); ctx.lineTo(-11, 59); ctx.lineTo(-4, 59);
+      ctx.moveTo(17, 53); ctx.lineTo(11, 59);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(3,9,15,0.66)";
+      for (const side of [-1, 1]) {
+        for (let vent = 0; vent < 3; vent += 1) ctx.fillRect(side * 19 - 2, 35 + vent * 4, 4, 2);
+        ctx.fillStyle = trim;
+        ctx.fillRect(side * 17 - 1, 47, 2, 2);
+        ctx.fillStyle = "rgba(3,9,15,0.66)";
+      }
+      if (rawBossKind === "warden" || rawBossKind === "breaker") {
+        const muzzle = rawBossKind === "warden" ? 89 : 77;
+        const muzzleY = rawBossKind === "warden" ? 46 : 43;
+        ctx.fillStyle = "#080c12";
+        ctx.fillRect(muzzle, muzzleY - 2, 4, rawBossKind === "warden" ? 6 : 17);
+        ctx.fillStyle = trim;
+        ctx.fillRect(35, 42, 25, 2);
+        ctx.fillStyle = "#180e14";
+        for (let vent = 0; vent < 3; vent += 1) ctx.fillRect(40 + vent * 7, 45, 3, 5);
+      }
+    } else if (rawBossKind === "weaver" || rawBossKind === "oracle") {
+      ctx.fillStyle = "rgba(255,255,255,0.76)";
+      ctx.beginPath(); ctx.moveTo(-10, 9); ctx.lineTo(-4, 6); ctx.lineTo(-6, 16); ctx.lineTo(-11, 20); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(192,174,213,0.42)";
+      ctx.beginPath(); ctx.moveTo(-19, 42); ctx.lineTo(-24, 64); ctx.moveTo(19, 42); ctx.lineTo(24, 64); ctx.stroke();
+      ctx.fillStyle = "#1b1329";
+      ctx.fillRect(-3, 35, 6, 7);
+      ctx.fillStyle = accent;
+      ctx.fillRect(-1, 36, 2, 4);
+    } else if (rawBossKind === "proxy") {
+      ctx.strokeStyle = "rgba(230,255,239,0.72)";
+      ctx.beginPath(); ctx.moveTo(-36, 9); ctx.lineTo(-36, 22); ctx.moveTo(32, 9); ctx.lineTo(32, 22); ctx.stroke();
+      if (!enemy.mutated) {
+        ctx.fillStyle = "#f0fff4";
+        ctx.fillRect(-11, 8, 4, 2); ctx.fillRect(3, 8, 4, 2);
+        ctx.fillStyle = "#69847a";
+        ctx.fillRect(-6, 24, 12, 3);
+      }
+    } else if (rawBossKind === "censor") {
+      ctx.strokeStyle = "rgba(153,124,184,0.52)";
+      ctx.beginPath(); ctx.moveTo(-14, 12); ctx.lineTo(-21, 27); ctx.lineTo(-17, 37); ctx.moveTo(14, 12); ctx.lineTo(21, 27); ctx.stroke();
+      ctx.fillStyle = "#efd9ff";
+      ctx.fillRect(-7, 24, 2, 2); ctx.fillRect(5, 24, 2, 2);
+    }
+
+    // Broad material planes sit behind small luminous details, like the protagonist's armor.
+    const plate = (points, base, edge) => {
+      ctx.fillStyle = flash ? "#eef7fa" : base;
+      ctx.strokeStyle = "#090f17";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(points[0], points[1]);
+      for (let index = 2; index < points.length; index += 2) ctx.lineTo(points[index], points[index + 1]);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(points[0], points[1] + 1); ctx.lineTo(points[2], points[3] + 1); ctx.lineTo(points[4], points[5] + 1); ctx.stroke();
+    };
+    const port = (x, y, width, height, metal) => {
+      ctx.fillStyle = "#080e15"; ctx.fillRect(x, y, width, height);
+      ctx.fillStyle = metal; ctx.fillRect(x + 1, y + 1, width - 2, 1);
+      ctx.fillStyle = accent; ctx.fillRect(x + 2, y + height - 2, Math.max(2, width * 0.35), 1);
+    };
+    if (rawBossKind === "warden") {
+      plate([-24,25,-15,12,16,12,27,28,17,34,-17,34], "#a5364b", "#e78c98");
+      plate([-22,36,-12,31,-9,54,-16,63,-24,56], "#551d30", "#ae657c");
+      plate([22,36,12,31,9,54,16,63,24,56], "#762538", "#c77789");
+      plate([-11,33,11,33,15,41,9,49,-9,49,-15,41], "#18202a", "#7d899a");
+      ctx.fillStyle = "#5e1e33"; ctx.fillRect(-7, 35, 14, 10);
+      ctx.fillStyle = accent; ctx.fillRect(-5, 37, 10, 5);
+      ctx.fillStyle = "#ffe2d6"; ctx.fillRect(-3, 37, 6, 2);
+      for (const side of [-1, 1]) {
+        plate([side*20,22,side*32,13,side*47,24,side*43,36,side*27,32], "#69283b", "#c87b8e");
+        port(side * 35 - 7, 26, 14, 5, "#a38490");
+      }
+      port(-10, 55, 20, 8, "#bd7a87");
+      ctx.fillStyle = "#151c25"; ctx.fillRect(27, 42, 52, 12);
+      ctx.fillStyle = "#916573"; ctx.fillRect(30, 43, 46, 3);
+      ctx.fillStyle = "#cfa8b0"; ctx.fillRect(37, 43, 16, 1);
+      ctx.fillStyle = "#3b2431"; ctx.fillRect(71, 42, 8, 12);
+      port(83, 44, 10, 7, "#a38b93");
+    } else if (rawBossKind === "breaker") {
+      plate([-30,53,-25,35,-12,23,18,25,29,41,31,55], "#665637", "#b4a27c");
+      plate([-27,52,-19,39,-10,43,-11,55], "#302d22", "#8d8161");
+      plate([27,52,19,39,10,43,11,55], "#4b422d", "#b0a179");
+      port(-15, 28, 31, 15, "#a6a28c");
+      ctx.fillStyle = "#e6c376"; ctx.fillRect(-10, 34, 20, 2);
+      ctx.fillStyle = "#252923"; ctx.fillRect(-39, 58, 78, 6);
+      ctx.fillStyle = "#a8996b"; ctx.fillRect(-35, 58, 70, 1);
+      for (let tread = -40; tread < 42; tread += 12) {
+        ctx.fillStyle = "#34372d"; ctx.fillRect(tread, 77, 8, 3);
+        ctx.fillStyle = "#8a896e"; ctx.fillRect(tread, 77, 8, 1);
+      }
+      ctx.fillStyle = "#2a2c24"; ctx.fillRect(24, 41, 35, 11);
+      ctx.fillStyle = "#b0a483"; ctx.fillRect(28, 42, 27, 2);
+      for (let bore = 0; bore < 5; bore += 1) port(72, 40 + bore * 4, 8, 3, "#c0b694");
+    } else if (rawBossKind === "furnace") {
+      plate([-21,29,-10,19,14,22,23,51,0,63,-20,51], "#572b29", "#ae7460");
+      plate([-15,31,-6,27,-4,53,-13,49], "#241b20", "#785b59");
+      plate([16,31,6,27,4,53,15,49], "#783b2d", "#c18967");
+      ctx.fillStyle = "#100f15"; ctx.fillRect(-6, 31, 12, 22);
+      for (let heat = 0; heat < 4; heat += 1) {
+        ctx.fillStyle = heat % 2 ? "#ffad6d" : "#e66b48";
+        ctx.fillRect(-5, 33 + heat * 5, 10, 2);
+      }
+      plate([-12,8,4,7,10,14,4,22,-13,20], "#30242b", "#9b8e83");
+      port(1, 4, 29, 8, "#d1a587");
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = "#17181e"; ctx.fillRect(side < 0 ? -57 : 42, 31, 15, 13);
+        ctx.fillStyle = "#b08467";
+        for (let barrel = 0; barrel < 3; barrel += 1) ctx.fillRect(side < 0 ? -57 : 45, 33 + barrel * 4, 12, 1);
+      }
+    } else if (rawBossKind === "hunter") {
+      plate([-19,22,-10,17,15,18,23,51,0,63,-20,50], "#673f36", "#b7836c");
+      plate([-16,28,-6,24,-2,48,-14,48], "#292a2d", "#65747b");
+      port(-9, 23, 25, 12, "#9cadb4");
+      ctx.fillStyle = "#90e4e9"; ctx.fillRect(-5, 27, 17, 2);
+      port(-8, 42, 20, 9, "#918f87");
+      ctx.fillStyle = "#20232b"; ctx.fillRect(16, 29, 40, 12);
+      ctx.fillStyle = "#aaa6a0"; ctx.fillRect(20, 30, 31, 2);
+      for (let barrel = 0; barrel < 3; barrel += 1) port(53, 28 + barrel * 5, 21, 3, "#ceaa92");
+    } else if (rawBossKind === "revenant") {
+      plate([-19,25,-10,17,12,18,21,36,15,57,-15,57], "#455564", "#93aab6");
+      plate([-15,31,-4,34,-3,50,-14,45], "#202d3a", "#6c899b");
+      plate([15,31,4,34,3,50,14,45], "#354455", "#91a8b7");
+      port(-5, 31, 10, 22, "#93a7b1");
+      ctx.fillStyle = accent; ctx.fillRect(-1, 36, 2, 11);
+      plate([-10,4,0,-2,10,5,9,20,-8,20], "#8195a1", "#c9d9dd");
+      port(-9, 9, 20, 8, "#aebdc1");
+      ctx.fillStyle = accent; ctx.fillRect(-5, 12, 12, 2);
+      ctx.strokeStyle = "#556b7a"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(-35, 43, 21, -2.8, -0.25); ctx.stroke();
+      ctx.strokeStyle = "#c3d1d4"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(-35, 43, 22, -2.8, -0.8); ctx.stroke();
+      for (let bolt = 0; bolt < 4; bolt += 1) {
+        const angle = Math.PI * 0.25 + bolt * Math.PI * 0.5;
+        ctx.fillStyle = "#adc1ca"; ctx.fillRect(-36 + Math.cos(angle) * 21, 42 + Math.sin(angle) * 21, 2, 2);
+      }
+    } else if (rawBossKind === "weaver" || rawBossKind === "oracle") {
+      plate([-18,36,-7,40,-3,65,-25,72], "#30283f", "#8c7d9c");
+      plate([18,36,7,40,3,65,25,72], "#42344e", "#a08ead");
+      ctx.fillStyle = "#171622";
+      ctx.beginPath(); ctx.moveTo(-5,38); ctx.lineTo(5,38); ctx.lineTo(10,65); ctx.lineTo(-10,65); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#9a859e"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-12,45); ctx.lineTo(-18,64); ctx.moveTo(12,45); ctx.lineTo(18,64); ctx.stroke();
+      ctx.fillStyle = "#8792a5";
+      ctx.beginPath(); ctx.moveTo(1,8); ctx.lineTo(10,11); ctx.lineTo(8,26); ctx.lineTo(1,31); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#efeef2";
+      ctx.beginPath(); ctx.moveTo(-10,11); ctx.lineTo(-1,7); ctx.lineTo(-1,29); ctx.lineTo(-8,24); ctx.closePath(); ctx.fill();
+      port(-8, 15, 16, 5, "#e0e3ea");
+      ctx.fillStyle = accent; ctx.fillRect(-5,16,3,2); ctx.fillRect(3,16,3,2);
+      ctx.fillStyle = "#c9c0dc"; ctx.fillRect(-2,22,4,3);
+    } else if (rawBossKind === "proxy" && !enemy.mutated) {
+      plate([-20,26,-9,24,-4,58,-20,67,-26,61], "#96b5b0", "#e4f3e9");
+      plate([20,26,9,24,4,58,20,67,26,61], "#688c8e", "#c9e1db");
+      ctx.strokeStyle = "#334951"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-8,26); ctx.lineTo(-15,36); ctx.lineTo(-6,40); ctx.moveTo(8,26); ctx.lineTo(15,36); ctx.lineTo(6,40); ctx.stroke();
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = "#0e1f28"; ctx.beginPath(); ctx.arc(side*7,12,6,0,TAU); ctx.fill();
+        ctx.strokeStyle = "#7fa8a6"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = "#7affe0"; ctx.fillRect(side*7-2,10,4,3);
+        ctx.fillStyle = "#e1fff0"; ctx.fillRect(side*7-2,10,1,1);
+      }
+      port(-8, 38, 16, 14, "#b0cac0");
+      ctx.fillStyle = accent; ctx.fillRect(-4,42,8,2);
+      ctx.fillStyle = "#d9e6db"; ctx.fillRect(-4,47,5,1);
+    } else if (rawBossKind === "censor") {
+      plate([-21,39,-10,43,-8,70,-30,79], "#231f31", "#625771");
+      plate([21,39,10,43,8,70,30,79], "#383047", "#887394");
+      ctx.strokeStyle = "#645472"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-16,46); ctx.lineTo(-24,71); ctx.moveTo(16,46); ctx.lineTo(24,71); ctx.stroke();
+      ctx.fillStyle = "#0a111a"; ctx.fillRect(-9,21,19,10);
+      ctx.fillStyle = "#b68bc9"; ctx.fillRect(-6,24,3,2); ctx.fillRect(5,24,3,2);
+      ctx.fillStyle = "#352b45"; ctx.fillRect(-7,39,14,7);
+      ctx.fillStyle = "#a58cba"; ctx.fillRect(-5,40,10,1);
+      ctx.fillStyle = accent; ctx.fillRect(-1,41,2,3);
     }
 
     if (chargingShot && !["weaver", "proxy"].includes(rawBossKind)) {
@@ -12805,22 +13119,14 @@
     }
     const variant = hash(enemy.originX * 0.17 + enemy.maxHp);
     const damageRatio = 1 - enemy.hp / enemy.maxHp;
-    const enemyGaitPhase = enemy.anim * (enemy.type === "runner" ? 10 : 6);
-    const enemyGaitPoses = [0.86, 0.48, 0, -0.5, -0.88, -0.46, 0, 0.52];
-    const sampleEnemyGait = (phase) => {
-      const posePhase = phase / (TAU / enemyGaitPoses.length);
-      const base = Math.floor(posePhase);
-      const rawT = posePhase - base;
-      const t = rawT * rawT * (3 - rawT * 2);
-      const current = enemyGaitPoses[((base % enemyGaitPoses.length) + enemyGaitPoses.length) % enemyGaitPoses.length];
-      const next = enemyGaitPoses[((base + 1) % enemyGaitPoses.length + enemyGaitPoses.length) % enemyGaitPoses.length];
-      return lerp(current, next, t);
-    };
-    const locomotion = sampleEnemyGait(enemyGaitPhase);
-    const movingRatio = clamp(Math.abs(enemy.vx) / 110, 0, 1);
-    const bodyBob = enemy.type === "drone"
-      ? Math.sin(enemy.anim * 3.4) * 2
-      : Math.abs(locomotion) * movingRatio * 2 + Math.sin(enemy.anim * 2.1) * 0.45;
+    // Distance, rather than an idle clock, drives the steps so a stopped robot stops walking.
+    const enemyGaitPhase = (enemy.x - enemy.originX) * enemy.facing * (enemy.type === "runner" ? 0.17 : 0.23);
+    const movingRatio = clamp(Math.abs(enemy.vx) / (enemy.type === "shield" ? 58 : 104), 0, 1);
+    const fixedBase = enemy.type === "turret" || enemy.type === "mortarTurret";
+    const floatingBoss = enemy.type === "boss" && ["warden", "weaver", "oracle", "censor"].includes(enemy.bossKind);
+    const bodyBob = fixedBase ? 0 : enemy.type === "drone" || floatingBoss
+      ? Math.sin(enemy.anim * 2.8) * 1.25
+      : (1 - Math.cos(enemyGaitPhase * 2)) * movingRatio * 0.65;
     const shadowScale = enemy.type === "drone" ? 0.55 : 1 - bodyBob * 0.025;
     ctx.save();
     ctx.globalAlpha = enemy.type === "drone" ? 0.14 : 0.24;
@@ -12830,10 +13136,9 @@
     ctx.fill();
     ctx.restore();
     ctx.save();
-    ctx.translate(Math.round(enemy.x + enemy.w / 2), Math.round(enemy.y + bodyBob));
+    ctx.translate(enemy.x + enemy.w / 2, enemy.y + bodyBob);
     ctx.scale(enemy.facing, 1);
-    if (enemy.type === "drone") ctx.rotate(Math.sin(enemy.anim * 2.8) * 0.08);
-    else ctx.rotate(clamp(enemy.vx * enemy.facing / 900, -0.08, 0.1));
+    if (enemy.type === "drone") ctx.rotate(clamp(enemy.vx * enemy.facing / 1500, -0.07, 0.07));
     if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
 
     function drawRobotSegment(x1, y1, x2, y2, width, shell, accent) {
@@ -12841,42 +13146,50 @@
       const dy = y2 - y1;
       const length = Math.hypot(dx, dy);
       ctx.save();
-      ctx.translate(Math.round(x1), Math.round(y1));
-      ctx.rotate(Math.atan2(dx, dy));
+      ctx.translate(x1, y1);
+      // A vertical canvas segment rotates toward +x with a negative angle.
+      ctx.rotate(-Math.atan2(dx, dy));
       ctx.fillStyle = "#070c13";
       ctx.fillRect(-width / 2 - 1, -1, width + 2, Math.ceil(length) + 2);
       ctx.fillStyle = shell;
       ctx.fillRect(-width / 2, 0, width, Math.ceil(length));
-      ctx.fillStyle = "rgba(220, 239, 240, 0.24)";
-      ctx.fillRect(-width / 2 + 1, 1, 2, Math.max(2, Math.floor(length) - 2));
+      ctx.fillStyle = "rgba(220, 239, 240, 0.3)";
+      ctx.fillRect(-width / 2 + 1, 1, 1, Math.max(2, Math.floor(length) - 2));
       ctx.fillStyle = accent;
-      ctx.fillRect(width / 2 - 2, 2, 2, Math.max(2, Math.floor(length) - 4));
+      ctx.fillRect(width / 2 - 2, 2, 1, Math.min(4, Math.max(2, Math.floor(length) - 4)));
       ctx.restore();
     }
 
     function drawRobotLeg(hipX, hipY, phase, upperLength, lowerLength, width, accent, heavy = false) {
-      const gait = sampleEnemyGait(phase);
-      const strideAmount = (heavy ? 0.34 : 0.58) * movingRatio;
-      const upperAngle = gait * strideAmount;
-      const kneeLift = Math.max(0, gait) * movingRatio;
-      const kneeBend = (heavy ? 0.12 : 0.18) + kneeLift * (heavy ? 0.48 : 0.82);
-      const kneeX = Math.round(hipX + Math.sin(upperAngle) * upperLength);
-      const kneeY = Math.round(hipY + Math.cos(upperAngle) * upperLength);
-      const shinAngle = upperAngle - kneeBend;
-      const footX = Math.round(kneeX + Math.sin(shinAngle) * lowerLength);
-      const footY = Math.round(kneeY + Math.cos(shinAngle) * lowerLength);
+      const cycle = ((phase / TAU) % 1 + 1) % 1;
+      const stance = 0.6;
+      const stride = (heavy ? 5 : enemy.type === "runner" ? 10 : 7) * movingRatio;
+      const swing = clamp((cycle - stance) / (1 - stance), 0, 1);
+      const easedSwing = swing * swing * (3 - 2 * swing);
+      const footTravel = cycle < stance ? 1 - 2 * cycle / stance : -1 + 2 * easedSwing;
+      const airborne = enemy.grounded === false && Math.abs(enemy.vy) > 30;
+      const lift = airborne ? 3 + Math.max(0, -enemy.vy / 120) : Math.sin(swing * Math.PI) * (heavy ? 5 : 8) * movingRatio;
+      const footX = hipX + footTravel * stride + (hipX < 0 ? -1.5 : 1.5);
+      const footY = Math.min(enemy.h - 3, hipY + upperLength + lowerLength - 1) - bodyBob - lift;
+      const dx = footX - hipX;
+      const dy = footY - hipY;
+      const reach = clamp(Math.hypot(dx, dy), 1, upperLength + lowerLength - 0.1);
+      const bend = Math.acos(clamp((upperLength * upperLength + reach * reach - lowerLength * lowerLength) / (2 * upperLength * reach), -1, 1));
+      const hipAngle = Math.atan2(dx, dy) + bend;
+      const kneeX = hipX + Math.sin(hipAngle) * upperLength;
+      const kneeY = hipY + Math.cos(hipAngle) * upperLength;
       const rearShell = heavy ? "#241b26" : "#111c29";
       const frontShell = heavy ? "#5b3448" : "#324b5b";
       drawRobotSegment(hipX, hipY, kneeX, kneeY, width, rearShell, accent);
       drawRobotSegment(kneeX, kneeY, footX, footY, Math.max(5, width - 1), frontShell, accent);
       ctx.fillStyle = "#080e16";
       ctx.beginPath();
-      ctx.arc(Math.round(kneeX), Math.round(kneeY), width * 0.72, 0, TAU);
+      ctx.arc(kneeX, kneeY, width * 0.6, 0, TAU);
       ctx.fill();
       ctx.strokeStyle = accent;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(Math.round(kneeX), Math.round(kneeY), Math.max(2, width * 0.38), 0, TAU);
+      ctx.arc(kneeX, kneeY, Math.max(2, width * 0.3), -2.7, 0.2);
       ctx.stroke();
       ctx.strokeStyle = "rgba(174, 209, 214, 0.46)";
       ctx.lineWidth = 1;
@@ -12885,15 +13198,15 @@
       ctx.lineTo(Math.round(kneeX + width * 0.65), Math.round(kneeY));
       ctx.stroke();
       ctx.fillStyle = "#070d15";
-      ctx.fillRect(Math.round(footX - 4), Math.round(footY - 2), heavy ? 17 : 13, heavy ? 8 : 6);
+      ctx.fillRect(footX - 4, footY - 2, heavy ? 15 : 12, 5);
       ctx.fillStyle = heavy ? "#75435b" : "#506b79";
-      ctx.fillRect(Math.round(footX - 1), Math.round(footY - 1), heavy ? 13 : 9, 3);
+      ctx.fillRect(footX - 1, footY - 1, heavy ? 10 : 8, 2);
       ctx.fillStyle = accent;
-      ctx.fillRect(Math.round(footX + (heavy ? 10 : 7)), Math.round(footY), 3, 2);
+      ctx.fillRect(footX + (heavy ? 9 : 6), footY, 2, 1);
     }
 
     if (enemy.type === "drone") {
-      const rotor = Math.sin(enemy.anim * 26) * 7;
+      const rotor = Math.sin(enemy.anim * 18) * 4;
       ctx.strokeStyle = "rgba(163, 215, 222, 0.52)";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -12943,6 +13256,23 @@
       ctx.fillStyle = "rgba(255, 73, 108, 0.35)";
       ctx.fillRect(-30, 14, 8, 3);
       ctx.fillRect(22, 14, 8, 3);
+      ctx.strokeStyle = "#101b25";
+      ctx.lineWidth = 3;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * 22, 8, 12, 3.5, 0, 0, TAU);
+        ctx.stroke();
+        ctx.fillStyle = "#718b95";
+        ctx.fillRect(side * 22 - 2, 6, 4, 4);
+      }
+      ctx.fillStyle = "#c3dce0";
+      ctx.fillRect(-8, 7, 10, 2);
+      ctx.fillStyle = "#0a121c";
+      ctx.fillRect(14, 19, 14, 7);
+      ctx.fillStyle = "#78919b";
+      ctx.fillRect(16, 20, 11, 2);
+      ctx.fillStyle = "#ef6377";
+      ctx.fillRect(26, 21, 2, 3);
     } else if (enemy.type === "turret") {
       const aimY = enemy.targetY ?? player.y + player.h / 2;
       const aimX = enemy.targetX ?? player.x + player.w / 2;
@@ -12953,7 +13283,7 @@
       ctx.fillStyle = "#48535a";
       ctx.beginPath();
       ctx.moveTo(-29, 42); ctx.lineTo(-20, 25); ctx.lineTo(20, 25); ctx.lineTo(29, 42); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#ffcf62"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = "#7d8586"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#28343b";
       ctx.beginPath(); ctx.arc(0, 24, 20, Math.PI, TAU); ctx.lineTo(20, 31); ctx.lineTo(-20, 31); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#121a20";
@@ -12976,7 +13306,17 @@
       ctx.fillRect(47, -8, 6, 16);
       ctx.strokeStyle = "#ffcf62";
       ctx.strokeRect(40, -11, 8, 22);
+      ctx.fillStyle = "#161f26";
+      for (let vent = 0; vent < 3; vent += 1) ctx.fillRect(12 + vent * 7, -5, 3, 10);
+      ctx.fillStyle = "#b7c4c7";
+      ctx.fillRect(5, -7, 31, 2);
       ctx.restore();
+      ctx.fillStyle = "#111a21";
+      ctx.fillRect(-26, 43, 11, 5);
+      ctx.fillRect(15, 43, 11, 5);
+      ctx.fillStyle = "#ffcf62";
+      ctx.fillRect(-22, 37, 7, 2);
+      ctx.fillRect(15, 37, 7, 2);
     } else if (enemy.type === "mortarTurret") {
       const chargePulse = enemy.windup > 0 ? 0.55 + Math.sin(enemy.anim * 22) * 0.28 : 0.2;
       ctx.fillStyle = "#11171d";
@@ -12984,7 +13324,7 @@
       ctx.fillStyle = "#4d3b40";
       ctx.beginPath();
       ctx.moveTo(-34, 51); ctx.lineTo(-23, 34); ctx.lineTo(23, 34); ctx.lineTo(34, 51); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = "#ff8066"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = "#8e7173"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#30262d";
       ctx.beginPath(); ctx.arc(0, 34, 23, Math.PI, TAU); ctx.lineTo(23, 41); ctx.lineTo(-23, 41); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#11171d";
@@ -13001,6 +13341,11 @@
         ctx.fillRect(34, -9, 11, 18);
         ctx.fillStyle = "#080b0d";
         ctx.fillRect(41, -6, 6, 12);
+        ctx.fillStyle = "#cbd5d5";
+        ctx.fillRect(3, -5, 27, 2);
+        ctx.fillStyle = "#364048";
+        ctx.fillRect(11, -7, 4, 14);
+        ctx.fillRect(25, -7, 4, 14);
         ctx.strokeStyle = "#ff8066"; ctx.lineWidth = 1.5;
         ctx.strokeRect(35, -8, 8, 16);
         ctx.restore();
@@ -13011,13 +13356,22 @@
       const isMachinegun = enemy.type === "machinegun";
       const isPiercer = enemy.type === "piercer";
       const isMortar = enemy.type === "mortar";
-      const recoil = enemy.windup > 0 || enemy.burstRemaining > 0 ? Math.sin(enemy.anim * 45) * (isMachinegun ? 4 : 3) : 0;
+      const fireThreshold = isMortar ? 0.09 : 0.07;
+      const shotKick = enemy.windup > 0 && enemy.windup < fireThreshold
+        ? Math.sin((1 - enemy.windup / fireThreshold) * Math.PI)
+        : 0;
+      const burstKick = isMachinegun && enemy.burstRemaining > 0
+        ? Math.pow(clamp(enemy.burstInterval / SENTRY_BURST_INTERVAL, 0, 1), 2)
+        : 0;
+      const recoil = Math.max(shotKick, burstKick) * (isMachinegun ? 5 : isMortar ? 7 : 5);
       const gunnerAccent = isMortar ? palette.red : isPiercer ? "#79dfff" : isMachinegun ? "#ff8066" : palette.amber;
       const gunLength = isMortar ? 31 : isMachinegun ? 49 : isPiercer ? 44 : 36;
       const gunHeight = isMortar ? 14 : isMachinegun ? 12 : 9;
       const muzzleX = isMortar ? 24 : isMachinegun ? 42 : isPiercer ? 37 : 29;
-      drawRobotLeg(-7, 40, enemy.anim * 6 + Math.PI, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
-      drawRobotLeg(7, 40, enemy.anim * 6, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
+      drawRobotLeg(-7, 40, enemyGaitPhase + Math.PI, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
+      drawRobotLeg(7, 40, enemyGaitPhase, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
+      ctx.save();
+      ctx.translate(-recoil * 0.22, recoil * 0.08);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : isMortar ? "#382b36" : isPiercer ? "#1b3443" : isMachinegun ? "#303744" : "#202d3b";
       ctx.beginPath();
       ctx.moveTo(-19, 19);
@@ -13070,9 +13424,21 @@
       ctx.fillRect(0, 9, 15, 6);
       ctx.fillStyle = enemy.windup > 0 ? palette.white : isPiercer ? "#79dfff" : isMachinegun ? "#ff8066" : palette.red;
       ctx.fillRect(8, 10, 6, 4);
+      const weaponAim = isMortar ? -0.52 : clamp(Math.atan2(
+        (enemy.targetY ?? player.y + player.h / 2) - (enemy.y + 29),
+        Math.abs((enemy.targetX ?? player.x + player.w / 2) - (enemy.x + enemy.w / 2)),
+      ), -0.48, 0.48);
+      const gunAngle = weaponAim - recoil * 0.008;
+      const supportX = 10 - recoil + Math.cos(gunAngle) * 20 - Math.sin(gunAngle) * 5;
+      const supportY = 29 + Math.sin(gunAngle) * 20 + Math.cos(gunAngle) * 5;
+      // The weapon sits in two articulated hands; the shoulders absorb the recoil.
+      drawRobotSegment(-12, 26, -3 - recoil * 0.3, 38, 6, "#405666", gunnerAccent);
+      drawRobotSegment(-3 - recoil * 0.3, 38, 13 - recoil, 33, 6, "#708692", gunnerAccent);
+      drawRobotSegment(10, 27, 21 - recoil * 0.4, 41, 6, "#354c5c", gunnerAccent);
+      drawRobotSegment(21 - recoil * 0.4, 41, supportX, supportY, 5, "#6b818d", gunnerAccent);
       ctx.save();
       ctx.translate(10 - recoil, 29);
-      ctx.rotate((isMortar ? -0.52 : 0) + Math.sin(enemy.anim * 2.2) * 0.025);
+      ctx.rotate(gunAngle);
       ctx.fillStyle = isMortar ? "#a8757f" : isPiercer ? "#7fb9ca" : isMachinegun ? "#8d98a6" : "#93aeb8";
       ctx.fillRect(0, -gunHeight / 2, gunLength, gunHeight);
       ctx.fillStyle = "#d6e0e1";
@@ -13099,18 +13465,29 @@
       }
       ctx.fillStyle = "#111923";
       ctx.fillRect(23, -5, 5, 3);
+      ctx.fillStyle = "#14212b";
+      ctx.fillRect(muzzleX + (isMachinegun ? 11 : 7), -gunHeight * 0.28, 3, gunHeight * 0.56);
+      ctx.fillRect(3, 4, 6, 10);
+      ctx.fillStyle = "#bacbd1";
+      ctx.fillRect(3, -gunHeight / 2 - 2, 13, 2);
+      ctx.fillStyle = "#223440";
+      for (let vent = 0; vent < 3; vent += 1) ctx.fillRect(15 + vent * 5, -gunHeight / 2 + 3, 2, 3);
+      ctx.fillStyle = "#0a131d";
+      ctx.fillRect(11, 8, 6, 3);
       ctx.restore();
       if (enemy.windup > 0) {
         ctx.fillStyle = isPiercer
           ? `rgba(121, 223, 255, ${0.35 + Math.sin(enemy.windup * 40) * 0.25})`
           : `rgba(255, 100, 120, ${0.35 + Math.sin(enemy.windup * 40) * 0.25})`;
         ctx.beginPath();
-        ctx.arc((isMachinegun ? 59 : isPiercer ? 52 : 44) - recoil, isMortar ? 12 : 31, isMortar ? 10 : isMachinegun ? 9 : 7, 0, TAU);
+        const muzzleReach = isMachinegun ? 55 : gunLength;
+        ctx.arc(10 - recoil + Math.cos(gunAngle) * muzzleReach, 29 + Math.sin(gunAngle) * muzzleReach, isMortar ? 8 : isMachinegun ? 7 : 5, 0, TAU);
         ctx.fill();
       }
+      ctx.restore();
     } else if (enemy.type === "shield") {
-      drawRobotLeg(-8, 48, enemy.anim * 5 + Math.PI, 10, 9, 8, palette.amber, true);
-      drawRobotLeg(7, 48, enemy.anim * 5, 10, 9, 8, palette.amber, true);
+      drawRobotLeg(-8, 48, enemyGaitPhase + Math.PI, 10, 9, 8, palette.amber, true);
+      drawRobotLeg(7, 48, enemyGaitPhase, 10, 9, 8, palette.amber, true);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#282b37";
       ctx.beginPath();
       ctx.moveTo(-18, 19);
@@ -13153,6 +13530,8 @@
       ctx.fillRect(5, 10, 6, 4);
       const guardBroken = enemy.shieldBreakTimer > 0;
       const shieldPush = guardBroken ? -10 : enemy.windup > 0 ? 6 + Math.sin(enemy.windup * 25) * 2 : 0;
+      drawRobotSegment(5, 29, 13, 42, 8, "#3c4d5a", guardBroken ? palette.red : palette.amber);
+      drawRobotSegment(13, 42, 19 + shieldPush, 34, 7, "#70838d", guardBroken ? palette.red : palette.amber);
       ctx.fillStyle = guardBroken ? "#4d2830" : "#283f4d";
       ctx.beginPath();
       ctx.moveTo(14 + shieldPush, 8);
@@ -13208,7 +13587,12 @@
         ? clamp(1 - enemy.windup / Math.max(0.01, enemy.bossChargeDuration), 0, 1)
         : 0;
       drawBossIdentityHalo(0, 49, bossKind, bossAccent, pulse, chargeProgress);
+      ctx.save();
+      if (chargingShot && !floatingBoss) {
+        ctx.translate(-chargeProgress * 2, chargeProgress * 1.5);
+      }
       drawDetailedBossCharacter(enemy, bossKind, bossAccent, pulse, chargeProgress, chargingShot, rawBossKind);
+      ctx.restore();
       ctx.restore();
       return;
       if (bossKind === "weaver") {
@@ -13482,8 +13866,8 @@
     } else {
       const runnerLean = clamp(Math.abs(enemy.vx) / 240, 0, 0.28);
       const runnerAccent = variant > 0.5 ? palette.amber : palette.cyan;
-      drawRobotLeg(-6, 38, enemy.anim * 10 + Math.PI, 8, 9, 6, runnerAccent);
-      drawRobotLeg(6, 38, enemy.anim * 10, 8, 9, 6, runnerAccent);
+      drawRobotLeg(-6, 38, enemyGaitPhase + Math.PI, 8, 9, 6, runnerAccent);
+      drawRobotLeg(6, 38, enemyGaitPhase, 8, 9, 6, runnerAccent);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1d2b39";
       ctx.beginPath();
       ctx.moveTo(-17, 20);
@@ -13533,10 +13917,17 @@
       ctx.fillRect(0, 9, 14, 6);
       ctx.fillStyle = palette.red;
       ctx.fillRect(8, 11, 5, 3);
+      const armSwing = Math.sin(enemyGaitPhase) * movingRatio;
+      const bladeHandX = 12 + (enemy.rushTimer > 0 ? 9 : enemy.windup > 0 ? -4 : armSwing * 3);
+      const bladeHandY = 31 + (enemy.rushTimer > 0 ? -3 : armSwing * 2);
+      drawRobotSegment(-11, 26, -15 - armSwing * 4, 35, 6, "#344a5a", runnerAccent);
+      drawRobotSegment(-15 - armSwing * 4, 35, -13 + armSwing * 6, 44, 5, "#627d8b", runnerAccent);
+      drawRobotSegment(10, 26, bladeHandX - 7, bladeHandY + 8, 6, "#344a5a", runnerAccent);
+      drawRobotSegment(bladeHandX - 7, bladeHandY + 8, bladeHandX, bladeHandY, 5, "#7793a0", runnerAccent);
       ctx.fillStyle = "#bacdd5";
       ctx.save();
-      ctx.translate(12, 31);
-      ctx.rotate(-runnerLean + Math.sin(enemy.anim * 4) * 0.04);
+      ctx.translate(bladeHandX, bladeHandY);
+      ctx.rotate(-runnerLean + armSwing * 0.06);
       ctx.fillStyle = "#263b47";
       ctx.fillRect(-5, -5, 12, 10);
       ctx.fillStyle = "#bacdd5";
@@ -14750,6 +15141,9 @@
   function drawHud() {
     ctx.save();
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    const touchHud = Boolean(touchControls && !touchControls.hidden);
+    const hudTop = touchHud ? 112 : 22;
 
     if (game.adminMode) {
       ctx.fillStyle = "rgba(8, 15, 22, 0.9)";
@@ -14803,118 +15197,130 @@
     }
 
     ctx.save();
-    ctx.translate(7, 7);
-    ctx.scale(0.84, 0.84);
-    ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
-    ctx.fillRect(28, 28, 320, 224);
-    const hudSweep = 30 + ((game.time * 34) % 190);
-    const hudGlow = ctx.createLinearGradient(28, 0, 348, 0);
-    hudGlow.addColorStop(0, "rgba(101, 245, 234, 0)");
-    hudGlow.addColorStop(0.45, "rgba(101, 245, 234, 0.2)");
-    hudGlow.addColorStop(1, "rgba(101, 245, 234, 0)");
-    ctx.fillStyle = hudGlow;
-    ctx.fillRect(28, hudSweep, 320, 1);
-    ctx.strokeStyle = "rgba(101, 245, 234, 0.38)";
+    ctx.translate(22, hudTop);
+    ctx.fillStyle = "rgba(4, 11, 18, 0.84)";
+    ctx.fillRect(0, 0, 264, 140);
+    ctx.strokeStyle = "rgba(147, 199, 207, 0.24)";
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(28, 46);
-    ctx.lineTo(28, 28);
-    ctx.lineTo(94, 28);
-    ctx.moveTo(282, 252);
-    ctx.lineTo(348, 252);
-    ctx.lineTo(348, 234);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(101, 245, 234, 0.22)";
-    ctx.fillRect(28, 28, 4, 224);
-    ctx.fillStyle = "#9bb3bd";
-    ctx.font = "700 11px monospace";
-    ctx.fillText(`OPERATIVE · M-07 · ${difficultySettings[game.difficulty].name}`, 47, 42);
+    ctx.strokeRect(0.5, 0.5, 263, 139);
+    ctx.fillStyle = palette.cyan;
+    ctx.fillRect(0, 0, 3, 31);
+    ctx.fillStyle = "#d6edf0";
+    ctx.font = "800 12px monospace";
+    ctx.fillText("M–07", 16, 11);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#a7bdc6";
+    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
+    ctx.fillText(difficultySettings[game.difficulty].name, 248, 11, 150);
+    ctx.textAlign = "left";
 
+    const healthStep = 190 / Math.max(1, player.maxHp);
     for (let i = 0; i < player.maxHp; i += 1) {
-      ctx.fillStyle = i < player.hp ? palette.red : "#24313d";
-      const slant = i * 38;
+      const healthX = 16 + i * healthStep;
+      ctx.fillStyle = i < player.hp ? (player.hp <= 1 ? "#ff6d7e" : palette.red) : "#24333e";
       ctx.beginPath();
-      ctx.moveTo(47 + slant, 66);
-      ctx.lineTo(77 + slant, 66);
-      ctx.lineTo(71 + slant, 78);
-      ctx.lineTo(41 + slant, 78);
+      ctx.moveTo(healthX + 4, 34);
+      ctx.lineTo(healthX + healthStep - 3, 34);
+      ctx.lineTo(healthX + healthStep - 7, 47);
+      ctx.lineTo(healthX, 47);
       ctx.closePath();
       ctx.fill();
+      if (i < player.hp) {
+        ctx.fillStyle = "rgba(255, 226, 231, 0.55)";
+        ctx.fillRect(healthX + 5, 34, healthStep - 13, 2);
+      }
+    }
+    ctx.fillStyle = "#f5edf0";
+    ctx.font = "800 12px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}`, 248, 34);
+    ctx.textAlign = "left";
+
+    ctx.fillStyle = player.airJumpAvailable ? palette.cyan : "#536974";
+    ctx.beginPath();
+    ctx.moveTo(16, 66);
+    ctx.lineTo(21, 59);
+    ctx.lineTo(26, 66);
+    ctx.lineTo(22, 66);
+    ctx.lineTo(22, 70);
+    ctx.lineTo(20, 70);
+    ctx.lineTo(20, 66);
+    ctx.fill();
+    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
+    ctx.fillText(player.airJumpAvailable ? "이중 점프 준비" : "공중 적중으로 점프 충전", 34, 59);
+    if (player.buffTimer > 0) {
+      ctx.textAlign = "right";
+      ctx.fillStyle = palette.amber;
+      ctx.fillText(`강화 ${player.buffTimer.toFixed(1)}초`, 248, 59);
+      ctx.textAlign = "left";
     }
 
-    ctx.fillStyle = player.airJumpAvailable ? palette.cyan : "#31414d";
-    ctx.fillRect(47, 92, 24, 10);
-    ctx.strokeStyle = player.airJumpAvailable ? palette.cyan : "#53636e";
-    ctx.strokeRect(47, 92, 24, 10);
-    ctx.fillStyle = player.airJumpAvailable ? "#dffffc" : "#75838c";
-    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
-    ctx.fillText(player.airJumpAvailable ? "이중 점프 준비" : "공중 적중 시 재충전", 82, 90);
-
-    ctx.fillStyle = "#263743";
-    ctx.fillRect(47, 116, 176, 7);
     const katanaReady = player.attackCooldown <= 0;
     const katanaCycle = Math.max(0.18, player.attackDuration + (player.grounded ? 0.015 : 0.055));
-    ctx.fillStyle = katanaReady ? palette.cyan : "#53636e";
-    ctx.fillRect(47, 116, 176 * (katanaReady ? 1 : clamp(1 - player.attackCooldown / katanaCycle, 0, 1)), 7);
-    ctx.fillStyle = katanaReady ? "#d9ffff" : "#87969d";
-    ctx.font = "700 10px 'Malgun Gothic', sans-serif";
-    const chainLabel = player.slashChain > 0 && player.slashChainTimer > 0 ? ` · ${player.slashChain}연계` : "";
-    const swordName = game.stage >= ACT_FOUR_INDEX ? "화염검" : "일본도";
-    ctx.fillText(katanaReady ? `${swordName} · 발도 준비${chainLabel}` : `${swordName} · 납도 중${chainLabel}`, 232, 111);
-
+    const swordName = game.stage >= ACT_FOUR_INDEX ? "화염검" : "발도";
+    const chainLabel = player.slashChain > 0 && player.slashChainTimer > 0 ? ` ${player.slashChain}연계` : "";
     const burstReady = game.burstUnlocked && player.burstCooldown <= 0;
-    ctx.fillStyle = burstReady ? palette.cyan : "#31414d";
-    ctx.fillRect(47, 140, 24, 9);
-    ctx.fillStyle = burstReady ? "#dffffc" : "#75838c";
-    const burstSkillLabel = game.stage >= ACT_THREE_INDEX ? " · 3탄 패링" : "";
-    ctx.fillText(game.burstUnlocked ? (burstReady ? `E · 버스트 준비${burstSkillLabel}` : `버스트 ${player.burstCooldown.toFixed(1)}초`) : "버스트 잠김", 82, 136);
-    if (player.buffTimer > 0) {
-      ctx.fillStyle = palette.amber;
-      ctx.fillText(`정밀 버스트 강화 ${player.buffTimer.toFixed(1)}초`, 207, 136);
-    }
+    ctx.font = "700 11px 'Malgun Gothic', sans-serif";
+    ctx.fillStyle = katanaReady ? "#defffa" : "#98adb7";
+    ctx.fillText(`${swordName}${katanaReady ? chainLabel || " 준비" : " 납도 중"}`, 16, 83, 108);
+    ctx.fillStyle = burstReady ? "#defffa" : "#98adb7";
+    const burstSkillLabel = game.stage >= ACT_THREE_INDEX ? " · 3탄 패링" : " 준비";
+    ctx.fillText(game.burstUnlocked ? (burstReady ? `버스트${burstSkillLabel}` : `버스트 ${player.burstCooldown.toFixed(1)}초`) : "버스트 잠김", 140, 83, 108);
+    ctx.fillStyle = "#263a46";
+    ctx.fillRect(16, 101, 108, 4);
+    ctx.fillRect(140, 101, 108, 4);
+    ctx.fillStyle = game.stage >= ACT_FOUR_INDEX ? palette.amber : palette.cyan;
+    ctx.fillRect(16, 101, 108 * (katanaReady ? 1 : clamp(1 - player.attackCooldown / katanaCycle, 0, 1)), 4);
+    ctx.fillStyle = burstReady ? palette.cyan : "#708b98";
+    if (game.burstUnlocked) ctx.fillRect(140, 101, 108 * clamp(1 - player.burstCooldown / PLAYER_BURST_COOLDOWN, 0, 1), 4);
 
+    ctx.fillStyle = "#d6e6ec";
+    ctx.fillText(player.shells > 0 ? "샷건" : "재장전", 16, 118);
     for (let shell = 0; shell < player.maxShells; shell += 1) {
-      ctx.fillStyle = shell < player.shells ? palette.amber : "#263743";
-      ctx.fillRect(47 + shell * 15, 164, 10, 8);
+      const shellX = 66 + shell * 17;
+      ctx.fillStyle = shell < player.shells ? palette.amber : "#304550";
+      ctx.fillRect(shellX, 117, 10, 12);
+      ctx.fillStyle = shell < player.shells ? "#fff0c9" : "#526670";
+      ctx.fillRect(shellX, 126, 10, 3);
     }
-    ctx.fillStyle = player.shells > 0 ? "#dffefa" : "#73838c";
-    ctx.fillText(player.shells > 0 ? "우클릭 · 샷건" : `재장전 ${player.shotgunReload.toFixed(1)}초`, 82, 160);
-    ctx.fillStyle = "#263743";
-    ctx.fillRect(207, 165, 116, 7);
-    ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.cyan;
-    ctx.fillRect(207, 165, 116 * (player.shotgunCharge / 3), 7);
+    ctx.textAlign = "right";
+    ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : "#9fb5c0";
+    ctx.fillText(player.shotgunCharge >= 3 ? "강화탄 준비" : player.shells <= 0 ? `${player.shotgunReload.toFixed(1)}초` : "강화탄", 248, 116);
+    for (let charge = 0; charge < 3; charge += 1) {
+      ctx.fillStyle = "#263a46";
+      ctx.fillRect(140 + charge * 14, 120, 10, 6);
+      ctx.fillStyle = player.shotgunCharge >= 3 ? palette.amber : palette.cyan;
+      ctx.fillRect(140 + charge * 14, 120, 10 * clamp(player.shotgunCharge - charge, 0, 1), 6);
+    }
     ctx.restore();
 
     const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
-    ctx.fillStyle = "rgba(4, 9, 17, 0.72)";
-    ctx.fillRect(W - 318, 28, 290, 64);
-    ctx.fillStyle = "rgba(101, 245, 234, 0.06)";
-    ctx.fillRect(W - 318, 28 + ((game.time * 26) % 62), 290, 1);
-    ctx.strokeStyle = "rgba(101, 245, 234, 0.32)";
-    ctx.beginPath();
-    ctx.moveTo(W - 318, 43);
-    ctx.lineTo(W - 318, 28);
-    ctx.lineTo(W - 256, 28);
-    ctx.moveTo(W - 90, 92);
-    ctx.lineTo(W - 28, 92);
-    ctx.lineTo(W - 28, 77);
-    ctx.stroke();
-    ctx.fillStyle = zones[game.zone].color;
-    ctx.font = "900 14px 'Malgun Gothic', sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(`STAGE 0${game.stage + 1}`, W - 45, 41);
-    ctx.fillStyle = "#738b98";
-    ctx.font = "10px monospace";
-    ctx.fillText(`${Math.floor(progress * 100)}% · ${formatTime(game.runTime)}`, W - 45, 62);
-    ctx.fillStyle = "#202f3c";
-    ctx.fillRect(W - 295, 77, 250, 3);
-    ctx.fillStyle = zones[game.zone].color;
-    ctx.fillRect(W - 295, 77, 250 * progress, 3);
-    const hudZoneRemaining = getZoneRemaining(game.zone);
-    ctx.fillStyle = game.adminMode ? palette.amber : hudZoneRemaining > 0 ? palette.red : palette.cyan;
-    ctx.font = "800 9px 'Malgun Gothic', sans-serif";
-    ctx.fillText(game.adminMode ? "관리자 권한 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 잔여 ${hudZoneRemaining}` : "구역 확보 · 다음 구역 개방", W - 295, 87);
+    const zoneColor = zones[game.zone].color;
+    ctx.save();
+    ctx.translate(W - 238, hudTop);
+    ctx.fillStyle = "rgba(4, 11, 18, 0.84)";
+    ctx.fillRect(0, 0, 216, 79);
+    ctx.strokeStyle = "rgba(147, 199, 207, 0.24)";
+    ctx.strokeRect(0.5, 0.5, 215, 78);
+    ctx.fillStyle = zoneColor;
+    ctx.fillRect(0, 0, 3, 27);
+    ctx.font = "900 12px 'Malgun Gothic', sans-serif";
     ctx.textAlign = "left";
+    ctx.fillText(`${game.stage + 1}막`, 15, 12);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#afc1ca";
+    ctx.font = "11px monospace";
+    ctx.fillText(`${Math.floor(progress * 100)}% · ${formatTime(game.runTime)}`, 201, 12);
+    ctx.fillStyle = "#263a46";
+    ctx.fillRect(15, 35, 186, 4);
+    ctx.fillStyle = zoneColor;
+    ctx.fillRect(15, 35, 186 * progress, 4);
+    const hudZoneRemaining = getZoneRemaining(game.zone);
+    ctx.textAlign = "left";
+    ctx.fillStyle = game.adminMode ? palette.amber : hudZoneRemaining > 0 ? "#ffa4ae" : palette.cyan;
+    ctx.font = "800 11px 'Malgun Gothic', sans-serif";
+    ctx.fillText(game.adminMode ? "관리자 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 남은 적 ${hudZoneRemaining}` : "구역 확보 · 통로 개방", 15, 51, 186);
+    ctx.restore();
 
 
     // 보스 체력은 보스와의 단순 거리 대신 현재 구역을 기준으로 찾는다.
@@ -14927,16 +15333,30 @@
     ));
     if (boss) {
       const bossDefinition = BOSS_DEFINITIONS[boss.bossKind] || BOSS_DEFINITIONS.warden;
-      ctx.fillStyle = "rgba(3, 7, 13, 0.82)";
-      ctx.fillRect(W / 2 - 280, 42, 560, 34);
-      ctx.fillStyle = "#c5d1d5";
-      ctx.font = "800 12px 'Malgun Gothic', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(bossDefinition.name, W / 2, 49);
-      ctx.fillStyle = "#39202b";
-      ctx.fillRect(W / 2 - 240, 62, 480, 6);
+      const hpRatio = clamp(boss.hp / Math.max(1, boss.maxHp), 0, 1);
+      const barX = W / 2 - 250;
+      ctx.fillStyle = "rgba(3, 9, 15, 0.88)";
+      ctx.fillRect(W / 2 - 270, 22, 540, 60);
+      ctx.strokeStyle = "rgba(175, 192, 204, 0.26)";
+      ctx.strokeRect(W / 2 - 269.5, 22.5, 539, 59);
       ctx.fillStyle = bossDefinition.accent;
-      ctx.fillRect(W / 2 - 240, 62, 480 * (boss.hp / boss.maxHp), 6);
+      ctx.fillRect(W / 2 - 270, 22, 3, 60);
+      ctx.fillStyle = "#edf4f7";
+      ctx.font = "800 14px 'Malgun Gothic', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(bossDefinition.name, W / 2, 32, 366);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#bacbd2";
+      ctx.font = "700 10px monospace";
+      ctx.fillText(`${Math.ceil(hpRatio * 100)}%`, barX + 500, 35);
+      ctx.fillStyle = "#2e2330";
+      ctx.fillRect(barX, 58, 500, 10);
+      ctx.fillStyle = bossDefinition.accent;
+      ctx.fillRect(barX, 58, 500 * hpRatio, 10);
+      ctx.fillStyle = "rgba(255, 246, 239, 0.42)";
+      ctx.fillRect(barX, 58, 500 * hpRatio, 2);
+      ctx.fillStyle = "rgba(3, 9, 15, 0.7)";
+      for (let segment = 1; segment < 4; segment += 1) ctx.fillRect(barX + segment * 125, 58, 2, 10);
       ctx.textAlign = "left";
     }
 
@@ -14964,21 +15384,26 @@
 
     if (player.combo > 1 && player.comboTimer > 0) {
       const rank = getStyleRank(player.styleScore);
-      ctx.fillStyle = "rgba(4, 9, 17, 0.76)";
-      ctx.fillRect(W - 218, H - 164, 184, 82);
+      const comboX = W - 196;
+      const comboY = touchHud ? hudTop + 91 : 113;
+      ctx.save();
+      ctx.translate(comboX, comboY);
+      ctx.fillStyle = "rgba(4, 11, 18, 0.74)";
+      ctx.fillRect(0, 0, 174, 64);
       ctx.fillStyle = rank.color;
-      ctx.fillRect(W - 218, H - 164, 4, 82);
-      ctx.font = "900 42px monospace";
-      ctx.fillText(rank.letter, W - 198, H - 154);
-      ctx.font = "900 16px monospace";
-      ctx.fillText(`${player.combo} CHAIN`, W - 145, H - 147);
+      ctx.fillRect(0, 0, 3, 64);
+      ctx.font = "900 32px monospace";
+      ctx.fillText(rank.letter, 13, 11);
+      ctx.font = "900 15px monospace";
+      ctx.fillText(`${player.combo} CHAIN`, 61, 11);
       ctx.fillStyle = "#a9bdc4";
       ctx.font = "700 10px 'Malgun Gothic', sans-serif";
-      ctx.fillText(rank.name, W - 145, H - 122);
+      ctx.fillText(rank.name, 61, 32);
       ctx.fillStyle = "#263743";
-      ctx.fillRect(W - 198, H - 96, 144, 4);
+      ctx.fillRect(13, 53, 147, 3);
       ctx.fillStyle = rank.color;
-      ctx.fillRect(W - 198, H - 96, 144 * (player.styleScore / 100), 4);
+      ctx.fillRect(13, 53, 147 * clamp(player.styleScore / 100, 0, 1), 3);
+      ctx.restore();
     }
 
     if (game.arenaTitle > 0) {
@@ -15279,15 +15704,18 @@
 
   let previousTime = performance.now();
   function frame(now) {
-    const rawDt = Math.min((now - previousTime) / 1000, 0.033);
+    const rawDt = clamp((now - previousTime) / 1000, 0, 0.066);
     previousTime = now;
-    update(rawDt);
+    // Timestamp rounding must not split an ordinary 60 FPS frame in two.
+    const stepCount = Math.max(1, Math.ceil(rawDt * 60 - 1e-7));
+    for (let step = 0; step < stepCount; step += 1) update(rawDt / stepCount);
     music.update(rawDt);
     render();
     requestAnimationFrame(frame);
   }
 
   function togglePause() {
+    player.queuedAction = null;
     if (game.mode === "playing") {
       clearTouchPointers();
       game.mode = "paused";
