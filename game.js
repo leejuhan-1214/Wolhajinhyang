@@ -4147,6 +4147,7 @@
     endScreen.classList.remove("visible");
     syncTutorialDataset();
     setTutorialPanel(!saved && !game.adminMode);
+    if (!saved) saveCampaign();
     updateContinueButton();
     sound.wake();
   }
@@ -7670,12 +7671,6 @@
       if (!hazard.hidden && hazard.active && overlaps(player, hazard)) damagePlayer(1, hazard.x + hazard.w / 2);
     }
 
-    for (const checkpoint of checkpoints) {
-      if (!checkpoint.active && Math.abs(player.x + player.w / 2 - checkpoint.x) < 55 && Math.abs(player.y + player.h - (checkpoint.y + checkpoint.h)) < 110) {
-        activateCheckpoint(checkpoint);
-      }
-    }
-
     for (const pickup of pickups) {
       if (!pickup.active || !overlaps(player, pickup)) continue;
       if (game.adminMode) continue;
@@ -7687,8 +7682,6 @@
       spawnParticles(pickup.x + 12, pickup.y + 12, palette.cyan, 16, 280, 0.55, 150);
       sound.checkpoint();
     }
-
-    if (player.y > WORLD_H + 120) respawn();
 
     if (!game.adminMode) {
       constrainPlayerToActiveBossArena();
@@ -7717,6 +7710,22 @@
         break;
       }
     }
+
+    // The beacon covers every route above its base, including a jump over it.
+    // Use the resolved movement segment after gates, so speed cannot skip the
+    // trigger or save past a locked zone. Falling/dead players cannot secure it.
+    if (player.hp > 0 && player.y <= WORLD_H + 120) {
+      const from = movementStartX + player.w / 2;
+      const to = player.x + player.w / 2;
+      for (const checkpoint of checkpoints) {
+        const center = checkpoint.x + checkpoint.w / 2;
+        const crossed = Math.max(from, to) >= center - 55 && Math.min(from, to) <= center + 55;
+        if (!checkpoint.active && crossed && player.y + player.h <= checkpoint.y + checkpoint.h + 110) {
+          activateCheckpoint(checkpoint);
+        }
+      }
+    }
+    if (player.y > WORLD_H + 120) respawn();
 
     if (player.x > WORLD_W - 145 && game.defeatedBosses.has("echo")) {
       finishGame();

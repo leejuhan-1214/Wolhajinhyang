@@ -22,6 +22,7 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 | `qa-pvp.cjs`, `qa-pvp-network.cjs`, `qa-pvp-input.cjs`, `qa-pvp-view.cjs` | 대전 규칙, 통신 경합·재전송, 짧은 입력 보존 검사 |
 | `qa-smoke.cjs` | 80구역·난이도 비율·보스·세이브 마이그레이션 검사 |
 | `qa-motion.cjs` | 실제 게임 함수와 입력 이벤트를 실행하는 조작/렌더링 회귀 검사 |
+| `qa-checkpoints.cjs` | 시작 저장·공중 통과·빠른 통과·봉쇄문·사망 복귀·이어하기 검사 |
 | `qa-bootstrap.cjs` | 프로필 응답 실패·타임아웃·스크립트 실패·재시도 검사 |
 | `qa-release.cjs` | 버전 일치·자산 존재·구문·UI ID 검사 |
 
