@@ -87,6 +87,7 @@ const runtimeSource = fs.readFileSync("game.js", "utf8");
 const storySource = fs.readFileSync("story-data.js", "utf8");
 const gameSource = runtimeSource + "\n" + storySource;
 const indexSource = fs.readFileSync("index.html", "utf8");
+vm.runInThisContext(fs.readFileSync("operative-renderer.js", "utf8"), { filename: "operative-renderer.js" });
 vm.runInThisContext(storySource, { filename: "story-data.js" });
 vm.runInThisContext(runtimeSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();

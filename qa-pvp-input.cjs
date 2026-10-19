@@ -53,6 +53,7 @@ async function pair() {
       setInterval() {}, requestAnimationFrame() {}, addEventListener(type, fn) { windowEvents.set(type, fn); },
     };
     context.window = context; vm.createContext(context);
+    vm.runInContext(fs.readFileSync(`${__dirname}/operative-renderer.js`, 'utf8'), context, { filename: 'operative-renderer.js' });
     vm.runInContext(engineSource, context, { filename: 'pvp-simulation.js' });
     vm.runInContext(appSource.replace(/\}\)\(\);\s*$/, hooks + '\n})();'), context, { filename: 'pvp-app.js' });
     const key = (type, code) => windowEvents.get(type)?.({ code, target: {}, preventDefault() {} });

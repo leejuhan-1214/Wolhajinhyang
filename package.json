@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check bootstrap.js && node --check story-data.js && node --check game.js && node --check pvp-simulation.js && node --check pvp-network.js && node --check pvp-app.js",
+    "check": "node --check bootstrap.js && node --check story-data.js && node --check game.js && node --check operative-renderer.js && node --check pvp-simulation.js && node --check pvp-network.js && node --check pvp-app.js",
     "test": "node qa-motion.cjs && node qa-bootstrap.cjs && node qa-release.cjs && node qa-pvp.cjs && node qa-pvp-network.cjs && node qa-pvp-input.cjs"
   },
   "engines": {

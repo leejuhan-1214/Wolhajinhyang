@@ -21,9 +21,9 @@
           <canvas id="duel-canvas" width="1280" height="720" tabindex="0" aria-label="온라인 결투 화면. A와 D 이동, 스페이스 점프, 왼쪽 클릭 발도, 오른쪽 클릭 샷건, 시프트 대시."></canvas>
           <div class="arena-vignette" aria-hidden="true"></div>
           <div id="combat-hud" class="combat-hud" hidden>
-            <div class="fighter-hud cyan"><div class="fighter-caption"><span id="fighter-0-name">청월</span><b id="fighter-0-score">0</b></div><div class="health-track"><i id="fighter-0-health"></i></div><div class="fighter-meta"><span id="fighter-0-ammo">산탄 ● ●</span><span id="fighter-0-dash">대시 준비</span></div></div>
+            <div class="fighter-hud cyan"><div class="fighter-caption"><span id="fighter-0-name">한서린 · 1P</span><b id="fighter-0-score">0</b></div><div class="health-track"><i id="fighter-0-health"></i></div><div class="fighter-meta"><span id="fighter-0-ammo">산탄 ● ●</span><span id="fighter-0-dash">대시 준비</span></div></div>
             <div class="round-hud"><small id="round-label">ROUND 01</small><strong id="round-time">90</strong><span>2선승</span></div>
-            <div class="fighter-hud red"><div class="fighter-caption"><span id="fighter-1-name">홍월</span><b id="fighter-1-score">0</b></div><div class="health-track"><i id="fighter-1-health"></i></div><div class="fighter-meta"><span id="fighter-1-ammo">산탄 ● ●</span><span id="fighter-1-dash">대시 준비</span></div></div>
+            <div class="fighter-hud red"><div class="fighter-caption"><span id="fighter-1-name">한서린 · 2P</span><b id="fighter-1-score">0</b></div><div class="health-track"><i id="fighter-1-health"></i></div><div class="fighter-meta"><span id="fighter-1-ammo">산탄 ● ●</span><span id="fighter-1-dash">대시 준비</span></div></div>
           </div>
           <div id="arena-intro" class="arena-intro"><span class="eyebrow">TWO BLADES. ONE MOON.</span><h1>달 아래,<br>마주 선 두 잔향.</h1><p>같은 무기. 같은 조건.<br>승부를 가르는 건 당신의 한 수.</p><span class="arena-coordinate">37° 33′ N &nbsp; 126° 58′ E</span></div>
           <div id="round-banner" class="round-banner" hidden aria-live="polite"><small id="banner-eyebrow"></small><strong id="banner-title"></strong><span id="banner-detail"></span></div>
@@ -43,8 +43,8 @@
         </div>
         <section id="room-panel" hidden aria-label="결투 대기실">
           <div class="room-code-box"><span>PRIVATE ROOM</span><label class="sr-only" for="room-code">초대할 방 코드</label><input id="room-code" readonly aria-label="초대할 방 코드"><div class="copy-actions"><button id="copy-code-button" type="button">코드 복사</button><button id="copy-link-button" type="button">초대 링크 복사 ↗</button></div></div>
-          <div class="seat cyan"><div class="seat-avatar" aria-hidden="true">01</div><div><b>청월 <small id="seat-0-owner">방장</small></b><span id="seat-0-status">준비 전</span></div><i id="seat-0-dot" class="seat-dot" aria-hidden="true"></i></div>
-          <div class="seat red"><div class="seat-avatar" aria-hidden="true">02</div><div><b>홍월 <small id="seat-1-owner">상대</small></b><span id="seat-1-status">상대를 기다리는 중</span></div><i id="seat-1-dot" class="seat-dot" aria-hidden="true"></i></div>
+          <div class="seat cyan"><div class="seat-avatar" aria-hidden="true">01</div><div><b>한서린 · 1P <small id="seat-0-owner">방장</small></b><span id="seat-0-status">준비 전</span></div><i id="seat-0-dot" class="seat-dot" aria-hidden="true"></i></div>
+          <div class="seat red"><div class="seat-avatar" aria-hidden="true">02</div><div><b>한서린 · 2P <small id="seat-1-owner">상대</small></b><span id="seat-1-status">상대를 기다리는 중</span></div><i id="seat-1-dot" class="seat-dot" aria-hidden="true"></i></div>
           <button id="ready-button" class="secondary-button" type="button" disabled aria-pressed="false">준비 완료</button>
           <button id="start-button" class="primary-button" type="button" disabled>결투 시작 <span aria-hidden="true">→</span></button>
           <p id="ready-hint" class="field-hint">초대 링크를 친구에게 보내세요.</p>
@@ -58,8 +58,9 @@
     <footer class="page-footer"><span>월하잔향: 백야 작전</span><span>친구와의 결투 · 계정 없이 바로</span><button id="match-leave-button" class="text-button" type="button" hidden>결투에서 나가기</button></footer>
     <noscript><p class="noscript">온라인 결투를 하려면 JavaScript를 활성화해 주세요.</p></noscript>
   </main>
+  <script src="operative-renderer.js?v=3.8.0" defer></script>
   <script src="pvp-simulation.js?v=3.8.0" defer></script>
   <script src="pvp-network.js?v=3.8.0" defer></script>
-  <script src="pvp-app.js?v=3.8.0" defer></script>
+  <script src="pvp-app.js?v=3.8.0&character=seorin" defer></script>
 </body>
 </html>

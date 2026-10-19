@@ -13,6 +13,7 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 | `index.html`, `styles.css` | 시작·일시정지·훈련·관리자·터치 UI |
 | `bootstrap.js` | 선택적 공개 편집본 읽기, 스토리/게임 순차 로딩, 실패·재시도 화면 |
 | `story-data.js` | 대사·컷신·보스 소개 ID, 현재 맵 좌표를 받아 생성하는 팩토리 |
+| `operative-renderer.js` | 캠페인/PVP 공통 주인공 한서린의 외형·걷기·발도·샷건 렌더링 |
 | `game.js` | 월드 생성·전투·저장·입력·Canvas 렌더링 |
 | `pvp.html`, `pvp.css`, `pvp-app.js` | 온라인 1:1 로비·입력·대전 렌더링 |
 | `pvp-simulation.js` | 고정 시간 간격의 결정론적 2인 대전·승패 |
@@ -28,7 +29,7 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 - 5막 × 16구역 = 80구역. 각 막의 8구역에 중간 보스, 16구역에 진 보스가 있습니다.
 - 쉬움/보통/어려움/지옥 모두 플레이어 체력은 5입니다. 어려움의 이동 속도는 보통과 같으며 적 배치와 보스 체력이 증가합니다.
 - 기존 저장 키와 적/체크포인트/스토리 ID는 유지합니다. 옛 24구역 세이브의 변환은 `resolveCampaignCheckpointIndex`에서 처리합니다.
-- `story-data.js`를 먼저 불러온 뒤 `game.js`를 실행해야 합니다. 새로운 시작 경로도 `bootstrap.js`를 사용하세요.
+- `story-data.js`와 `operative-renderer.js`를 먼저 불러온 뒤 `game.js`를 실행해야 합니다. 새로운 시작 경로도 `bootstrap.js`를 사용하세요.
 - 캐릭터는 Canvas 벡터로 그립니다. 주인공의 검은 기계 몸체와 흰 외투를 유지합니다.
 - 입력 초기화는 `clearGameplayInput`을 사용합니다. 키보드가 누른 키와 터치가 누른 키의 소유권을 구분합니다.
 - 공개 편집본을 못 읽으면 기본 맵과 기존 로컬 편집 데이터로 시작합니다. 브라우저 테스트는 테스트 컨텍스트에 `window.__MOONLIT_ECHO_DISABLE_LIVE_SYNC__ = true`를 설정해 외부 월드 동기화를 차단할 수 있습니다.

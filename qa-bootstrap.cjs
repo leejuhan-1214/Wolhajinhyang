@@ -61,13 +61,13 @@ async function boot({ profile = "ok", failedScript, initializationFails = false 
 (async () => {
   for (const profile of ["ok", "offline", "missing", "invalid", "slow"]) {
     const result = await boot({ profile });
-    assert.deepEqual(result.scripts, [`story-data.js?v=${version}`, `game.js?v=${version}`]);
+    assert.deepEqual(result.scripts, [`story-data.js?v=${version}`, `operative-renderer.js?v=${version}`, `game.js?v=${version}`]);
     assert.equal(result.root.dataset.gameBootstrap, "ready", `${profile}: game must start`);
     assert.equal(result.elements.get("loading-screen").hidden, true);
     assert.equal(result.timeout, null, "profile timeout must be released");
     assert.equal(Boolean(result.window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__), profile === "ok");
   }
-  for (const scenario of [{ failedScript: "story-data.js" }, { failedScript: "game.js" }, { initializationFails: true }]) {
+  for (const scenario of [{ failedScript: "story-data.js" }, { failedScript: "operative-renderer.js" }, { failedScript: "game.js" }, { initializationFails: true }]) {
     const result = await boot(scenario);
     const retry = result.elements.get("loading-retry");
     assert.equal(result.elements.get("loading-screen").hidden, false);
@@ -76,7 +76,7 @@ async function boot({ profile = "ok", failedScript, initializationFails = false 
     assert.equal(retry.focused, true);
     retry.click();
     assert.equal(result.reloads(), 1);
-    if (scenario.failedScript === "story-data.js") assert.equal(result.scripts.length, 1);
+    if (scenario.failedScript === "story-data.js") assert.equal(result.scripts.length, 2);
   }
   console.log("Bootstrap QA passed: dependency order, profile timeout/offline/invalid data, script and initialization errors, retry.");
 })().catch(error => { console.error(error); process.exitCode = 1; });

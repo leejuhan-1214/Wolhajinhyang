@@ -7,9 +7,13 @@
   const ctx = canvas.getContext("2d");
   const Engine = globalThis.MoonlitDuel;
   const Network = globalThis.MoonlitNetwork;
+  const Operative = globalThis.MoonlitOperative;
+  const operativeClock = { time: 0, stage: 0 };
+  const operativePlayers = [{ runCycle: 0 }, { runCycle: 0 }];
+  let drawOperatives = [];
   const W = 1280, H = 720;
   const colors = ["#7bebd6", "#ff7585"];
-  const names = ["청월", "홍월"];
+  const names = ["한서린 · 1P", "한서린 · 2P"];
   const keys = new Set();
   const pointer = { x: W / 2, y: H / 2, slash: false, shotgun: false, inside: false };
   let network = null, localRole = null, connected = false, busy = false, match = null;
@@ -332,64 +336,40 @@
     }
   }
 
-  function polygon(points, fill, stroke) {
-    ctx.beginPath(); ctx.moveTo(points[0], points[1]);
-    for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
-  }
-
-  function segment(x1, y1, x2, y2, width, color) {
-    ctx.strokeStyle = "#08111b"; ctx.lineWidth = width + 2; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
-    ctx.fillStyle = "#5a747c"; ctx.fillRect(x2 - 2, y2 - 2, 4, 4);
-  }
-
   function fighter(f, time, scale = 1, local = false) {
-    const trim = colors[f.id];
-    const running = f.grounded ? Math.min(Math.abs(f.vx) / 300, 1) : 0;
-    const cycle = time * 13 + f.id * Math.PI;
-    const stride = Math.sin(cycle) * running;
-    const bob = Math.abs(Math.cos(cycle)) * running * 1.5;
-    const dash = f.anim === "dash" || f.invulnerable > .05 && Math.abs(f.vx) > 500;
-    ctx.save(); ctx.translate(f.x + f.w / 2, f.y + f.h); ctx.scale(scale * f.facing, scale);
-    if (dash) {
+    const player = operativePlayers[f.id], trim = colors[f.id];
+    const travel = Math.abs(f.x - (player.worldX ?? f.x));
+    if (f.grounded && travel < 80) player.runCycle += travel * .037;
+    // These are visual adapters only: the host's combat state stays untouched.
+    Object.assign(player, {
+      worldX: f.x, w: f.w, h: f.h, vx: f.vx, vy: f.vy, grounded: f.grounded,
+      wallLeft: false, wallRight: false, squash: f.anim === "dash" ? .06 : 0,
+      attackTimer: f.anim === "slash" ? Math.min(.2, f.animTime || 0) : 0,
+      attackDuration: .2, attackDir: { x: f.slashDirection || f.facing, y: 0 },
+      recoilTimer: f.anim === "shot" ? Math.min(.3, (f.animTime || 0) * 1.5) : 0,
+      shotAimX: f.aimX ?? f.facing, shotAimY: f.aimY || 0,
+      buffTimer: 0, chargedAttack: false, shotgunCharge: 0,
+    });
+    operativeClock.time = time;
+    ctx.save();
+    ctx.translate(f.x + f.w / 2, f.y + f.h); ctx.scale(scale, scale);
+    ctx.fillStyle = "#02060a66"; ctx.beginPath(); ctx.ellipse(0, 1, 25, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // Team identity belongs to the floor marker and HUD; both wear Seo-rin's coat and red optic.
+    ctx.strokeStyle = trim; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, 2, 20, 3, 0, 0, Math.PI * 2); ctx.stroke();
+    if (f.anim === "dash") {
       for (let i = 3; i > 0; i--) {
-        ctx.globalAlpha = .05 + (3 - i) * .035;
-        polygon([-18 - i * 10, -52, 12 - i * 10, -48, 19 - i * 10, -11, 6 - i * 10, -7, -21 - i * 10, -8], trim);
+        ctx.save(); ctx.translate(-f.facing * i * 11, 0);
+        drawOperatives[f.id](-f.w / 2, -f.h, f.facing, .04 + (3 - i) * .03, true);
+        ctx.restore();
       }
     }
-    ctx.globalAlpha = f.hp <= 0 ? .4 : 1;
-    ctx.fillStyle = "#02060a66"; ctx.beginPath(); ctx.ellipse(0, 1, 25, 4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.translate(0, -bob);
-    const sway = clamp(-f.vx * f.facing / 90, -7, 7) + Math.sin(time * 3) * .6;
-    polygon([-13,-45,10,-44,16,-27,20+sway,-8,7+sway,-10,0,-26,-9+sway,-5,-22+sway,-10,-17,-31],"#a9b9b9","#182c34");
-    polygon([-12,-42,-5,-34,-7,-22,-13+sway,-9,-18+sway,-12,-14,-29],"#e4e9dd");
-    segment(-5,-22,-7-stride*8,-12,7,"#172a37");
-    segment(-7-stride*8,-12,-7+stride*11,-3-Math.max(0,stride)*6,6,"#203d4b");
-    segment(5,-23,8+stride*8,-13,8,"#294555");
-    segment(8+stride*8,-13,8-stride*11,-3-Math.max(0,-stride)*6,6,"#355564");
-    ctx.fillStyle="#09121b";ctx.fillRect(-10+stride*11,-5-Math.max(0,stride)*6,13,6);ctx.fillRect(5-stride*11,-5-Math.max(0,-stride)*6,14,6);
-    ctx.fillStyle=trim;ctx.fillRect(14-stride*11,-3-Math.max(0,-stride)*6,4,2);
-    polygon([-11,-43,9,-43,12,-24,3,-21,-10,-24],"#0f202e","#35505b");
-    polygon([7,-43,13,-39,17+sway,-12,11+sway,-13,5,-28],"#eff0df");
-    ctx.strokeStyle=trim;ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(14,-34);ctx.lineTo(17+sway,-13);ctx.stroke();
-    ctx.fillStyle="#456170";ctx.fillRect(-9,-38,13,3);ctx.fillRect(-8,-32,9,2);ctx.fillStyle=trim;ctx.fillRect(-4,-38,3,3);
-    polygon([-12,-46,-9,-56,5,-58,11,-52,10,-43,3,-40,-7,-42],"#101e2c","#48626e");
-    polygon([-9,-55,2,-59,9,-54,10,-51,-10,-50],"#294451");
-    ctx.fillStyle="#020b12";ctx.fillRect(-6,-50,17,6);ctx.fillStyle=trim;ctx.fillRect(-3,-49,14,2);
-    ctx.fillStyle="#8ba0a4";ctx.fillRect(5,-44,4,3);
-    ctx.fillStyle="#0b1823";ctx.fillRect(-17,-42,5,21);ctx.fillStyle=trim;ctx.fillRect(-17,-38,2,5);
-    const slashing=f.anim==="slash", shooting=f.anim==="shot"||f.anim==="shotgun";
-    const armX=slashing?23:shooting?23:13,armY=slashing?-37:shooting?-35:-27;
-    segment(-8,-40,-13,-29,7,"#243c49");segment(-13,-29,-4,-24,6,"#34505d");
-    segment(9,-40,15,-33,8,"#35505b");segment(15,-33,armX,armY,6,"#203a49");
-    ctx.fillStyle="#07121c";ctx.fillRect(armX-2,armY-3,8,6);ctx.fillStyle="#96a9ac";ctx.fillRect(armX+2,armY-2,3,2);
-    if(shooting){ctx.fillStyle="#15232e";ctx.fillRect(armX,armY-7,29,7);ctx.fillStyle="#75838a";ctx.fillRect(armX+11,armY-7,20,2);ctx.fillStyle=trim;ctx.fillRect(armX+4,armY-5,4,2);}
-    else{ctx.save();ctx.translate(armX+3,armY);ctx.rotate(slashing?-1.1:.45);ctx.fillStyle="#152b36";ctx.fillRect(-2,-2,4,10);ctx.fillStyle="#7e9ba1";ctx.fillRect(-5,-3,11,2);polygon([-1,-3,1,-3,3,-38,0,-45,-2,-37],"#dcebe6");ctx.fillStyle=trim;ctx.fillRect(0,-36,1,30);ctx.restore();}
+    drawOperatives[f.id](-f.w / 2, -f.h, f.facing, f.hp <= 0 ? .4 : 1);
+    if (local) {
+      ctx.fillStyle = trim; ctx.beginPath(); ctx.moveTo(-5, -f.h - 16);
+      ctx.lineTo(5, -f.h - 16); ctx.lineTo(0, -f.h - 10); ctx.fill();
+    }
     ctx.restore();
-    if(local){ctx.fillStyle=trim;ctx.beginPath();ctx.moveTo(f.x+f.w/2-5,f.y-15);ctx.lineTo(f.x+f.w/2+5,f.y-15);ctx.lineTo(f.x+f.w/2,f.y-9);ctx.fill();}
   }
 
   const backdrop = document.createElement("canvas"); backdrop.width=W;backdrop.height=H;
@@ -448,17 +428,18 @@
       const base={w:34,h:56,vx:0,vy:0,grounded:true,hp:5,anim:"idle",invulnerable:0};
       fighter({...base,id:0,x:768,y:584,facing:1},time,1.85);
       fighter({...base,id:1,x:1068,y:584,facing:-1},time,1.85);
-      ctx.font="10px monospace";ctx.textAlign="center";ctx.fillStyle=colors[0];ctx.fillText("01 / BLUE MOON",785,668);ctx.fillStyle=colors[1];ctx.fillText("02 / RED MOON",1085,668);ctx.textAlign="left";
+      ctx.font="10px monospace";ctx.textAlign="center";ctx.fillStyle=colors[0];ctx.fillText("01 / HAN SEO RIN",785,668);ctx.fillStyle=colors[1];ctx.fillText("02 / HAN SEO RIN",1085,668);ctx.textAlign="left";
     }
     if(active()&&pointer.inside){ctx.strokeStyle=colors[ownIndex()]+"aa";ctx.lineWidth=1;ctx.beginPath();ctx.arc(pointer.x,pointer.y,8,0,Math.PI*2);ctx.moveTo(pointer.x-12,pointer.y);ctx.lineTo(pointer.x-5,pointer.y);ctx.moveTo(pointer.x+5,pointer.y);ctx.lineTo(pointer.x+12,pointer.y);ctx.moveTo(pointer.x,pointer.y-12);ctx.lineTo(pointer.x,pointer.y-5);ctx.moveTo(pointer.x,pointer.y+5);ctx.lineTo(pointer.x,pointer.y+12);ctx.stroke();}
     if(now-lastQualityAt>1000){$("connection-quality").textContent=connected?(network?.transport==="direct"?"직접 연결":"온라인 연결")+(finite(network?.latency,0,5000)?" · "+Math.round(network.latency)+" ms":""):"PRIVATE 1 VS 1";lastQualityAt=now;}
     requestAnimationFrame(draw);
   }
 
-  if (!Engine || !Network || !ctx) {
+  if (!Engine || !Network || !Operative || !ctx) {
     status("결투 화면을 불러오지 못했습니다. 새로고침해 주세요.", true);
     $("host-button").disabled = true; $("join-button").disabled = true; return;
   }
+  drawOperatives=operativePlayers.map(player=>Operative.createRenderer(ctx,player,operativeClock));
   remoteInput=emptyInput();createBackdrop();
   $("host-button").addEventListener("click",()=>connect("host"));
   $("join-form").addEventListener("submit",(event)=>{event.preventDefault();connect("guest");});
