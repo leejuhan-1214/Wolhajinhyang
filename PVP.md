@@ -1,0 +1,33 @@
+# 온라인 결투 유지보수
+
+3.8.0의 PVP 베타는 서로 다른 PC의 브라우저에서 플레이하는 초대 전용 1:1 친구 대전입니다. 공개 화면은 `pvp.html`이며 캠페인 세이브와 관리자 편집 데이터를 사용하지 않습니다.
+
+## 클라이언트
+
+- `pvp-simulation.js`: 60Hz 고정 간격, 두 사람의 입력, 지형·공격 판정, 90초 라운드, 2선승. 방장이 유일하게 계산하고 게스트는 전달받은 상태를 보간합니다.
+- `pvp-network.js`: 방 생성/입장, 참가 토큰, 메시지 ID와 ACK, 재전송, 입력/상태 병합, WebRTC 연결과 HTTPS 중계. 브라우저 직접 연결이 불가능해도 중계로 진행합니다.
+- `pvp-app.js`: 로비·준비·재대전, 키보드/마우스 입력, 전용 Canvas 캐릭터/경기장, 효과음. 방장 탭이 숨겨지면 양쪽 경기를 일시 중단합니다.
+
+친구 대전이므로 방장이 판정을 신뢰할 수 있어야 합니다. 경쟁 랭킹, 자동 매칭, 계정, 관전, 호스트 이전 또는 끊긴 경기 복구는 지원하지 않습니다. HTTPS 중계에서는 왕복 지연에 따라 조작 반응이 늦어질 수 있습니다. 방은 2시간 후 만료됩니다. 새로고침이나 퇴장 시 새 방을 만드세요.
+
+## 서비스
+
+기존 공개 월드 서버 `https://wolhajinhyang-live-world.magic-shark-7297.chatgpt.site`에 독립적인 `/api/pvp` 경로를 추가했습니다. 기존 `/api/world-state`와 인증 데이터는 변경하지 않습니다. 서비스 소스는 Sites 프로젝트 `appgprj_6a8ac936ce3c8191b99fa092ae7bfd37`의 소스 저장소에서 관리합니다. GitHub Pages는 정적 클라이언트만 배포합니다.
+
+| 경로 | 요청 | 응답 |
+| --- | --- | --- |
+| `GET /api/pvp/health` | 없음 | 프로토콜 버전·최대 인원 |
+| `POST /api/pvp/rooms` | `{}` | `{code,token,role}` |
+| `POST /api/pvp/rooms/:code/join` | `{}` | `{code,token,role}` |
+| `POST /api/pvp/rooms/:code/exchange` | `{token,seq,packet:[{id,payload}],ack}` | `{packet,ack,peerConnected,peerLeft,serverTime}` |
+| `POST /api/pvp/rooms/:code/leave` | `{token}` | `{ok:true}` |
+
+12자리 방 코드는 초대용입니다. 참가자의 별도 토큰은 브라우저 메모리에만 보관하고 URL이나 로그에 넣지 않습니다. 서버에는 토큰 해시만 저장합니다. 게스트 자리는 SQL 조건부 갱신으로 한 번만 예약합니다. 패킷 순번·ACK·마지막 접속 시각은 단조 증가하며 늦게 온 요청이 새 상태를 덮지 않습니다. 요청·패킷 크기와 수는 제한합니다. CORS는 게임 GitHub Pages origin, 서버 자체 origin, 로컬 개발 주소만 허용합니다.
+
+서버 변경 파일: `lib/pvp.ts`, `lib/pvp-protocol.ts`, `app/api/pvp/**`, `db/schema.ts`의 `pvpRooms`, `drizzle/0002_absent_hulk.sql`. 서버 배포 시 기존 마이그레이션을 함께 보존해야 합니다. 신규 테이블만 추가하며 월드 테이블을 삭제하거나 재작성하지 않습니다.
+
+## 검사와 배포
+
+`npm run check`와 `npm test`는 외부 서버 호출 없이 실행됩니다. 캠페인 검사와 함께 대전 결정론·공격/지형·승패·입력·통신 유실/재전송·이전 세션 격리를 검사합니다. 온라인 배포 검증에서는 실제 API로 방 생성·동시 참가·토큰·양방향 전송·퇴장을 확인하고, 독립 브라우저 세션 두 개로 직접 연결 및 강제 HTTPS 중계의 대전·재대전을 확인합니다.
+
+서버 변경은 해당 Sites 소스를 열고 검사/빌드 후 같은 프로젝트에 배포합니다. 이후 클라이언트 `main` 변경을 GitHub Pages에 배포합니다. 서비스 주소를 변경하면 `pvp-network.js`의 기본 주소 및 서버 CORS를 함께 검토하세요. 버전 변경 시 `pvp.html`의 CSS/JS 쿼리도 갱신합니다.

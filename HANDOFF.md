@@ -14,6 +14,10 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 | `bootstrap.js` | 선택적 공개 편집본 읽기, 스토리/게임 순차 로딩, 실패·재시도 화면 |
 | `story-data.js` | 대사·컷신·보스 소개 ID, 현재 맵 좌표를 받아 생성하는 팩토리 |
 | `game.js` | 월드 생성·전투·저장·입력·Canvas 렌더링 |
+| `pvp.html`, `pvp.css`, `pvp-app.js` | 온라인 1:1 로비·입력·대전 렌더링 |
+| `pvp-simulation.js` | 고정 시간 간격의 결정론적 2인 대전·승패 |
+| `pvp-network.js` | 초대 방·WebRTC·HTTPS 중계·ACK와 세션 수명 |
+| `qa-pvp.cjs`, `qa-pvp-network.cjs`, `qa-pvp-input.cjs` | 대전 규칙, 통신 경합·재전송, 짧은 입력 보존 검사 |
 | `qa-smoke.cjs` | 80구역·난이도 비율·보스·세이브 마이그레이션 검사 |
 | `qa-motion.cjs` | 실제 게임 함수와 입력 이벤트를 실행하는 조작/렌더링 회귀 검사 |
 | `qa-bootstrap.cjs` | 프로필 응답 실패·타임아웃·스크립트 실패·재시도 검사 |
@@ -39,4 +43,6 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 
 PR과 `codex/**` 브랜치는 `check.yml`에서 검사합니다. `main` 변경은 `pages.yml` 검사 통과 후 GitHub Pages에 배포됩니다. 기본 브랜치를 병합하기 전까지 공개 사이트는 바뀌지 않습니다.
 
-릴리스 버전은 `package.json`, `VERSION.txt`, `game.js`, `index.html`에서 함께 변경합니다. 부팅 스크립트는 자신의 쿼리 버전을 나머지 JS와 공개 프로필 요청에 전달합니다.
+PVP 서버는 기존 월드 서버에 별도로 배포됩니다. API·소스·운영 범위는 [PVP.md](PVP.md)를 참고하세요. 캠페인과 PVP는 서로 다른 상태 및 저장 공간을 사용합니다.
+
+릴리스 버전은 `package.json`, `VERSION.txt`, `game.js`, `index.html`, `pvp.html`에서 함께 변경합니다. 부팅 스크립트는 자신의 쿼리 버전을 나머지 JS와 공개 프로필 요청에 전달합니다.

@@ -1601,3 +1601,11 @@ button:disabled {
     transition: none;
   }
 }
+
+/* Online duel entry stays inside the scrollable campaign menu. */
+.pvp-entry { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid rgba(99,221,218,.45); border-radius: 9px; color: #d8fffa; background: rgba(18,72,77,.34); text-decoration: none; font: 600 12px/1.4 system-ui,sans-serif; }
+.pvp-entry > span:last-child { color: #98c7cc; font-size: 10px; }
+.pvp-entry small { color: #7ce7cf; font-size: 8px; letter-spacing: .1em; }
+.pvp-entry:hover { background: rgba(28,102,105,.48); border-color: #7ce7cf; }
+.pvp-entry:focus-visible { outline: 2px solid #b9fff1; outline-offset: 4px; }
+@media (max-height: 600px) and (orientation: landscape) { .pvp-entry { margin-top: 6px; padding: 8px; font-size: 11px; } .pvp-entry > span:last-child { font-size: 9px; } }

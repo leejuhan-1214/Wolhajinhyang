@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="다른 PC의 친구와 함께하는 월하잔향 온라인 1:1 결투. 방을 만들고 초대 링크를 보내세요.">
+  <title>월하잔향 — 온라인 결투</title>
+  <link rel="stylesheet" href="pvp.css?v=3.8.0">
+</head>
+<body>
+  <main id="duel-shell" class="duel-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="월하잔향 캠페인으로"><span class="brand-mark" aria-hidden="true">月</span><span>월하잔향<small>MOONLIT ECHO · ONLINE DUEL</small></span></a>
+      <div class="top-actions"><span class="version">3.8.0</span><button id="sound-button" class="icon-button" type="button" aria-pressed="false" title="소리 켜기">소리 꺼짐</button><button id="fullscreen-button" class="icon-button" type="button">전체 화면</button><a class="back-link" href="./">캠페인으로 <span aria-hidden="true">↗</span></a></div>
+    </header>
+
+    <div class="duel-layout">
+      <section class="arena-panel" aria-label="결투 경기장">
+        <div class="arena-heading"><span><i class="live-dot" aria-hidden="true"></i> 백야 훈련장 <small>SEOUL SECTOR 07</small></span><span id="connection-quality">PRIVATE 1 VS 1</span></div>
+        <div class="arena-viewport">
+          <canvas id="duel-canvas" width="1280" height="720" tabindex="0" aria-label="온라인 결투 화면. A와 D 이동, 스페이스 점프, 왼쪽 클릭 발도, 오른쪽 클릭 샷건, 시프트 대시."></canvas>
+          <div class="arena-vignette" aria-hidden="true"></div>
+          <div id="combat-hud" class="combat-hud" hidden>
+            <div class="fighter-hud cyan"><div class="fighter-caption"><span id="fighter-0-name">청월</span><b id="fighter-0-score">0</b></div><div class="health-track"><i id="fighter-0-health"></i></div><div class="fighter-meta"><span id="fighter-0-ammo">산탄 ● ●</span><span id="fighter-0-dash">대시 준비</span></div></div>
+            <div class="round-hud"><small id="round-label">ROUND 01</small><strong id="round-time">90</strong><span>2선승</span></div>
+            <div class="fighter-hud red"><div class="fighter-caption"><span id="fighter-1-name">홍월</span><b id="fighter-1-score">0</b></div><div class="health-track"><i id="fighter-1-health"></i></div><div class="fighter-meta"><span id="fighter-1-ammo">산탄 ● ●</span><span id="fighter-1-dash">대시 준비</span></div></div>
+          </div>
+          <div id="arena-intro" class="arena-intro"><span class="eyebrow">TWO BLADES. ONE MOON.</span><h1>달 아래,<br>마주 선 두 잔향.</h1><p>같은 무기. 같은 조건.<br>승부를 가르는 건 당신의 한 수.</p><span class="arena-coordinate">37° 33′ N &nbsp; 126° 58′ E</span></div>
+          <div id="round-banner" class="round-banner" hidden aria-live="polite"><small id="banner-eyebrow"></small><strong id="banner-title"></strong><span id="banner-detail"></span></div>
+          <div id="focus-hint" class="focus-hint" hidden>화면을 클릭하면 조작할 수 있습니다. 결투는 계속 진행됩니다.</div>
+          <div class="arena-floor-label" aria-hidden="true"><span>BAEKYA / COMBAT SIMULATION</span><span>訓練場 — 07</span></div>
+        </div>
+        <div class="control-strip" aria-label="조작 안내"><span><kbd>A</kbd><kbd>D</kbd> 이동</span><span><kbd>SPACE</kbd> 이중 점프</span><span><kbd>좌클릭</kbd> 발도</span><span><kbd>우클릭</kbd> 샷건</span><span><kbd>SHIFT</kbd> 대시</span></div>
+      </section>
+
+      <aside id="lobby-panel" class="lobby-panel" aria-labelledby="lobby-title">
+        <div class="lobby-top"><span class="eyebrow">FRIEND MATCH</span><span class="online-tag">ONLINE · BETA</span></div>
+        <h2 id="lobby-title">온라인 결투</h2><p class="lobby-description">서로 다른 PC에서 만나는 1:1 대전.<br>친구를 초대하고 실력을 겨뤄보세요.</p>
+        <div id="entry-panel">
+          <button id="host-button" class="primary-button" type="button"><span>새 결투방 만들기</span><span aria-hidden="true">＋</span></button>
+          <div class="or-divider"><span>또는 초대받은 방에 참가</span></div>
+          <form id="join-form"><label for="room-input">방 코드 또는 초대 링크</label><div class="join-row"><input id="room-input" type="text" placeholder="방 코드 입력" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="join-hint"><button id="join-button" type="submit">참가 <span aria-hidden="true">→</span></button></div><p id="join-hint" class="field-hint">친구가 보낸 코드나 링크를 붙여 넣으세요.</p></form>
+        </div>
+        <section id="room-panel" hidden aria-label="결투 대기실">
+          <div class="room-code-box"><span>PRIVATE ROOM</span><label class="sr-only" for="room-code">초대할 방 코드</label><input id="room-code" readonly aria-label="초대할 방 코드"><div class="copy-actions"><button id="copy-code-button" type="button">코드 복사</button><button id="copy-link-button" type="button">초대 링크 복사 ↗</button></div></div>
+          <div class="seat cyan"><div class="seat-avatar" aria-hidden="true">01</div><div><b>청월 <small id="seat-0-owner">방장</small></b><span id="seat-0-status">준비 전</span></div><i id="seat-0-dot" class="seat-dot" aria-hidden="true"></i></div>
+          <div class="seat red"><div class="seat-avatar" aria-hidden="true">02</div><div><b>홍월 <small id="seat-1-owner">상대</small></b><span id="seat-1-status">상대를 기다리는 중</span></div><i id="seat-1-dot" class="seat-dot" aria-hidden="true"></i></div>
+          <button id="ready-button" class="secondary-button" type="button" disabled aria-pressed="false">준비 완료</button>
+          <button id="start-button" class="primary-button" type="button" disabled>결투 시작 <span aria-hidden="true">→</span></button>
+          <p id="ready-hint" class="field-hint">초대 링크를 친구에게 보내세요.</p>
+          <button id="leave-button" class="text-button" type="button">방 나가기</button>
+        </section>
+        <div id="status-box" class="status-box" role="status" aria-live="polite"><span id="status-dot" class="status-dot" aria-hidden="true"></span><p id="connection-status">방을 만들거나 친구의 방에 참가하세요.</p></div>
+        <div class="rules"><span class="eyebrow">DUEL RULES</span><div><strong>90<span>초 / 라운드</span></strong><strong>2<span>선승제</span></strong><strong>1:1<span>동일한 장비</span></strong></div><p>발도로 거리를 좁히고, 샷건 반동으로 공중을 장악하세요. 산탄은 자동으로 장전됩니다.</p></div>
+        <p class="desktop-note">키보드와 마우스가 있는 PC에 최적화되어 있습니다.</p>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>월하잔향: 백야 작전</span><span>친구와의 결투 · 계정 없이 바로</span><button id="match-leave-button" class="text-button" type="button" hidden>결투에서 나가기</button></footer>
+    <noscript><p class="noscript">온라인 결투를 하려면 JavaScript를 활성화해 주세요.</p></noscript>
+  </main>
+  <script src="pvp-simulation.js?v=3.8.0" defer></script>
+  <script src="pvp-network.js?v=3.8.0" defer></script>
+  <script src="pvp-app.js?v=3.8.0" defer></script>
+</body>
+</html>
