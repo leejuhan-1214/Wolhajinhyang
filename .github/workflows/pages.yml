@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run game and motion regression tests
-        run: node qa-motion.cjs
+        run: npm test
 
       - name: Verify release root and cache version
         shell: bash

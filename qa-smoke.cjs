@@ -83,16 +83,19 @@ let animationCallback = null;
 global.requestAnimationFrame = (callback) => { animationCallback = callback; return 1; };
 global.cancelAnimationFrame = () => {};
 
-const gameSource = fs.readFileSync("game.js", "utf8");
+const runtimeSource = fs.readFileSync("game.js", "utf8");
+const storySource = fs.readFileSync("story-data.js", "utf8");
+const gameSource = runtimeSource + "\n" + storySource;
 const indexSource = fs.readFileSync("index.html", "utf8");
-vm.runInThisContext(gameSource, { filename: "game.js" });
+vm.runInThisContext(storySource, { filename: "story-data.js" });
+vm.runInThisContext(runtimeSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;
-if (diagnostics.version !== "3.7.0") throw new Error(`wrong version ${diagnostics.version}`);
+if (diagnostics.version !== JSON.parse(fs.readFileSync("package.json", "utf8")).version) throw new Error(`wrong version ${diagnostics.version}`);
 const titleThumbnail = fs.readFileSync('title-screen-v3.6.26.png');
 const titleThumbnailWidth = titleThumbnail.readUInt32BE(16);
 const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
-if (!indexSource.includes('title-screen-v3.6.26.png') || titleThumbnailWidth !== 1920 || titleThumbnailHeight !== 1080 || titleThumbnail.length > 10 * 1024 * 1024 || !fs.readFileSync('styles.css', 'utf8').includes('visibility: hidden;')) {
+if (!indexSource.includes('title-screen-v3.6.26.png') || titleThumbnailWidth !== 1920 || titleThumbnailHeight !== 1080 || titleThumbnail.length > 10 * 1024 * 1024 || !indexSource.includes('id="start-title" class="visually-hidden"')) {
   throw new Error("v3.6.26 title-only opening artwork is not active");
 }
 if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
@@ -126,7 +129,7 @@ if (Object.values(diagnostics.difficultyBossCounts).some((count) => count !== 10
 if (!diagnostics.difficultyMobBuildMatchesTarget || diagnostics.builtAuthoredMobCount !== diagnostics.difficultyMobCounts.cadet || diagnostics.builtBossCount !== 10) {
   throw new Error(`built enemy population does not match selected difficulty: ${diagnostics.builtAuthoredMobCount}/${diagnostics.builtBossCount}`);
 }
-if (!diagnostics.startScreenDifficultyFlashGuard || !diagnostics.legacyDifficultyNamesMigrated || !indexSource.includes('data-game-bootstrap="loading"') || !indexSource.includes('data-difficulty="weapon" aria-pressed="false">지옥</button>')) {
+if (!diagnostics.startScreenDifficultyFlashGuard || !diagnostics.legacyDifficultyNamesMigrated || !indexSource.includes('data-game-bootstrap="loading"') || !/data-difficulty="weapon"[^>]*aria-pressed="false"[^>]*>지옥<\/button>/.test(indexSource)) {
   throw new Error("title-screen difficulty flash guard is missing");
 }
 if (!diagnostics.adminRDifficultySelector || diagnostics.adminRDifficultyChoices.join(",") !== "chick,cadet,darkhorse,weapon" || !diagnostics.adminPlaytestPreservesPosition || !diagnostics.adminPlaytestReturnWithR || !diagnostics.adminPlaytestUsesSelectedDifficulty || !diagnostics.adminPlaytestRebuildsDifficultyPopulation || !diagnostics.adminPlaytestRebuildsBossHp || !indexSource.includes('data-admin-difficulty="weapon"') || !gameSource.includes('toggleAdminCadetMode(button.dataset.adminDifficulty)')) {

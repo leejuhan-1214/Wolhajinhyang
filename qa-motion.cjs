@@ -5,15 +5,30 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 require('./qa-smoke.cjs');
 window.__MOONLIT_ECHO_RUNTIME_ACTIVE__ = false;
+const windowEvents = new Map();
+const documentEvents = new Map();
+const captureListener = (listeners) => (type, handler) => {
+  if (!listeners.has(type)) listeners.set(type, []);
+  listeners.get(type).push(handler);
+};
+window.addEventListener = captureListener(windowEvents);
+document.addEventListener = captureListener(documentEvents);
+function dispatch(listeners, type, details = {}) {
+  const event = {preventDefault() {}, stopPropagation() {}, ...details};
+  for (const handler of listeners.get(type) || []) handler(event);
+}
+function key(type, code, repeat = false) { dispatch(windowEvents, type, {code, repeat}); }
+
 const source = fs.readFileSync('game.js', 'utf8');
 const hook = `window.__MOTION_QA__ = { player, game, keys, pressed, platforms, enemies, bullets,
-  hazards, checkpoints, pickups, boostNodes, combatRooms, snowPatches, updatePlayer,
+  hazards, checkpoints, pickups, boostNodes, combatRooms, snowPatches, updatePlayer, update,
+  keyboardKeys, touchPointers, moveStick, clearGameplayInput, handleTouchControlDown, handleTouchControlUp, setTutorialPanel, closeTutorialPanel,
   startAttack, startShotgun, updateBullets, damagePlayer, frame, togglePause, drawPlayerBody, drawEnemy,
   drawCharacterArchive, drawHud, ctx, camera, rebuildPlatformSpatialIndex,
   toggleAdminCadetMode, teleportAdminToZone,
   unlockAdmin() { adminModeUnlocked = true; },
   setClock(now) { previousTime = now; },
-  hidePanels() { game.tutorialOpen = false; adminSpawnPanel.hidden = true; adminZonePanel.hidden = true; adminDifficultyPanel.hidden = true; }
+  hidePanels() { game.tutorialOpen = false; adminSpawnPanel.hidden = true; adminZonePanel.hidden = true; adminDifficultyPanel.hidden = true; startScreenEditor.hidden = true; }
 };`;
 const instrumentedSource = source.replace('function update(dt) {', 'function update(dt) { window.__MOTION_UPDATE_COUNT__ = (window.__MOTION_UPDATE_COUNT__ || 0) + 1;');
 vm.runInThisContext(instrumentedSource.replace(/\}\)\(\);\s*$/, hook + '\n})();'), { filename: 'game-motion-test.js' });
@@ -26,7 +41,7 @@ function fixture() {
   q.rebuildPlatformSpatialIndex();
   Object.assign(q.player, originalPlayer, {x:300,y:650-originalPlayer.h,vx:0,vy:0,grounded:true,hp:5,maxHp:5,invincible:0,attackTimer:0,attackCooldown:0,queuedAction:null,wallJumpLock:0,runCycle:0});
   Object.assign(q.game,{mode:'playing',difficulty:'darkhorse',adminMode:false,adminCadetMode:false,tutorialActive:false,tutorialCompleted:true,cutscene:null,story:null,storyQueue:[],freeze:0,zone:0,stage:0});
-  q.keys.clear(); q.pressed.clear(); q.hidePanels();
+  q.clearGameplayInput(); q.hidePanels(); document.hidden = false;
 }
 fixture();
 q.keys.add('KeyD');
@@ -96,6 +111,78 @@ fixture(); q.game.adminMode=true; q.setClock(1000); window.__MOTION_UPDATE_COUNT
 for(let i=1;i<=60;i++) q.frame(1000+i*1000/60);
 assert.equal(window.__MOTION_UPDATE_COUNT__,60,'60 FPS must not cause duplicate simulation work from floating-point rounding');
 
+// Pause and browser lifecycle regressions use the real event listeners.
+fixture();
+key('keydown','KeyD'); key('keydown','Space'); q.player.jumpBuffer=0.1;
+key('keydown','Escape');
+assert.equal(q.game.mode,'paused','Escape should pause once');
+assert.equal(q.keys.size,0,'pause must release keyboard input');
+assert.equal(q.pressed.size,0,'pause must discard pending action edges');
+assert.equal(q.player.jumpBuffer,0,'pause must discard a buffered jump');
+key('keydown','Escape',true);
+assert.equal(q.game.mode,'paused','holding Escape must not repeatedly toggle pause');
+key('keydown','KeyD',true);
+assert(!q.keys.has('KeyD'),'auto-repeat after pause must not restore a stale movement key');
+key('keyup','Escape'); key('keydown','Escape');
+assert.equal(q.game.mode,'playing','a fresh Escape press should resume');
+q.updatePlayer(1/60);
+assert(q.player.grounded,'resume must not replay the jump from before pause');
+
+fixture(); key('keydown','KeyD'); key('keydown','Space');
+q.player.queuedAction={kind:'slash',aim:null,time:0.1};
+document.hidden=true; dispatch(documentEvents,'visibilitychange');
+assert.equal(q.game.mode,'paused','switching mobile tabs must pause without needing blur');
+assert.equal(q.keys.size,0); assert.equal(q.keyboardKeys.size,0);
+assert.equal(q.player.queuedAction,null);
+q.setClock(1000); window.__MOTION_UPDATE_COUNT__=0;
+q.frame(6000);
+assert.equal(window.__MOTION_UPDATE_COUNT__,0,'hidden tabs must not simulate or render gameplay');
+document.hidden=false; dispatch(documentEvents,'visibilitychange');
+assert.equal(q.game.mode,'paused','tab return must wait for explicit resume');
+q.togglePause();
+assert.equal(q.keys.size,0,'resume must leave movement released');
+key('keydown','KeyA'); dispatch(windowEvents,'blur');
+assert.equal(q.game.mode,'paused'); assert.equal(q.keys.size,0);
+
+fixture(); q.setTutorialPanel(true); key('keydown','Space');
+assert.equal(q.game.tutorialOpen,false,'Space should dismiss the training panel');
+assert.equal(q.pressed.size,0,'dismissing a panel must not trigger a jump');
+assert.equal(q.keys.size,0);
+
+function touch(control, pointerId, type='down', x=640, y=360) {
+  const event={currentTarget:control,pointerId,pointerType:'touch',clientX:x,clientY:y,preventDefault(){},stopPropagation(){}};
+  if(type==='down') q.handleTouchControlDown(event); else q.handleTouchControlUp(event);
+}
+const jumpControl=document.getElementById('qa-jump'); jumpControl.dataset.touchAction='jump';
+const moveControl=document.getElementById('qa-move'); moveControl.dataset.touchAction='move';
+fixture(); key('keydown','Space'); touch(jumpControl,1); touch(jumpControl,1,'up');
+assert(q.keys.has('Space'),'releasing touch must preserve a held keyboard jump');
+touch(jumpControl,2); key('keyup','Space');
+assert(q.keys.has('Space'),'releasing keyboard must preserve a held touch jump');
+touch(jumpControl,2,'up'); assert(!q.keys.has('Space'));
+touch(moveControl,3,'down',1000); touch(moveControl,4,'down',100);
+assert.equal(q.touchPointers.size,1,'a second finger must not steal the active joystick');
+touch(moveControl,4,'cancel'); assert(q.moveStick.active);
+touch(moveControl,3,'cancel'); assert(!q.moveStick.active,'pointer cancellation must release the joystick');
+q.togglePause(); touch(jumpControl,5);
+assert.equal(q.touchPointers.size,0,'hidden gameplay controls must not queue input while paused');
+
+fixture(); q.game.adminMode=true; q.keys.add('KeyD'); q.game.freeze=0.005;
+const xBeforeFreeze=q.player.x;
+q.update(1/60);
+assert.equal(q.game.freeze,0,'hit-stop must end at zero');
+assert(Math.abs(q.player.x-xBeforeFreeze-890*(1/60-0.005))<0.001,'hit-stop must simulate the unfrozen remainder of a frame');
+function runWithHitStop(frameMs, frames) {
+  fixture(); q.game.adminMode=true; q.keys.add('KeyD'); q.game.freeze=0.02; q.setClock(1000);
+  for(let i=1;i<=frames;i++) q.frame(1000+i*frameMs);
+  return q.player.x;
+}
+assert(Math.abs(runWithHitStop(1000/60,6)-runWithHitStop(1000/120,12))<0.001,'hit-stop duration must not depend on screen refresh rate');
+fixture(); q.setClock(1000); window.__MOTION_UPDATE_COUNT__=0; q.frame(1000);
+assert.equal(window.__MOTION_UPDATE_COUNT__,0,'a duplicate frame timestamp must not consume input');
+q.game.adminMode=true; q.keys.add('KeyD'); q.frame(6000);
+assert(Math.abs(q.player.x-300-890*0.066)<0.001,'a stalled visible frame must retain the bounded catch-up limit');
+
 fixture(); q.unlockAdmin(); q.game.adminMode=true;
 q.player.queuedAction={kind:'slash',aim:null,time:0.1}; q.player.wallJumpLock=0.1;
 assert(q.toggleAdminCadetMode('cadet'));
@@ -125,4 +212,4 @@ for(const facing of [-1,1]) for(let phase=0;phase<12;phase++) {
   q.player.attackTimer=0; q.player.recoilTimer=0.3*(phase+1)/12;
   q.drawPlayerBody(500,400,facing);
 }
-console.log('Motion QA passed: ground/air gait, wall jump, input buffering, pause, mortar, low-FPS movement, all character renderers.');
+console.log('Motion QA passed: ground/air gait, wall jump, input buffering, pause/visibility lifecycle, hybrid touch input, hit-stop timing, mortar, low-FPS movement, all character renderers.');

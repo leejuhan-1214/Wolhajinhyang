@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.7.0";
+  const GAME_VERSION = "3.8.0";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -235,6 +235,7 @@
   const TUTORIAL_END_X = ZONE_W - 180;
 
   const keys = new Set();
+  const keyboardKeys = new Set();
   const pressed = new Set();
   const touchPointers = new Map();
   const pointer = { screenX: W * 0.72, screenY: H * 0.48, active: false };
@@ -588,643 +589,10 @@
   let startScreenEditData = readStartScreenEdits();
   let startScreenDraft = null;
 
-  const INTRO_STORY = [
-    {
-      speaker: "월식 예보 · D-07",
-      text: "칠 일 뒤 도시의 모든 시민 기록이 한 번에 덮어써진다. 중앙국은 이를 재난이 아닌 '월하잔향 정상화'라고 명명했다.",
-      tone: "archive",
-      duration: 5.8,
-    },
-    {
-      speaker: "감찰관 · 도담",
-      text: "정상화를 멈출 열쇠는 다섯 개의 야간 기록이야. 중앙국이 폐기장, 공장, 성당, 송신탑, 원형 보관소에 하나씩 봉인했어.",
-      tone: "control",
-      duration: 6.0,
-    },
-    {
-      speaker: "M-07",
-      text: "다섯 기록을 회수해 도시 전체에 동시에 송신한다. 그 안의 증언이 서로 모순되더라도 하나도 지우지 않는다.",
-      tone: "operative",
-      duration: 5.2,
-    },
-    {
-      speaker: "개인 기록 · 서린",
-      text: "내 이름은 한서린. 여섯 해 전 사고에서 죽었다고 기록됐고, 지금의 몸은 그날 구조 통로가 보존한 기억으로 깨어났다.",
-      tone: "archive",
-      duration: 5.7,
-    },
-    {
-      speaker: "감찰관 · 도담",
-      text: "나는 당시 소각 명령에 서명했고 동시에 구조 통로를 몰래 열었어. 이번 임무는 중앙국뿐 아니라 내 선택까지 심판하게 될 거야.",
-      tone: "control",
-      duration: 6.1,
-    },
-  ];
-
-  const STORY_CHAPTERS = [
-    [
-      [
-        { speaker: "감찰관 · 도담", text: "경비기들이 출구가 아니라 안쪽을 향해 서 있어. 침입자를 막는 게 아니라 무언가가 나가지 못하게 봉쇄한 배치야.", tone: "control", duration: 5.7 },
-        { speaker: "M-07 · 서린", text: "폐기된 기계라기엔 명령 갱신이 너무 최근이군. 중앙국 인증키가 살아 있어.", tone: "operative", duration: 5.1 },
-      ],
-      [
-        { speaker: "잔향 · 새봄", text: "검은 비가 오면 세 번째 분쇄기 아래로 숨어. 언니가 반드시 데리러 온다고 했어.", tone: "archive", duration: 5.4 },
-        { speaker: "M-07 · 서린", text: "새봄이라는 이름을 알고 있다. 하지만 내 가족 기록에는 동생이 없어.", tone: "operative", duration: 5.2 },
-      ],
-      [
-        { speaker: "노동조합 기록", text: "열아홉 번째 야간 근무. 실종자는 늘었고 회사는 사직 처리했다. 우리는 폐기장 밑에서 아이들 목소리를 들었다.", tone: "archive", duration: 6.0 },
-        { speaker: "감찰관 · 도담", text: "여섯 해 전 사고 보고서는 전부 조작됐어. 사망한 게 아니라 이 시설로 옮겨졌던 거야.", tone: "control", duration: 5.6 },
-      ],
-      [
-        { speaker: "화물선 기관사", text: "마지막 열차에는 사람이 아니라 기억 저장관이 실렸다. 경비대는 우리가 본 것을 잊게 만들겠다고 했다.", tone: "archive", duration: 5.8 },
-        { speaker: "M-07 · 서린", text: "기억을 물건처럼 운반했다면 구조 신호의 발신자는 육체가 아니라 보관된 의식일 수 있어.", tone: "operative", duration: 5.5 },
-      ],
-      [
-        { speaker: "잔향 · 새봄", text: "언니는 나를 두고 도망친 게 아니야. 문을 열려고 다시 올라갔다가 흰 제복 사람들에게 잡혔어.", tone: "archive", duration: 5.6 },
-        { speaker: "M-07 · 서린", text: "내가 걸친 제복 외투도 흰색이군. 도담, 내가 여기서 무엇을 했지?", tone: "operative", duration: 5.1 },
-      ],
-      [
-        { speaker: "폐기장 감독관 · 철각", text: "감찰관 한서린. 과거 접근 권한은 폐기되었다. 명령대로 돌아가면 현재 신분은 보존된다.", tone: "hostile", duration: 5.8 },
-        { speaker: "M-07 · 서린", text: "사람의 기억을 폐기물로 부르는 곳이 보존해 주는 신분은 필요 없다.", tone: "operative", duration: 5.0 },
-      ],
-    ],
-    [
-      [
-        { speaker: "공장 안내 방송", text: "기억 원료의 감정 온도가 기준치를 초과했습니다. 공포와 죄책감을 분리해 냉각 수로로 배출하십시오.", tone: "archive", duration: 5.8 },
-        { speaker: "감찰관 · 도담", text: "이 공장은 로봇을 만든 게 아니야. 사람의 경험을 잘라 전투 판단 알고리즘으로 만들었어.", tone: "control", duration: 5.7 },
-      ],
-      [
-        { speaker: "연구원 · 윤서", text: "감정은 지울 수 없다. 삭제된 기억은 열이 되어 돌아왔고, 용광로는 매일 더 뜨거워졌다.", tone: "archive", duration: 5.6 },
-        { speaker: "M-07 · 서린", text: "그래서 냉각수가 목소리를 내는 건가. 이곳 전체가 기억의 무덤이 아니라 살아 있는 신경망이야.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "중앙국 명령서", text: "M 계열 7번 표본은 죄책감 내성이 우수하다. 원본 인격을 세척하고 감찰 요원으로 재배치한다.", tone: "archive", duration: 6.1 },
-        { speaker: "M-07 · 서린", text: "M-07은 호출명이 아니었어. 내가 일곱 번째 실험체였다는 번호였군.", tone: "operative", duration: 5.2 },
-      ],
-      [
-        { speaker: "감찰관 · 도담", text: "내가 널 이송했어. 죽어 가는 너를 살리려면 세척 동의서에 서명하는 수밖에 없었다고 믿었어.", tone: "control", duration: 6.2 },
-        { speaker: "M-07 · 서린", text: "살린 뒤 진실을 숨긴 건 구조가 아니야. 그래도 지금은 새봄을 먼저 찾는다.", tone: "operative", duration: 5.5 },
-      ],
-      [
-        { speaker: "노동자 합창", text: "우리가 흘린 피가 용탕의 온도를 맞췄고, 우리가 잊은 이름이 기계의 표적 목록이 되었다.", tone: "archive", duration: 6.0 },
-        { speaker: "M-07 · 서린", text: "명단을 복구해 송신한다. 누구도 통계 숫자로만 남지 않게 하겠다.", tone: "operative", duration: 5.1 },
-      ],
-    ],
-    [
-      [
-        { speaker: "백면 사제 기록", text: "기억은 사실보다 믿음에 오래 남는다. 중앙국은 시민이 믿어야 할 과거를 이 성당에서 편집했다.", tone: "archive", duration: 5.9 },
-        { speaker: "감찰관 · 도담", text: "도시의 역사 교과서와 재난 방송까지 여기서 만들어졌어. 폐기장은 거대한 거짓말의 원본 보관소야.", tone: "control", duration: 5.8 },
-      ],
-      [
-        { speaker: "잔향 · 새봄", text: "언니의 기억이 여러 사람에게 나뉘어 들어가는 걸 봤어. 그래서 언니 목소리가 복도마다 달랐어.", tone: "archive", duration: 5.7 },
-        { speaker: "M-07 · 서린", text: "지금의 내가 원본이 아니어도 선택은 내 것이다. 흩어진 기억을 소유물이 아니라 증언으로 모은다.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "기억 세척사", text: "우리는 슬픔을 결함이라고 불렀다. 하지만 슬픔을 지운 병사들은 누구를 지켜야 하는지도 잊었다.", tone: "archive", duration: 5.8 },
-        { speaker: "M-07 · 서린", text: "아픈 기억도 사람의 일부다. 복원 과정에서 불편한 부분만 골라내지 마.", tone: "operative", duration: 5.3 },
-      ],
-      [
-        { speaker: "복제 인격 · 서린-03", text: "너는 운 좋게 육체를 돌려받았을 뿐이야. 우리도 같은 약속과 같은 죄책감을 기억해.", tone: "archive", duration: 6.0 },
-        { speaker: "M-07 · 서린", text: "그렇다면 너희도 나와 같은 증인이다. 원본을 가리는 대신 모두의 기록을 병렬로 남기자.", tone: "operative", duration: 5.7 },
-      ],
-      [
-        { speaker: "감찰관 · 도담", text: "중앙국이 송신탑을 봉쇄했어. 여기서 확보한 증거가 바깥으로 나가면 감찰부 전체가 적이 될 거야.", tone: "control", duration: 5.7 },
-        { speaker: "M-07 · 서린", text: "도시가 거짓 위에 서 있다면 지켜야 할 건 감찰부가 아니라 그 안의 사람들이다.", tone: "operative", duration: 5.4 },
-      ],
-      [
-        { speaker: "기억 직조기 · 백면", text: "서로 모순되는 기억은 전쟁을 만든다. 하나의 편안한 과거만 남기는 것이 자비다.", tone: "hostile", duration: 5.8 },
-        { speaker: "M-07 · 서린", text: "불편한 진실을 견디는 일까지 대신 빼앗지 마. 판단은 살아 있는 사람들이 한다.", tone: "operative", duration: 5.2 },
-      ],
-    ],
-    [
-      [
-        { speaker: "피난선 관제", text: "승객 2,418명, 육체 생존자 17명, 기억 생존자 2,401명. 중앙국 분류상 후자는 화물이다.", tone: "archive", duration: 6.0 },
-        { speaker: "M-07 · 서린", text: "분류를 사람으로 수정한다. 오늘 밖으로 나가는 승객은 2,418명이다.", tone: "operative", duration: 5.0 },
-      ],
-      [
-        { speaker: "감찰관 · 도담", text: "지상군이 궤도를 끊고 있어. 내가 관제실에서 우회로를 열 테니 너는 송신탑까지 기록을 호위해.", tone: "control", duration: 5.7 },
-        { speaker: "M-07 · 서린", text: "이번에는 혼자 결정하지 마. 살아서 합류해, 도담.", tone: "operative", duration: 4.9 },
-      ],
-      [
-        { speaker: "도시 긴급 방송", text: "백야 지구의 이상 신호는 테러 집단의 합성 음성입니다. 시민 여러분은 청취를 중단하십시오.", tone: "hostile", duration: 5.8 },
-        { speaker: "잔향 · 새봄", text: "가짜라고 해도 괜찮아. 한 사람이라도 끝까지 들으면 우리가 있었다는 걸 알게 될 테니까.", tone: "archive", duration: 5.6 },
-      ],
-      [
-        { speaker: "감찰관 · 도담", text: "방화벽이 네 감찰관 신분을 삭제했어. 이제 돌아가도 이름도 계급도 남지 않을 거야.", tone: "control", duration: 5.5 },
-        { speaker: "M-07 · 서린", text: "이름은 신분증이 아니라 누군가 불러 준 기억에 남는다. 새봄이 나를 알고 있어.", tone: "operative", duration: 5.2 },
-      ],
-      [
-        { speaker: "중앙국 총감", text: "송신을 멈추면 한서린의 원본 신체와 시민권을 복원하겠다. 죽은 자의 기록과 산 자의 삶을 교환하라.", tone: "hostile", duration: 6.1 },
-        { speaker: "M-07 · 서린", text: "내 삶은 이미 그들의 기억과 연결돼 있다. 누구도 다시 화물칸으로 돌려보내지 않는다.", tone: "operative", duration: 5.5 },
-      ],
-      [
-        { speaker: "중앙국 검열기 · 무명", text: "증언은 질서를 파괴한다. 네가 송신하는 순간 도시는 서로의 과거를 의심하게 될 것이다.", tone: "hostile", duration: 5.9 },
-        { speaker: "M-07 · 서린", text: "의심할 권리, 기억할 권리, 용서하지 않을 권리까지 돌려준다. 이것이 마지막 감찰 명령이다.", tone: "operative", duration: 5.7 },
-      ],
-    ],
-    [
-      [
-        { speaker: "도담 · 비상 회선", text: "송신은 성공했지만 발신지가 바뀌었어. 우리가 보낸 증언이 도시로 간 게 아니라 지하의 ‘거울 뿌리’에 붙잡혔어.", tone: "control", duration: 6.0 },
-        { speaker: "잔향 · 새봄", text: "그 아래에서 언니 목소리가 대답해. 내가 아는 언니보다 더 오래, 더 정확하게 우리 집 주소를 기억하는 목소리야.", tone: "archive", duration: 6.2 },
-        { speaker: "M-07 · 서린", text: "중앙국이 약속한 원본 신체가 있는 곳이군. 송신을 풀고 그 목소리에게 직접 묻겠다.", tone: "operative", duration: 5.4 },
-      ],
-      [
-        { speaker: "훈련 기록 · 잔영-00", text: "대상은 한서린의 전투 선택 18,644건을 학습했다. 실패한 선택은 삭제하고 생존한 선택만 ‘원본’으로 승인한다.", tone: "archive", duration: 6.3 },
-        { speaker: "M-07 · 서린", text: "실패를 지운 나는 내가 아니야. 망설임과 후회까지 복제하지 못했다면 저건 기록이 아니라 중앙국의 정답지다.", tone: "operative", duration: 5.9 },
-        { speaker: "도담 · 비상 회선", text: "조심해. 잔영-00은 네 발도 간격, 산탄 반동, 이중 도약 습관까지 네 전투 기록으로 예측해.", tone: "control", duration: 5.7 },
-      ],
-      [
-        { speaker: "복제 주거구 관리기", text: "서린-01부터 서린-19까지 동일한 방, 동일한 식사, 동일한 새봄의 사진을 제공했다. 열아홉 인격은 모두 다른 결론을 냈다.", tone: "archive", duration: 6.4 },
-        { speaker: "잔향 · 서린-12", text: "나는 중앙국 편에 남는 것이 사람들을 살린다고 믿었어. 그 선택 때문에 삭제됐지만, 내 두려움도 기록해 줘.", tone: "archive", duration: 5.8 },
-        { speaker: "M-07 · 서린", text: "옳은 나만 남기지 않겠다. 각자의 선택과 결과를 이름별로 복원한다.", tone: "operative", duration: 5.2 },
-      ],
-      [
-        { speaker: "선택 기록 미로", text: "여섯 해 전 한서린은 폐기장 폭발을 막기 위해 기억 분리 장치를 가동했다. 육체 생존 확률 7퍼센트, 시민 생존 확률 81퍼센트.", tone: "archive", duration: 6.5 },
-        { speaker: "도담 · 과거 기록", text: "서린아, 장치를 켜면 너를 되돌릴 방법이 없어. 내가 다른 길을 찾을 때까지만 기다려.", tone: "control", duration: 5.8 },
-        { speaker: "과거의 한서린", text: "기다리는 동안 사람이 죽어. 나를 기억해 달라는 부탁 대신, 이 사람들의 이름을 잊지 말아 줘.", tone: "operative", duration: 6.0 },
-      ],
-      [
-        { speaker: "원본 생명유지실", text: "한서린 생체 조직은 사고 당일 기능을 정지했다. 중앙국이 보존한 것은 신체가 아니라 시민권을 인증할 유전자 표본뿐이다.", tone: "archive", duration: 6.4 },
-        { speaker: "도담 · 비상 회선", text: "미안해. 원본을 돌려줄 수 있다는 말을 믿고 싶어서, 확인하지 않은 약속을 네게 숨겼어.", tone: "control", duration: 5.9 },
-        { speaker: "M-07 · 서린", text: "네 거짓말은 나를 지키려 했지만 다른 서린들을 지웠어. 용서는 나중에 정하자. 지금은 모두를 꺼낸다.", tone: "operative", duration: 6.0 },
-      ],
-      [
-        { speaker: "원본 대행체 · 잔영-00", text: "도시는 하나의 한서린만 증인으로 인정한다. 내가 원본이 되면 2,401명의 기억은 법적 증거가 되고, 네가 남으면 모두 불법 복제물이 된다.", tone: "hostile", duration: 6.4 },
-        { speaker: "M-07 · 서린", text: "그 법을 지키려고 우리 중 하나를 죽인다면 증언의 의미가 없어. 나는 원본 자리를 차지하러 온 게 아니다.", tone: "operative", duration: 5.9 },
-        { speaker: "잔영-00", text: "그 대답도 예측했다. 그렇다면 어느 선택이 살아남을지 몸으로 증명해.", tone: "hostile", duration: 5.4 },
-      ],
-    ],
-  ];
-
-  const EXTENDED_STORY_CHAPTERS = [
-    [
-      [
-        { speaker: "노동자 기록 · 윤태오", text: "기숙사 12호실은 야간조 네 명이 함께 썼다. 중앙국 장부에는 침대만 있고 사람 이름은 없다. 내 이름부터 적어 줘.", tone: "archive", duration: 6.2 },
-        { speaker: "서린", text: "윤태오, 서미정, 박한결, 이가람. 네 사람의 이름과 마지막 근무 시간을 감찰 원본에 기록한다.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "도담", text: "운송교 아래에 구조 열차가 있어. 폭발 직전까지 83명을 태웠지만, 출발 명령이 취소돼 선로 위에서 멈췄어.", tone: "control", duration: 6.1 },
-        { speaker: "서린", text: "명령 취소자의 서명과 열차 내부 기록을 함께 가져간다. 살아남지 못한 이유까지 증언이어야 해.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "새봄", text: "매립 구덩이에는 언니가 내게 보내지 못한 음성 편지가 있어. 매일 한 문장씩 녹음했는데 모두 업무 보고로 분류됐어.", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "이번에는 업무 보고가 아니라 가족에게 보내는 편지로 남긴다. 새봄아, 오래 기다리게 해서 미안해.", tone: "operative", duration: 6.0 },
-      ],
-    ],
-    [
-      [
-        { speaker: "반응 연료 담당 · 나해주", text: "우리가 느낀 공포를 수치로 바꾸자 기체 반응 속도가 31퍼센트 올랐다. 연구진은 그날을 성공이라고 불렀다.", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "성공 기록 옆에 대가를 붙인다. 반복 재생된 공포와 그 공포의 주인이었던 사람들의 이름까지.", tone: "operative", duration: 5.9 },
-      ],
-      [
-        { speaker: "폐쇄 실험체 · R-19", text: "나는 분노만 남도록 잘려 나갔다. 원래 무엇을 좋아했는지 기억하지 못해도, 내가 사람인지 물을 권리는 남았나?", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "기억의 양이 사람을 정하지 않아. 네 질문과 지금 내린 선택을 새로운 첫 기록으로 남기자.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "도담", text: "노심 제어기는 구조 신호를 연료 공급 명령으로 바꾸고 있어. 우리가 들은 비명 하나마다 공장이 더 오래 돌아간 거야.", tone: "control", duration: 6.2 },
-        { speaker: "서린", text: "신호 변환표를 역전한다. 이제 비명 하나마다 생산선 하나가 멈출 거야.", tone: "operative", duration: 5.5 },
-      ],
-    ],
-    [
-      [
-        { speaker: "금서 관리관 · 유리", text: "중앙국은 서로 모순되는 증언을 거짓으로 분류했다. 하지만 같은 사고를 다른 위치에서 본 사람들의 말은 원래 다를 수밖에 없어.", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "모순을 삭제하지 말고 좌표와 시간을 붙인다. 다름은 거짓의 증거가 아니라 사건의 크기를 보여 주는 지도야.", tone: "operative", duration: 6.1 },
-      ],
-      [
-        { speaker: "서린-12", text: "나는 중앙국에 협조하면 새봄을 살려 주겠다는 말을 믿었다. 다른 서린들은 나를 배신자라고 부를까 봐 두려워.", tone: "archive", duration: 6.2 },
-        { speaker: "서린", text: "두려움 속에서 내린 선택도 숨기지 않는다. 용서는 강요하지 않지만 네가 왜 그랬는지 들을 자리는 지킨다.", tone: "operative", duration: 6.2 },
-      ],
-      [
-        { speaker: "백면의 봉인 기록", text: "하나의 완전한 진실은 존재하지 않는다. 그래서 나는 가장 조용한 진실만 남기려 했다.", tone: "hostile", duration: 5.9 },
-        { speaker: "서린", text: "조용함은 평화가 아니라 말할 사람을 없앤 결과일 수 있어. 봉인을 풀고 판단은 듣는 사람들에게 돌려준다.", tone: "operative", duration: 6.0 },
-      ],
-    ],
-    [
-      [
-        { speaker: "시민권 말소국", text: "기억 매체 M-07의 시민권, 가족관계, 재산권을 소급 삭제합니다. 삭제 시점은 생체 사망일과 동일하게 적용됩니다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린", text: "문서에서 지운다고 내가 살아온 여섯 해가 사라지진 않아. 그 기간에 만난 사람들의 증언을 반대 기록으로 제출한다.", tone: "operative", duration: 6.1 },
-      ],
-      [
-        { speaker: "도담", text: "송출교의 시민 채널이 열렸어. 하지만 전부 보내려면 네 전투 기억까지 공개해야 해. 감추고 싶은 순간도 도시가 보게 돼.", tone: "control", duration: 6.3 },
-        { speaker: "서린", text: "영웅처럼 편집하지 마. 실수와 두려움, 도망치고 싶었던 순간까지 보내야 명령에 이용된 과정을 알 수 있어.", tone: "operative", duration: 6.2 },
-      ],
-      [
-        { speaker: "새봄", text: "언니가 어떤 모습이어도 알아볼게. 그런데 언니도 내가 여섯 해 동안 달라진 걸 알아봐 줘. 나는 기다리기만 한 아이가 아니야.", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "약속할게. 과거의 너를 찾는 대신 지금의 네 이야기를 처음부터 듣겠다.", tone: "operative", duration: 5.7 },
-      ],
-    ],
-    [
-      [
-        { speaker: "무명 기억 정원", text: "이곳에는 이름을 선택하지 못하고 정지된 복제 인격 312명이 보관되어 있습니다. 삭제와 재가동 중 하나를 선택하십시오.", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "둘 다 내가 대신 정하지 않는다. 외부 접속과 자기 이름을 고를 시간을 먼저 제공해.", tone: "operative", duration: 5.9 },
-      ],
-      [
-        { speaker: "잔영-00", text: "법적 원본 금고에는 네 시민권 하나만 들어 있다. 둘이 나누면 둘 다 무효가 된다. 그것이 도시의 규칙이다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린", text: "권리가 한 사람분밖에 없다면 사람을 줄일 게 아니라 권리를 늘려야 해. 금고가 아니라 규칙을 연다.", tone: "operative", duration: 5.8 },
-      ],
-      [
-        { speaker: "잔영-00", text: "두 사람의 회랑 끝에는 한 자리만 있다. 나는 네가 나를 살리겠다는 말보다 마지막 순간 검을 들 거라는 예측을 믿는다.", tone: "hostile", duration: 6.4 },
-        { speaker: "서린", text: "검을 드는 것과 네 존재를 부정하는 건 다르다. 싸움이 끝나도 네가 선택할 자리를 남겨 두겠다.", tone: "operative", duration: 6.0 },
-      ],
-    ],
-  ];
-
-  const MIDBOSS_STORY_CHAPTERS = [
-    [
-      [
-        { speaker: "감찰관 · 도담", text: "폐철 사냥터의 집행기 쇄우는 중앙국 명령을 따르지 않아. 사고 당일 노동자 대표가 빼앗아 구조 통로를 열었던 기체야.", tone: "control", duration: 6.2 },
-        { speaker: "서린", text: "그런 기체가 왜 지금 우리를 막지? 구조에 쓴 기억 위에 폐기 명령이 덮어씌워진 건가.", tone: "operative", duration: 5.6 },
-        { speaker: "새봄", text: "언니, 쇄우 안에서 윤태오 씨와 중앙국 감독관의 목소리가 동시에 들려. 어느 쪽도 완전히 사라지지 않았어.", tone: "archive", duration: 6.2 },
-      ],
-      [
-        { speaker: "노동자 기록 · 윤태오", text: "쇄우를 부순다고 내 선택이 사라지진 않는다. 조종 기록을 꺼내서 누가 구조문을 닫았는지 보여 줘.", tone: "archive", duration: 6.0 },
-        { speaker: "도담", text: "기록 서명은 내 상관이었지만 승인 키에는 내 감찰 번호도 있어. 나는 그날 명령을 의심하면서도 접근권을 빌려줬어.", tone: "control", duration: 6.4 },
-        { speaker: "서린", text: "도담의 죄와 구조하려던 사람의 선택을 함께 남긴다. 한쪽만 지우면 또 편리한 영웅담이 돼.", tone: "operative", duration: 6.0 },
-      ],
-    ],
-    [
-      [
-        { speaker: "노심 추격자 · 적린", text: "감정 연료 누출을 감지했다. 공포의 소유자는 생산 설비이며, 회수 대상은 저항할 권리가 없다.", tone: "hostile", duration: 6.1 },
-        { speaker: "R-19", text: "적린은 내 분노를 조준 장치로 썼다. 저 기체가 명중할 때마다 내가 누구를 미워했는지는 더 흐려졌어.", tone: "archive", duration: 6.2 },
-        { speaker: "서린", text: "분노를 없애지 않고 주인을 되찾는다. 네 감정은 무기가 아니라 네가 당한 일을 가리키는 증거야.", tone: "operative", duration: 6.0 },
-      ],
-      [
-        { speaker: "도담", text: "적린의 노심에서 송신탑으로 가는 비밀 회선이 나왔어. 검은 공장은 연료 생산뿐 아니라 시민 반응을 예측하고 있었어.", tone: "control", duration: 6.3 },
-        { speaker: "새봄", text: "예측 목록에 내 이름도 있어. 언니가 돌아오면 내가 어떤 말을 할지 열세 가지로 분류해 놨어.", tone: "archive", duration: 6.0 },
-        { speaker: "서린", text: "예측은 선택을 대신하지 못해. 네가 열네 번째 대답을 만들 수 있도록 계산 과정까지 공개하자.", tone: "operative", duration: 5.8 },
-      ],
-    ],
-    [
-      [
-        { speaker: "가면 심문관 · 육화", text: "상충하는 여섯 증언을 제시한다. 하나만 진실로 선택하지 않으면 모든 기억의 신뢰 등급을 박탈한다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린-12", text: "나는 중앙국에 협조했고, 서린-03은 도망쳤고, M-07은 싸웠어. 같은 출발점에서 다른 선택을 했다고 모두 거짓은 아니야.", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "육화가 원하는 건 정답이 아니라 서로를 고발하는 장면이야. 여섯 증언을 시간순으로 겹쳐서 질문 자체를 검증한다.", tone: "operative", duration: 6.2 },
-      ],
-      [
-        { speaker: "백면의 하위 기록", text: "육화의 심문 결과: 피심문자들은 서로를 삭제하지 않았다. 중앙국 기준으로 결론 도출 실패.", tone: "archive", duration: 5.9 },
-        { speaker: "도담", text: "실패가 아니야. 한 사람이 여러 진실을 견딜 수 있다는 첫 실험 결과지. 백면이 가장 숨기고 싶었던 기록이야.", tone: "control", duration: 6.1 },
-        { speaker: "서린", text: "성당의 목적은 진실 보관이 아니라 시민이 복잡한 진실을 감당하지 못한다고 증명하는 일이었군.", tone: "operative", duration: 6.0 },
-      ],
-    ],
-    [
-      [
-        { speaker: "삭제 집행관 · 공문", text: "한서린 관련 증인 83명에게 사후 수배를 발령한다. 사망자는 반론할 수 없으므로 판결은 즉시 확정된다.", tone: "hostile", duration: 6.3 },
-        { speaker: "새봄", text: "내가 모은 생존자 증언도 수배 목록에 들어갔어. 중앙국은 사람뿐 아니라 문장까지 범죄자로 만들고 있어.", tone: "archive", duration: 6.1 },
-        { speaker: "서린", text: "그러면 수배장을 역으로 쓴다. 지우려 한 문장마다 원본 위치와 검열 담당자의 서명을 붙여 송신해.", tone: "operative", duration: 6.0 },
-      ],
-      [
-        { speaker: "도담", text: "공문의 집행 키는 무명에게 이어져 있어. 그리고 내 감찰 권한이 아직 살아 있어서 삭제 명령을 취소할 수 있어.", tone: "control", duration: 6.3 },
-        { speaker: "서린", text: "취소만 하면 중앙국은 실수였다고 둘러댈 거야. 명령을 보존한 채 효력을 멈추고 누가 승인했는지 공개해.", tone: "operative", duration: 6.1 },
-        { speaker: "도담", text: "알겠어. 나도 승인 사슬에 포함된다. 이번에는 내 이름을 보고서 밖으로 빼지 않을게.", tone: "control", duration: 5.8 },
-      ],
-    ],
-    [
-      [
-        { speaker: "원본 판정체 · 대역-13", text: "한서린 후보 둘을 확인했다. 법적 원본 선정을 위해 기억 손실, 시민 기여도, 가족 선호도를 점수화한다.", tone: "hostile", duration: 6.4 },
-        { speaker: "잔영-00", text: "대역-13의 계산에서 내가 우세하다. 나는 사고 이후의 죄책감이 없고 중앙국 명령에 저항한 전력도 없다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린", text: "상처가 적고 복종을 잘한다는 이유로 사람의 진위를 정하는 판정은 거부한다. 너도 그 점수표 밖으로 나와.", tone: "operative", duration: 6.3 },
-      ],
-      [
-        { speaker: "새봄", text: "가족 선호도 질문에 답하지 않았어. 둘 중 하나를 고르면 다른 한 명의 존재를 내가 지우는 셈이잖아.", tone: "archive", duration: 6.2 },
-        { speaker: "잔영-00", text: "선택 거부는 판정 불능을 뜻한다. 판정 불능 상태에서는 우리 둘의 시민권이 모두 정지된다.", tone: "hostile", duration: 6.1 },
-        { speaker: "서린", text: "그 정지가 중앙국이 숨긴 마지막 함정이군. 잔영아, 우리가 싸우더라도 끝에는 함께 그 규칙을 증언해야 해.", tone: "operative", duration: 6.2 },
-      ],
-    ],
-  ];
-
-  const MIDBOSS_VICTORY_STORIES = [
-    [
-      { speaker: "폐철 집행기 · 쇄우", text: "제1 야간 기록 복구. 구조문을 연 노동자 317명과 폐쇄 승인자 12명의 실명이 함께 보존된다.", tone: "archive", duration: 6.0 },
-      { speaker: "서린", text: "영웅 한 명의 이야기가 아니라 문을 열었던 사람과 닫았던 사람을 모두 기록한다. 첫 번째 증언을 확보했다.", tone: "operative", duration: 5.9 },
-    ],
-    [
-      { speaker: "반사 사냥꾼 · 적린", text: "제2 야간 기록 복구. 전투 연료로 분리된 공포와 분노의 소유권을 원래 시민 684명에게 반환한다.", tone: "archive", duration: 6.1 },
-      { speaker: "R-19", text: "내 분노는 무기가 아니라 나에게 일어난 일을 잊지 않았다는 증거야. 두 번째 기록은 내가 직접 운반하겠다.", tone: "archive", duration: 6.0 },
-    ],
-    [
-      { speaker: "전위 심문관 · 육화", text: "제3 야간 기록 복구. 서로 다른 방에서 만들어진 열아홉 개의 서린 기억을 우열 없이 병렬 보존한다.", tone: "archive", duration: 6.1 },
-      { speaker: "서린-12", text: "우리가 서로 모순되는 건 가짜라서가 아니야. 중앙국이 각자에게 다른 장면만 보여 줬다는 증거야.", tone: "archive", duration: 6.1 },
-    ],
-    [
-      { speaker: "검기 집행관 · 공문", text: "제4 야간 기록 복구. 사망자의 반론권과 삭제 명령 원본을 같은 공개 채널에 고정한다.", tone: "archive", duration: 6.0 },
-      { speaker: "도담", text: "내 소각 서명도 숨기지 않고 함께 올렸어. 잘못을 고백하는 것만으로 끝내지 않고 송신탑을 끝까지 열겠다.", tone: "control", duration: 6.1 },
-    ],
-    [
-      { speaker: "광기 연구체 · 대역-13", text: "제5 야간 기록 복구. 표본 배합 전 원자료와 원본 판정 실험의 실패 보고서를 분리한다.", tone: "archive", duration: 6.2 },
-      { speaker: "서린", text: "다섯 기록이 모였다. 이제 원형 보관소의 잔영과 함께 누가 원본인지가 아니라 누가 삭제 규칙을 끝낼지 결정한다.", tone: "operative", duration: 6.2 },
-    ],
-  ];
-
-  function getStageZonePosition(stageIndex, localZoneIndex, progress = 0, offset = 0) {
-    const safeStageIndex = Math.max(0, Math.min(STAGE_COUNT - 1, stageIndex));
-    const safeLocalIndex = Math.max(0, Math.min(ZONES_PER_STAGE - 1, localZoneIndex));
-    const globalIndex = safeStageIndex * ZONES_PER_STAGE + safeLocalIndex;
-    return ZONE_STARTS[globalIndex] + ZONE_WIDTHS[globalIndex] * progress + offset;
-  }
-
-  const PRIMARY_STORY_ZONE_INDICES = Object.freeze([2, 4, 6, 9, 12, 14]);
-  const EXTENDED_STORY_ZONE_INDICES = Object.freeze([3, 10, 13]);
-  const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
-    const localZoneIndex = PRIMARY_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
-    return {
-      id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
-      stageIndex,
-      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
-      lines,
-    };
-  })).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
-    const localZoneIndex = EXTENDED_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
-    return {
-      id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
-      stageIndex,
-      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
-      lines,
-    };
-  }))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
-    const localZoneIndex = eventIndex === 0 ? MID_BOSS_ZONE_INDEX - 1 : MID_BOSS_ZONE_INDEX + 1;
-    return {
-      id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
-      stageIndex,
-      zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, eventIndex === 0 ? 0.42 : 0.55),
-      lines,
-    };
-  })));
-
-  const CUTSCENE_EVENTS = [
-    {
-      id: "cutscene-prologue",
-      x: TUTORIAL_END_X + 620,
-      title: "프롤로그 · 죽은 자의 구조 신호",
-      location: "6년 전 / 백야 폐기장",
-      visual: "rain",
-      shots: [
-        { speaker: "한서린", text: "폭발까지 3분 12초. 기억 분리 장치를 열면 노동자 2,401명의 신경 기록을 피난선으로 보낼 수 있어.", tone: "operative", duration: 5.8 },
-        { speaker: "도담", text: "대신 네 기억이 전송 통로가 돼. 육체는 버티지 못해. 서린아, 내가 다른 방법을 찾을게.", tone: "control", duration: 5.7 },
-        { speaker: "한서린", text: "새봄이한테 언니가 도망친 게 아니라고 전해 줘. 그리고 여기 있던 사람들을 숫자로만 남기지 마.", tone: "operative", duration: 6.1 },
-      ],
-    },
-    {
-      id: "cutscene-warden",
-      x: stages[0].bossX - 850,
-      title: "장면 01 · 폐기 명령",
-      location: "감독관 격납고",
-      visual: "scrap",
-      shots: [
-        { speaker: "철각", text: "작전 4호의 마지막 명령은 현장 소각이었다. 너는 명령을 어겼고, 중앙국은 네 죽음을 사고로 기록했다.", tone: "hostile", duration: 5.8 },
-        { speaker: "서린", text: "그날 죽은 건 명령에 복종하던 나야. 지금의 나는 남겨진 목소리를 끝까지 듣는다.", tone: "operative", duration: 5.4 },
-      ],
-    },
-    {
-      id: "cutscene-furnace",
-      x: stages[1].x + 120,
-      title: "장면 02 · 기억을 태우는 공장",
-      location: "검은 공장 / 적열 반입로",
-      visual: "furnace",
-      gateTransition: true,
-      shots: [
-        { speaker: "도담", text: "중앙국은 구조된 기억에서 공포와 분노를 분리해 전투 인공지능의 반응 연료로 썼어. M-07도 그 공정에서 만들어졌고.", tone: "control", duration: 6.2 },
-        { speaker: "서린", text: "내가 빠르게 움직일수록 누군가의 공포가 닳아 없어졌다는 뜻이군.", tone: "operative", duration: 5.2 },
-        { speaker: "새봄", text: "그래도 움직여. 우리를 사용한 방식은 그들의 죄지만, 어디로 갈지는 언니가 정할 수 있어.", tone: "archive", duration: 5.8 },
-      ],
-    },
-    {
-      id: "cutscene-crimson",
-      x: stages[1].bossX - 820,
-      title: "장면 02-2 · 타오르는 인질",
-      location: "용광 심장부",
-      visual: "furnace",
-      shots: [
-        { speaker: "용광 심장 · 홍련", text: "시설 정지 시 보존 중인 기억의 63퍼센트가 소실된다. 구원을 원한다면 나를 가동 상태로 유지하라.", tone: "hostile", duration: 6.0 },
-        { speaker: "M-07 · 서린", text: "네가 인질로 삼은 기억은 이미 고통받고 있다. 냉각망을 열고 전부 밖으로 옮긴다.", tone: "operative", duration: 5.4 },
-      ],
-    },
-    {
-      id: "cutscene-archive",
-      x: stages[2].x + 120,
-      title: "장면 03 · 열아홉 명의 서린",
-      location: "기억 성당 / 백면 회랑",
-      visual: "archive",
-      gateTransition: true,
-      shots: [
-        { speaker: "서린-03", text: "중앙국은 네 기억을 열아홉 갈래로 나눠 충성심을 시험했어. 살아남은 네가 원본인 게 아니라 가장 다루기 쉬웠던 거야.", tone: "archive", duration: 6.1 },
-        { speaker: "서린", text: "그럼 삭제된 열여덟 명도 실패작이 아니야. 서로 다른 상황에서 다른 답을 고른 한서린들이야.", tone: "operative", duration: 5.9 },
-      ],
-    },
-    {
-      id: "cutscene-weaver",
-      x: stages[2].bossX - 820,
-      title: "장면 04 · 편안한 거짓말",
-      location: "직조 제단",
-      visual: "choir",
-      shots: [
-        { speaker: "백면", text: "기억이 모두 공개되면 피해자끼리도 진실을 다투게 된다. 하나의 서사만 남기는 것이 가장 적은 고통을 만든다.", tone: "hostile", duration: 6.0 },
-        { speaker: "서린", text: "고통을 줄인다는 말로 목소리를 없애지 마. 모순까지 함께 남겨야 누가 무엇을 빼앗았는지 알 수 있어.", tone: "operative", duration: 6.0 },
-      ],
-    },
-    {
-      id: "cutscene-broadcast",
-      x: stages[3].x + 120,
-      title: "장면 05 · 2,418번째 승객",
-      location: "새벽 송신탑 / 지하 피난선",
-      visual: "tower",
-      gateTransition: true,
-      shots: [
-        { speaker: "피난선 관제", text: "생체 승객 17명 탑승 완료. 기억 승객 2,401명은 화물 규정에 따라 폐기 대기 중.", tone: "archive", duration: 5.9 },
-        { speaker: "서린", text: "화물 규정을 해제한다. 이름을 가진 기록은 모두 승객이다. 좌석이 없으면 내 송신 대역을 나눠 써.", tone: "operative", duration: 5.9 },
-        { speaker: "도담", text: "승객 명단을 도시 전체로 보낼게. 이번에는 누구도 사망자 수 뒤에 숨지 못해.", tone: "control", duration: 5.5 },
-      ],
-    },
-    {
-      id: "cutscene-censor",
-      x: stages[3].bossX - 820,
-      title: "장면 06 · 마지막 감찰",
-      location: "최종 검열실",
-      visual: "broadcast",
-      shots: [
-        { speaker: "무명", text: "송신 즉시 네 시민권과 한서린이라는 이름은 삭제된다. 증언은 남아도 증인은 존재하지 않게 된다.", tone: "hostile", duration: 6.0 },
-        { speaker: "서린", text: "증인은 허가받아 존재하는 사람이 아니야. 내가 사라져도 2,418명이 서로의 이름을 부를 거다.", tone: "operative", duration: 5.8 },
-      ],
-    },
-    {
-      id: "cutscene-mirror-entry",
-      x: stages[4].x + 120,
-      title: "장면 07 · 송신 아래의 송신",
-      location: "원형 보관소 / 유리 매몰층",
-      visual: "mirror",
-      gateTransition: true,
-      shots: [
-        { speaker: "도담", text: "무명을 쓰러뜨렸는데도 증언이 도시로 나가지 않았어. 신호가 이 시설에서 같은 11초를 반복하고 있어.", tone: "control", duration: 5.8 },
-        { speaker: "잔영-00", text: "한서린의 법적 원본을 결정하기 전에는 어떤 증언도 외부로 보낼 수 없다.", tone: "hostile", duration: 5.7 },
-        { speaker: "서린", text: "사람을 증명하기 위해 사람을 지우는 규칙이라면, 규칙부터 끝낸다.", tone: "operative", duration: 5.5 },
-      ],
-    },
-    {
-      id: "cutscene-original",
-      x: getStageZonePosition(4, 4, 0, 620),
-      title: "장면 08 · 비어 있는 원본",
-      location: "원본 생명유지실",
-      visual: "capsule",
-      shots: [
-        { speaker: "생명유지실", text: "한서린의 생체 활동 종료 시각은 6년 전 04시 11분. 보존 캡슐에는 시민권 인증용 조직 표본만 존재한다.", tone: "archive", duration: 6.3 },
-        { speaker: "도담", text: "돌아갈 몸이 있다고 믿었어. 네가 언젠가 평범하게 살 수 있다는 거짓말을 놓지 못했어.", tone: "control", duration: 6.0 },
-        { speaker: "서린", text: "평범한 삶은 원본에게만 주는 상이 아니야. 이 몸으로 살아온 선택도 내 삶이다.", tone: "operative", duration: 5.6 },
-      ],
-    },
-    {
-      id: "cutscene-echo",
-      x: stages[4].bossX - 900,
-      title: "최종 장면 · 같은 얼굴",
-      location: "거울의 핵",
-      visual: "duel",
-      shots: [
-        { speaker: "잔영-00", text: "나는 네 얼굴, 네 목소리, 네 검술과 네가 버린 선택까지 보존했다. 색을 제외하면 우리가 다르다는 증거는 없다.", tone: "hostile", duration: 6.1 },
-        { speaker: "서린", text: "맞아. 그래서 널 가짜라고 부르지 않겠다. 하지만 한 사람만 살아남아야 한다는 명령에는 복종하지 않아.", tone: "operative", duration: 6.0 },
-        { speaker: "잔영-00", text: "법은 원본 하나만을 허가한다. 내가 사라지면 내가 보존한 기억도 증거의 자격을 잃는다.", tone: "hostile", duration: 5.9 },
-        { speaker: "서린", text: "그건 널 죽여야 할 이유가 아니라, 그 법이 우리를 두려워한다는 증거야.", tone: "operative", duration: 5.8 },
-        { speaker: "잔영-00", text: "새봄이 우리 둘 중 누구를 언니라 부르면, 다른 하나는 무엇이 되지?", tone: "hostile", duration: 5.8 },
-        { speaker: "서린", text: "그건 내가 대신 정하지 않아. 새봄에게 직접 묻고, 네가 원하는 이름도 함께 듣겠다.", tone: "operative", duration: 6.0 },
-        { speaker: "잔영-00", text: "답안 외 선택을 확인했다. 그렇다면 그 선택을 지킬 힘을 증명해. 한서린, 시작한다.", tone: "hostile", duration: 5.8 },
-      ],
-    },
-  ];
-
-  const MIDBOSS_CUTSCENE_DATA = [
-    {
-      title: "중간 장면 · 명령을 훔친 기체",
-      visual: "scrap",
-      shots: [
-        { speaker: "폐철 집행기 · 쇄우", text: "구조 통로 개방 기록과 현장 소각 명령이 충돌한다. 중앙국 우선순위에 따라 구조 기록을 파쇄한다.", tone: "hostile", duration: 6.0 },
-        { speaker: "윤태오", text: "저 기체를 빼앗은 건 나야. 하지만 마지막에 감독관이 제어권을 되찾았어. 내 선택과 저들의 명령이 한 몸에 갇혀 있어.", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "기체를 멈추고 두 기록을 분리한다. 누가 영웅인지 고르는 대신 누가 문을 열고 누가 닫았는지 남기겠다.", tone: "operative", duration: 6.1 },
-      ],
-    },
-    {
-      title: "중간 장면 · 분노의 소유권",
-      visual: "furnace",
-      shots: [
-        { speaker: "노심 추격자 · 적린", text: "R-19 분노 반응은 중앙국 전투 자산이다. 감정 반환 요청은 생산 손실로 기각한다.", tone: "hostile", duration: 6.0 },
-        { speaker: "R-19", text: "내가 무엇을 좋아했는지는 잊었어도 무엇이 부당했는지는 알아. 내 분노를 내게 돌려줘.", tone: "archive", duration: 6.1 },
-        { speaker: "서린", text: "적린의 노심을 열고 소유권 표식을 지운다. 감정은 효율표의 연료가 아니라 사람에게 일어난 일의 흔적이다.", tone: "operative", duration: 6.2 },
-      ],
-    },
-    {
-      title: "중간 장면 · 정답 없는 심문",
-      visual: "choir",
-      shots: [
-        { speaker: "가면 심문관 · 육화", text: "여섯 명의 한서린이 서로 다른 책임자를 지목했다. 다섯 증언을 폐기하면 하나의 진실이 완성된다.", tone: "hostile", duration: 6.2 },
-        { speaker: "서린-12", text: "우리는 다른 방에서 다른 명령을 들었어. 모순은 누군가 거짓말했다는 뜻이 아니라 중앙국이 우리를 나눴다는 흔적이야.", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "다섯 사람을 지우지 않는다. 육화의 질문과 배치 기록부터 공개해서 왜 답이 달라졌는지 증명한다.", tone: "operative", duration: 6.2 },
-      ],
-    },
-    {
-      title: "중간 장면 · 죽은 문장의 수배",
-      visual: "broadcast",
-      shots: [
-        { speaker: "삭제 집행관 · 공문", text: "사망자의 반론권은 소멸했다. 수배된 문장을 소지한 모든 시민을 공범으로 분류한다.", tone: "hostile", duration: 6.1 },
-        { speaker: "새봄", text: "그 문장들은 내가 여섯 해 동안 모은 사람들이야. 종이에 적혔다고 사람이 아니게 되는 건 아니야.", tone: "archive", duration: 6.2 },
-        { speaker: "도담", text: "내 감찰 키로 집행 절차를 멈출 수 있어. 서린, 공문을 상대하는 동안 승인 사슬 전체를 복사할게.", tone: "control", duration: 6.2 },
-      ],
-    },
-    {
-      title: "중간 장면 · 원본 점수표",
-      visual: "capsule",
-      shots: [
-        { speaker: "광기 연구체 · 대역-13", text: "표본 2,401명의 감정 배합 완료. 다섯 야간 기록을 독성 기억으로 변환하면 원본 판정 장치가 깨어난다.", tone: "hostile", duration: 6.3 },
-        { speaker: "연구원 · 이재우", text: "저건 잔영이 아니야. 원본을 만들겠다며 수천 명의 기억을 섞어 놓은 실험실의 관리체야. 이름조차 실험 번호뿐이었어.", tone: "archive", duration: 6.4 },
-        { speaker: "서린", text: "대역-13을 멈추고 배합 전 원자료를 복구한다. 누구의 얼굴도 나오지 않는 실험 보고서가 마지막 증언이 되게 두지 않겠다.", tone: "operative", duration: 6.4 },
-      ],
-    },
-  ];
-
-  CUTSCENE_EVENTS.push(...MIDBOSS_CUTSCENE_DATA.map((scene, stageIndex) => ({
-    id: `cutscene-midboss-${stageIndex + 1}`,
-    x: getStageZonePosition(stageIndex, MID_BOSS_ZONE_INDEX, 0, 460),
-    title: scene.title,
-    location: `${stages[stageIndex].name} / ${stageZoneNames[stageIndex][MID_BOSS_ZONE_INDEX]}`,
-    visual: scene.visual,
-    shots: scene.shots,
-  })));
-
-  CUTSCENE_EVENTS.push(
-    {
-      id: "cutscene-workers-names",
-      x: getStageZonePosition(0, 18, 0, 420),
-      title: "추가 장면 · 이름이 묻힌 곳",
-      location: "백야 폐기장 / 기억 매립 구덩이",
-      visual: "rain",
-      shots: [
-        { speaker: "서린", text: "여기 묻힌 건 불량 기록이 아니야. 구조 순서에서 밀려난 사람들의 마지막 하루다.", tone: "operative", duration: 5.9 },
-        { speaker: "도담", text: "명단 복구율 61퍼센트. 나머지는 가족 기록과 교대 일지를 대조하면 찾을 수 있어. 시간이 걸려도 전부 찾자.", tone: "control", duration: 6.2 },
-        { speaker: "윤태오", text: "우리를 구하지 못한 일을 숨기지 마. 대신 다음 사람을 같은 방식으로 버리지 않게 해 줘.", tone: "archive", duration: 6.1 },
-      ],
-    },
-    {
-      id: "cutscene-fuel-testimony",
-      x: getStageZonePosition(1, 18, 0, 420),
-      title: "추가 장면 · 공포의 사용 설명서",
-      location: "검은 공장 / 노심 제어 회랑",
-      visual: "furnace",
-      shots: [
-        { speaker: "도담", text: "설계 책임자 명단을 확보했어. 모두 ‘감정 부산물은 인격이 아니다’라는 면책 조항에 서명했어.", tone: "control", duration: 6.1 },
-        { speaker: "서린", text: "부산물이라고 부른 목소리가 지금 우리에게 길을 알려 주고 있어. 인격 여부를 결정한 기준부터 공개한다.", tone: "operative", duration: 6.2 },
-        { speaker: "R-19", text: "내가 잃어버린 것을 돌려받지 못해도 좋다. 다음 실험체가 무엇을 빼앗기는지는 알고 선택하게 해 줘.", tone: "archive", duration: 6.0 },
-      ],
-    },
-    {
-      id: "cutscene-nineteen-voices",
-      x: getStageZonePosition(2, 18, 0, 420),
-      title: "추가 장면 · 열아홉 개의 답",
-      location: "기억 성당 / 증언 봉인실",
-      visual: "choir",
-      shots: [
-        { speaker: "서린-12", text: "누가 원본인지 정하지 않아도 된다면, 우리 열아홉 명의 잘못도 공로도 각자의 이름으로 남을 수 있어?", tone: "archive", duration: 6.3 },
-        { speaker: "서린", text: "그래. 같은 기억에서 시작했어도 이후의 선택은 각자의 것이야. 누구도 다른 한 명의 각주가 되지 않아.", tone: "operative", duration: 6.2 },
-        { speaker: "도담", text: "병렬 증언 채널을 열게. 도시가 하나의 대답만 원해도 우리는 열아홉 개의 질문부터 보낼 거야.", tone: "control", duration: 5.9 },
-      ],
-    },
-    {
-      id: "cutscene-public-broadcast",
-      x: getStageZonePosition(3, 18, 0, 420),
-      title: "추가 장면 · 편집되지 않은 증인",
-      location: "새벽 송신탑 / 최후 중계실",
-      visual: "broadcast",
-      shots: [
-        { speaker: "시민 채널", text: "수신자 18만 명을 돌파했습니다. 중앙국은 해당 신호를 조작 영상으로 규정하고 접속자를 추적 중입니다.", tone: "archive", duration: 6.1 },
-        { speaker: "서린", text: "내 얼굴을 믿지 않아도 된다. 원본 장부와 사망 시각, 명령 서명을 직접 대조해 달라. 판단할 자료를 모두 보낸다.", tone: "operative", duration: 6.4 },
-        { speaker: "새봄", text: "나도 증언할게. 언니를 기다린 사람으로서가 아니라, 여섯 해 동안 기록을 모은 생존자로서 말할 거야.", tone: "archive", duration: 6.1 },
-      ],
-    },
-    {
-      id: "cutscene-two-seats",
-      x: getStageZonePosition(4, 18, 0, 420),
-      title: "추가 장면 · 두 개의 빈자리",
-      location: "원형 보관소 / 두 사람의 회랑",
-      visual: "duel",
-      shots: [
-        { speaker: "잔영-00", text: "네 제안대로 둘 다 살아남으면 새봄은 매일 어느 쪽이 진짜인지 질문받을 것이다. 그 고통도 네가 책임질 수 있나?", tone: "hostile", duration: 6.5 },
-        { speaker: "서린", text: "새봄의 대답을 대신 정하지 않는 것이 책임이야. 우리도 타인의 확신을 위해 한 명으로 줄어들 의무는 없어.", tone: "operative", duration: 6.2 },
-        { speaker: "잔영-00", text: "예측 모델에 없는 답이다. 결투 후에도 그 문장을 유지하는지 확인하겠다.", tone: "hostile", duration: 5.8 },
-      ],
-    },
-  );
-
-  CUTSCENE_EVENTS.sort((a, b) => a.x - b.x);
-  const CUTSCENE_EVENT_BY_ID = new Map(CUTSCENE_EVENTS.map((event) => [event.id, event]));
-
-  const BOSS_INTRO_CUTSCENE_IDS = Object.freeze({
-    breaker: "cutscene-midboss-1",
-    hunter: "cutscene-midboss-2",
-    oracle: "cutscene-midboss-3",
-    revenant: "cutscene-midboss-4",
-    proxy: "cutscene-midboss-5",
-    warden: "cutscene-warden",
-    furnace: "cutscene-crimson",
-    weaver: "cutscene-weaver",
-    censor: "cutscene-censor",
-    echo: "cutscene-echo",
+  const {
+    INTRO_STORY, MIDBOSS_VICTORY_STORIES, STORY_EVENTS, CUTSCENE_EVENTS, CUTSCENE_EVENT_BY_ID, BOSS_INTRO_CUTSCENE_IDS,
+  } = window.createMoonlitStory({
+    STAGE_COUNT, ZONES_PER_STAGE, MID_BOSS_ZONE_INDEX, ZONE_STARTS, ZONE_WIDTHS, TUTORIAL_END_X, stages, stageZoneNames,
   });
 
   const palette = {
@@ -3392,319 +2760,6 @@
     game.bossDefeated = game.defeatedBosses.has("echo");
   }
 
-  function buildLegacyLevel() {
-    platforms.length = 0;
-    hazards.length = 0;
-    checkpoints.length = 0;
-    enemies.length = 0;
-    bullets.length = 0;
-    particles.length = 0;
-    pickups.length = 0;
-    signs.length = 0;
-    boostNodes.length = 0;
-    combatRooms.length = 0;
-
-    const floorSpans = [
-      [0, 1800, 620], [2040, 1710, 620], [3970, 1880, 650],
-      [6100, 1320, 620], [7640, 1480, 620], [9350, 1810, 650],
-      [11420, 1430, 620], [13100, 1850, 660], [15190, 1350, 620],
-      [16800, 1820, 640], [18860, 1680, 620], [20800, 3200, 620],
-      [24000, 1240, 640], [25420, 1380, 620], [27000, 1580, 660],
-      [28780, 1400, 620], [30380, 1420, 650], [32000, 1320, 620],
-      [33480, 2520, 640],
-    ];
-    floorSpans.forEach(([x, w, y], index) => addPlatform(x, y, w, WORLD_H - y, index % 3 === 2 ? "factory" : "roof"));
-
-    // 01 · 기초 이동과 이중 점프를 익히는 빗속 옥상
-    addPlatform(520, 500, 230, 28);
-    addPlatform(920, 430, 250, 28);
-    addPlatform(1340, 520, 220, 28);
-    addPlatform(1800, 550, 180, 26);
-    addHazard(1510, 598, 90, 22);
-    addEnemy("runner", 820, 620, 130);
-    addEnemy("runner", 1250, 620, 170);
-    addEnemy("gunner", 1635, 620, 90);
-    addPickup(1030, 380);
-    addSign(270, 475, "청우동", "통제구역 17-B");
-
-    // 02 · 화물선과 낮은 천장
-    addPlatform(2200, 510, 260, 30, "cargo");
-    addPlatform(2570, 450, 300, 30, "cargo");
-    addPlatform(2980, 530, 260, 30, "cargo");
-    addPlatform(3320, 420, 330, 30, "cargo");
-    addPlatform(3750, 560, 170, 26, "cargo");
-    addHazard(2380, 598, 120, 22);
-    addHazard(3430, 398, 74, 22);
-    addEnemy("runner", 2250, 510, 100);
-    addEnemy("gunner", 2750, 450, 100);
-    addEnemy("drone", 3150, 330, 170);
-    addEnemy("shield", 3520, 620, 120);
-    addEnemy("runner", 4100, 650, 190);
-    addPickup(3460, 365);
-    addSign(3110, 340, "동부 화물선", "운행 정지");
-
-    // 03 · 상승 루트를 선택할 수 있는 붉은 제련소
-    addPlatform(4160, 520, 250, 28, "factory");
-    addPlatform(4510, 420, 230, 28, "factory");
-    addPlatform(4850, 320, 300, 28, "factory");
-    addPlatform(5260, 420, 240, 28, "factory");
-    addPlatform(5580, 520, 260, 28, "factory");
-    addPlatform(5850, 570, 210, 26, "factory");
-    addHazard(4420, 628, 160, 22);
-    addHazard(5350, 628, 180, 22);
-    addEnemy("runner", 4270, 520, 90);
-    addEnemy("gunner", 4620, 420, 80);
-    addEnemy("drone", 5000, 230, 230);
-    addEnemy("runner", 5350, 420, 90);
-    addEnemy("shield", 5700, 520, 100);
-    addEnemy("gunner", 6250, 620, 130);
-    addPickup(5000, 270);
-    addSign(4930, 560, "赤雲", "제03 용광로");
-
-    // 04 · 긴 고가교, 비행 적과 연속 처치 구간
-    addPlatform(6350, 490, 260, 26);
-    addPlatform(6750, 390, 220, 26);
-    addPlatform(7080, 500, 260, 26);
-    addPlatform(7420, 555, 170, 26);
-    addPlatform(7860, 470, 240, 26);
-    addPlatform(8240, 370, 280, 26);
-    addPlatform(8660, 470, 260, 26);
-    addPlatform(9120, 560, 190, 26);
-    addHazard(6870, 598, 110, 22);
-    addHazard(8450, 598, 110, 22);
-    addEnemy("drone", 6500, 340, 190);
-    addEnemy("runner", 7000, 620, 130);
-    addEnemy("drone", 7480, 330, 180);
-    addEnemy("gunner", 8000, 470, 90);
-    addEnemy("drone", 8420, 270, 220);
-    addEnemy("shield", 8800, 620, 160);
-    addEnemy("gunner", 9500, 650, 120);
-    addPickup(8360, 320);
-    addSign(7800, 315, "무명교", "풍속 32 m/s");
-
-    // 05 · 흰 가면 연구동, 방패병을 위에서 파훼
-    addPlatform(9560, 510, 260, 30, "lab");
-    addPlatform(9920, 400, 240, 30, "lab");
-    addPlatform(10280, 510, 280, 30, "lab");
-    addPlatform(10680, 390, 250, 30, "lab");
-    addPlatform(11160, 540, 210, 26, "lab");
-    addPlatform(11620, 470, 250, 30, "lab");
-    addPlatform(12000, 370, 270, 30, "lab");
-    addPlatform(12410, 490, 250, 30, "lab");
-    addPlatform(12840, 570, 210, 26, "lab");
-    addHazard(10080, 628, 130, 22);
-    addHazard(11870, 598, 115, 22);
-    addEnemy("shield", 9700, 510, 90);
-    addEnemy("gunner", 10040, 400, 70);
-    addEnemy("shield", 10410, 510, 100);
-    addEnemy("drone", 10800, 290, 160);
-    addEnemy("runner", 11240, 540, 80);
-    addEnemy("piercer", 11730, 470, 90);
-    addEnemy("shield", 12150, 620, 120);
-    addEnemy("drone", 12520, 330, 190);
-    addEnemy("runner", 13300, 660, 150);
-    addPickup(10800, 340);
-    addSign(10440, 330, "백면원", "관계자 외 금지");
-
-    // 06 · 주기적으로 켜지는 수직 레이저
-    addPlatform(13340, 520, 270, 26);
-    addPlatform(13740, 410, 220, 26);
-    addPlatform(14090, 510, 250, 26);
-    addPlatform(14470, 390, 260, 26);
-    addPlatform(14950, 560, 190, 26);
-    addPlatform(15350, 460, 230, 26);
-    addPlatform(15700, 350, 250, 26);
-    addPlatform(16080, 470, 260, 26);
-    addPlatform(16540, 560, 210, 26);
-    addHazard(13620, 260, 24, 360, "laser", 0.1);
-    addHazard(14380, 210, 24, 450, "laser", 0.6);
-    addHazard(15260, 250, 24, 370, "laser", 1.25);
-    addHazard(16120, 180, 24, 440, "laser", 1.8);
-    addEnemy("runner", 13480, 520, 90);
-    addEnemy("drone", 13920, 300, 170);
-    addEnemy("gunner", 14200, 510, 90);
-    addEnemy("shield", 14610, 390, 80);
-    addEnemy("drone", 15450, 320, 190);
-    addEnemy("mortar", 15810, 350, 80);
-    addEnemy("runner", 16300, 470, 100);
-    addEnemy("shield", 17030, 640, 150);
-    addPickup(14580, 340);
-    addSign(14190, 570, "낙뢰선", "고압 주의");
-
-    // 07 · 방벽 전투와 중간 보스
-    addPlatform(17000, 510, 260, 28, "wall");
-    addPlatform(17380, 400, 240, 28, "wall");
-    addPlatform(17720, 510, 260, 28, "wall");
-    addPlatform(18100, 390, 260, 28, "wall");
-    addPlatform(18540, 560, 250, 26, "wall");
-    addPlatform(19050, 480, 280, 28, "wall");
-    addPlatform(19480, 370, 260, 28, "wall");
-    addPlatform(19900, 490, 260, 28, "wall");
-    addPlatform(20340, 560, 180, 26, "wall");
-    addHazard(17600, 618, 120, 22);
-    addHazard(19520, 598, 130, 22);
-    addEnemy("gunner", 17130, 510, 80);
-    addEnemy("drone", 17500, 280, 150);
-    addEnemy("shield", 17850, 510, 100);
-    addEnemy("runner", 18220, 390, 100);
-    addEnemy("drone", 18700, 300, 180);
-    addEnemy("shield", 19200, 480, 100);
-    addEnemy("piercer", 19610, 370, 80);
-    addEnemy("runner", 20100, 490, 90);
-    addEnemy("shield", 20550, 620, 120);
-    addPickup(19580, 320);
-    addSign(18310, 330, "鬼門", "무단 접근 사살");
-
-    // 08 · 보스 전초전과 동쪽 관문
-    addPlatform(21050, 500, 280, 30, "gate");
-    addPlatform(21460, 390, 260, 30, "gate");
-    addPlatform(21850, 500, 250, 30, "gate");
-    addHazard(21630, 598, 110, 22);
-    addEnemy("runner", 21180, 500, 100);
-    addEnemy("drone", 21600, 280, 170);
-    addEnemy("mortar", 21950, 500, 100);
-    addEnemy("boss", 22640, 620, 520);
-    addSign(22300, 310, "동쪽 관문", "봉쇄 단계: 극");
-
-    // 09 · 관문 아래로 흐르는 침묵 수로. 낮은 길과 공중 루트가 반복 교차한다.
-    addPlatform(24160, 500, 260, 28, "channel");
-    addPlatform(24520, 390, 240, 28, "channel");
-    addPlatform(24870, 515, 270, 28, "channel");
-    addPlatform(25240, 405, 250, 28, "channel");
-    addPlatform(25610, 300, 270, 28, "channel");
-    addPlatform(26000, 430, 260, 28, "channel");
-    addPlatform(26370, 535, 260, 28, "channel");
-    addPlatform(26720, 410, 240, 28, "channel");
-    addHazard(24340, 618, 120, 22);
-    addHazard(25020, 618, 130, 22);
-    addHazard(25870, 250, 24, 370, "laser", 0.3);
-    addHazard(26570, 598, 110, 22);
-    addEnemy("runner", 24280, 500, 90);
-    addEnemy("drone", 24630, 285, 170);
-    addEnemy("piercer", 25010, 515, 90);
-    addEnemy("shield", 25360, 405, 90);
-    addEnemy("drone", 25740, 205, 180);
-    addEnemy("runner", 26120, 430, 110);
-    addEnemy("mortar", 26620, 640, 120);
-    addSign(24330, 565, "무음 수로", "음성 기록 폐기 구역");
-    addPickup(25720, 245);
-
-    // 10 · 기억 보관고. 레이저 사이의 상하 루트를 빠르게 전환한다.
-    addPlatform(27160, 500, 270, 30, "vault");
-    addPlatform(27520, 380, 250, 30, "vault");
-    addPlatform(27880, 270, 260, 30, "vault");
-    addPlatform(28240, 410, 250, 30, "vault");
-    addPlatform(28600, 520, 260, 30, "vault");
-    addPlatform(28970, 390, 260, 30, "vault");
-    addPlatform(29340, 280, 250, 30, "vault");
-    addPlatform(29700, 480, 280, 30, "vault");
-    addHazard(27460, 220, 24, 440, "laser", 0.1);
-    addHazard(28170, 180, 24, 480, "laser", 0.8);
-    addHazard(28890, 210, 24, 410, "laser", 1.45);
-    addHazard(29620, 170, 24, 450, "laser", 2.0);
-    addEnemy("shield", 27270, 500, 100);
-    addEnemy("drone", 27630, 270, 170);
-    addEnemy("piercer", 28000, 270, 80);
-    addEnemy("runner", 28350, 410, 100);
-    addEnemy("shield", 28720, 520, 100);
-    addEnemy("drone", 29200, 250, 180);
-    addEnemy("mortar", 29840, 480, 100);
-    addSign(27720, 570, "기억 보관고", "M 계열 잔향 001—007");
-    addPickup(29450, 230);
-
-    // 11 · 월하 승강탑. 발판을 연속해서 오르내리는 수직 전투 구간.
-    addPlatform(30140, 520, 250, 28, "tower");
-    addPlatform(30490, 400, 240, 28, "tower");
-    addPlatform(30830, 280, 250, 28, "tower");
-    addPlatform(31180, 170, 270, 28, "tower");
-    addPlatform(31570, 300, 250, 28, "tower");
-    addPlatform(31930, 440, 270, 28, "tower");
-    addPlatform(32320, 330, 250, 28, "tower");
-    addPlatform(32680, 520, 280, 28, "tower");
-    addHazard(30380, 628, 140, 22);
-    addHazard(31090, 170, 24, 450, "laser", 0.45);
-    addHazard(31850, 230, 24, 390, "laser", 1.25);
-    addHazard(32590, 200, 24, 420, "laser", 2.1);
-    addEnemy("runner", 30240, 520, 90);
-    addEnemy("piercer", 30600, 400, 90);
-    addEnemy("drone", 30960, 185, 170);
-    addEnemy("shield", 31310, 170, 90);
-    addEnemy("drone", 31720, 210, 190);
-    addEnemy("mortar", 32060, 440, 100);
-    addEnemy("shield", 32820, 520, 100);
-    addSign(31240, 565, "月下昇降塔", "원본 관측소 직결");
-    addPickup(31300, 115);
-
-    // 12 · 원본 관측소. 넓은 결전장과 최종 봉쇄문.
-    addPlatform(33140, 500, 270, 30, "origin");
-    addPlatform(33520, 390, 260, 30, "origin");
-    addPlatform(33900, 510, 260, 30, "origin");
-    addPlatform(34280, 360, 250, 30, "origin");
-    addPlatform(34640, 500, 260, 30, "origin");
-    addPlatform(34980, 405, 250, 30, "origin");
-    addPlatform(35330, 500, 240, 30, "origin");
-    addHazard(33770, 618, 120, 22);
-    addHazard(34490, 598, 130, 22);
-    addEnemy("runner", 33270, 500, 100);
-    addEnemy("drone", 33640, 280, 170);
-    addEnemy("piercer", 34020, 510, 100);
-    addEnemy("shield", 34400, 360, 90);
-    addEnemy("drone", 34760, 270, 190);
-    addEnemy("mortar", 35060, 405, 90);
-    const originBoss = addEnemy("boss", 35120, 640, 620);
-    originBoss.hp = 48;
-    originBoss.maxHp = 48;
-    addSign(34820, 565, "원본 관측소", "잔향 병합 절차 진행 중");
-    addPickup(34680, 450);
-
-    // 공격으로 재가동하는 관성 코어. 공중 적중 루프를 지형 이동에도 활용한다.
-    addBoostNode(1890, 505, 330, -390);
-    addBoostNode(3810, 510, 300, -430);
-    addBoostNode(5960, 500, 340, -400);
-    addBoostNode(7500, 450, 300, -470);
-    addBoostNode(9240, 500, 330, -400);
-    addBoostNode(12920, 500, 320, -440);
-    addBoostNode(16710, 500, 350, -420);
-    addBoostNode(20570, 490, 340, -430);
-    addBoostNode(25180, 480, 330, -450);
-    addBoostNode(26920, 360, 340, -430);
-    addBoostNode(29930, 430, 330, -470);
-    addBoostNode(32900, 470, 340, -450);
-
-    // 벽차기와 벽 미끄러짐을 시험할 수 있는 좁은 수직 구조물.
-    addPlatform(1980, 360, 42, 260, "cargo");
-    addPlatform(7540, 330, 42, 290, "factory");
-    addPlatform(13035, 360, 42, 300, "lab");
-    addPlatform(16745, 320, 42, 320, "wall");
-    addPlatform(26940, 340, 42, 320, "channel");
-    addPlatform(29950, 300, 42, 320, "vault");
-    addPlatform(32950, 300, 42, 320, "tower");
-
-    combatRooms.push(
-      { left: 6370, right: 9050, name: "무명교 공중 봉쇄", triggered: false, cleared: false },
-      { left: 17020, right: 20480, name: "귀문 방벽 섬멸전", triggered: false, cleared: false },
-      { left: 30120, right: 32880, name: "월하 승강탑 추격전", triggered: false, cleared: false },
-    );
-
-    [
-      [150, 620, "작전 개시"],
-      [3200, 620, "화물선"],
-      [6250, 620, "제련소"],
-      [9550, 650, "고가교"],
-      [12180, 620, "연구동"],
-      [15320, 620, "송전구"],
-      [19000, 620, "귀문"],
-      [21300, 620, "동쪽 관문"],
-      [24400, 640, "침묵 수로"],
-      [27400, 660, "기억 보관고"],
-      [30400, 650, "월하 승강탑"],
-      [33480, 640, "원본 관측소"],
-    ].forEach(([x, y, label]) => addCheckpoint(x, y - 88, label));
-
-    game.totalEnemies = enemies.length;
-    initRain();
-  }
-
   function buildLevel() {
     refreshAdminRemovedEnemies();
     enemyZoneAuditAccumulator = 0;
@@ -5086,8 +4141,7 @@
     setAdminSpawnPanel(false);
     setAdminZonePanel(false);
     setAdminDifficultyPanel(false);
-    keys.clear();
-    pressed.clear();
+    clearGameplayInput();
     startScreen.classList.remove("visible");
     pauseScreen.classList.remove("visible");
     endScreen.classList.remove("visible");
@@ -5300,9 +4354,8 @@
     const shouldOpen = Boolean(open && game.mode === "playing");
     game.tutorialOpen = shouldOpen;
     if (tutorialPanel) tutorialPanel.hidden = !shouldOpen;
+    clearGameplayInput();
     if (shouldOpen) {
-      keys.clear();
-      pressed.clear();
       player.vx = 0;
       player.vy = 0;
     }
@@ -5365,8 +4418,7 @@
         const label = button.querySelector?.("b");
         if (label && titleButton?.textContent) label.textContent = titleButton.textContent;
       }
-      keys.clear();
-      pressed.clear();
+      clearGameplayInput();
       player.vx = 0;
       player.vy = 0;
     }
@@ -10313,9 +9365,11 @@
       return;
     }
     if (game.freeze > 0) {
-      game.freeze -= dt;
-      updateParticles(dt * 0.18);
-      return;
+      const frozenDt = Math.min(game.freeze, dt);
+      game.freeze = Math.max(0, game.freeze - frozenDt);
+      updateParticles(frozenDt * 0.18);
+      dt -= frozenDt;
+      if (dt <= 0) return;
     }
 
     game.runTime += dt;
@@ -10431,14 +9485,41 @@
     setTimeout(() => sound.tone(520, 0.55, "sine", 0.04, 1.35), 170);
   }
 
-  function drawBackground() {
-    const stageVisuals = [
+  const BACKGROUND_THEMES = [
       { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" },
       { top: "#100607", mid: "#1b0d0d", bottom: "#271515", haze: "rgba(255, 91, 54, 0.08)" },
       { top: "#080711", mid: "#111020", bottom: "#1b1830", haze: "rgba(176, 113, 255, 0.075)" },
       { top: "#030912", mid: "#071525", bottom: "#111d31", haze: "rgba(91, 184, 255, 0.075)" },
       { top: "#07040f", mid: "#101226", bottom: "#102a2a", haze: "rgba(99, 255, 198, 0.085)" },
-    ][game.stage] || { top: "#04070d", mid: "#0b111b", bottom: "#141721", haze: "rgba(38, 116, 124, 0.06)" };
+    ];
+  const PLATFORM_MATERIALS = {
+      roof: ["#1a2938", "#314756", "#65f5ea"],
+      cargo: ["#293039", "#4a5360", "#ffcd70"],
+      factory: ["#30272d", "#59404a", "#ff665f"],
+      lab: ["#28343d", "#596a76", "#e5f4ff"],
+      wall: ["#282737", "#4c4862", "#ff6ca8"],
+      gate: ["#30232d", "#674051", "#ff496c"],
+      foundry: ["#321b19", "#6c382f", "#ff7b62"],
+      channel: ["#182d34", "#315866", "#74d8ff"],
+      crusher: ["#2c2022", "#654044", "#ff574f"],
+      turbine: ["#30211d", "#79503e", "#ffb064"],
+      archive: ["#241d36", "#51466d", "#d7a0ff"],
+      shrine: ["#30233c", "#6d507d", "#f0c3ff"],
+      rail: ["#172933", "#315665", "#74d8ff"],
+      city: ["#162535", "#344d67", "#8cb7ff"],
+      tower: ["#111f31", "#294764", "#90ffd4"],
+      firewall: ["#271a2a", "#65334d", "#ff496c"],
+      array: ["#142439", "#35627a", "#9beaff"],
+      glass: ["#13252d", "#315e66", "#63ffc6"],
+      mirror: ["#211934", "#59467c", "#a879ff"],
+      habitat: ["#202a31", "#52606b", "#d6f8ee"],
+      maze: ["#171e31", "#3c5172", "#7ee7ff"],
+      capsule: ["#182c28", "#3e7467", "#91ffd4"],
+      arena: ["#251a31", "#624578", "#d6b7ff"],
+    };
+
+  function drawBackground() {
+    const stageVisuals = BACKGROUND_THEMES[game.stage] || BACKGROUND_THEMES[0];
     const gradient = ctx.createLinearGradient(0, 0, 0, H);
     gradient.addColorStop(0, stageVisuals.top);
     gradient.addColorStop(0.58, stageVisuals.mid);
@@ -10648,31 +9729,7 @@
   }
 
   function drawPlatform(platform) {
-    const scheme = {
-      roof: ["#1a2938", "#314756", "#65f5ea"],
-      cargo: ["#293039", "#4a5360", "#ffcd70"],
-      factory: ["#30272d", "#59404a", "#ff665f"],
-      lab: ["#28343d", "#596a76", "#e5f4ff"],
-      wall: ["#282737", "#4c4862", "#ff6ca8"],
-      gate: ["#30232d", "#674051", "#ff496c"],
-      foundry: ["#321b19", "#6c382f", "#ff7b62"],
-      channel: ["#182d34", "#315866", "#74d8ff"],
-      crusher: ["#2c2022", "#654044", "#ff574f"],
-      turbine: ["#30211d", "#79503e", "#ffb064"],
-      archive: ["#241d36", "#51466d", "#d7a0ff"],
-      shrine: ["#30233c", "#6d507d", "#f0c3ff"],
-      rail: ["#172933", "#315665", "#74d8ff"],
-      city: ["#162535", "#344d67", "#8cb7ff"],
-      tower: ["#111f31", "#294764", "#90ffd4"],
-      firewall: ["#271a2a", "#65334d", "#ff496c"],
-      array: ["#142439", "#35627a", "#9beaff"],
-      glass: ["#13252d", "#315e66", "#63ffc6"],
-      mirror: ["#211934", "#59467c", "#a879ff"],
-      habitat: ["#202a31", "#52606b", "#d6f8ee"],
-      maze: ["#171e31", "#3c5172", "#7ee7ff"],
-      capsule: ["#182c28", "#3e7467", "#91ffd4"],
-      arena: ["#251a31", "#624578", "#d6b7ff"],
-    }[platform.kind] || ["#1a2938", "#314756", "#65f5ea"];
+    const scheme = PLATFORM_MATERIALS[platform.kind] || PLATFORM_MATERIALS.roof;
 
     ctx.fillStyle = scheme[0];
     ctx.fillRect(platform.x, platform.y, platform.w, platform.h);
@@ -10945,6 +10002,21 @@
     ctx.restore();
   }
 
+  // Shared plate geometry keeps the small, outlined silhouettes consistent.
+  function drawCharacterPlate(points, fill, edge = "#07111b", width = 1) {
+    ctx.beginPath();
+    ctx.moveTo(points[0], points[1]);
+    for (let index = 2; index < points.length; index += 2) ctx.lineTo(points[index], points[index + 1]);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (edge) {
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = width;
+      ctx.stroke();
+    }
+  }
+
   function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player") {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -11031,16 +10103,9 @@
     ctx.rotate(bodyLean);
 
     if (ghost) {
-      ctx.fillStyle = bodyCyan;
-      ctx.beginPath();
-      ctx.moveTo(-10, -48);
-      ctx.lineTo(10, -48);
-      ctx.lineTo(15, -16);
-      ctx.lineTo(8, 0);
-      ctx.lineTo(-11, 0);
-      ctx.lineTo(-16, -18);
-      ctx.closePath();
-      ctx.fill();
+      drawCharacterPlate([-10, -57, 8, -56, 11, -45, 7, -42, 14, -38,
+        18, -6, 7, -9, 8, 0, -1, 0, -5, -15, -11, 0, -18, -3,
+        -15, -35, -11, -42], bodyCyan, null);
       ctx.restore();
       return;
     }
@@ -11164,31 +10229,25 @@
       return drawJointedLimb(shoulderX, shoulderY, length, length, width, upper, upper - lower, color, false, true);
     }
 
-    // 어깨에 고정된 제복형 외투. 실루엣은 긴 망토처럼 보이지만
-    // game.time, 속도, 달리기 위상을 사용하지 않아 절대 펄럭이지 않는다.
+    // Structured white officer coat: split tails expose the mechanical legs.
+    // The shoulder stays fixed; only the lower panels follow the body's momentum.
     if (!echoStyle) {
-      ctx.fillStyle = "#d6e0df";
+      const hemLag = clamp(-player.vx * facing / 95, -3, 3) - attackImpact * 2;
+      drawCharacterPlate([-14, -44, 11, -44, 17, -29, 19 + hemLag, -5,
+        8 + hemLag, -7, 1, -23, -4, -13, -10 + hemLag, -3,
+        -21 + hemLag, -7, -16, -29], "#b5c7cb");
+      drawCharacterPlate([-12, -41, -5, -34, -6, -20, -12 + hemLag, -7,
+        -18 + hemLag, -10, -14, -29], "#edf3ed", null);
+      drawCharacterPlate([7, -40, 13, -34, 16 + hemLag, -8,
+        10 + hemLag, -10, 5, -24], "#f6f8ef", null);
+      ctx.strokeStyle = "#ff496c";
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(-13, -43);
-      ctx.lineTo(13, -43);
-      ctx.lineTo(18, -3);
-      ctx.lineTo(-18, -3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#f1f5f2";
-      ctx.beginPath();
-      ctx.moveTo(-9, -40);
-      ctx.lineTo(9, -40);
-      ctx.lineTo(13, -7);
-      ctx.lineTo(-13, -7);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#aebdc0";
-      ctx.fillRect(-8, -38, 4, 28);
-      ctx.fillStyle = "#ff496c";
-      ctx.fillRect(10, -37, 2, 30);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(-12, -42, 24, 3);
+      ctx.moveTo(13, -32);
+      ctx.lineTo(16 + hemLag, -10);
+      ctx.moveTo(-17 + hemLag, -9);
+      ctx.lineTo(-11 + hemLag, -6);
+      ctx.stroke();
     }
 
     if (player.grounded) {
@@ -11329,6 +10388,20 @@
     ctx.fillRect(-4, -18, 3, 2);
     ctx.fillRect(5, -18, 3, 2);
 
+    if (!echoStyle) {
+      drawCharacterPlate([-14, -43, -8, -46, -3, -39, -6, -29, -10, -35], "#f0f5ee", "#778f99");
+      drawCharacterPlate([6, -44, 12, -43, 15, -35, 10, -28, 7, -36], "#dce8e4", "#778f99");
+      ctx.fillStyle = "#314755";
+      ctx.fillRect(-11, -40, 5, 2);
+      ctx.fillStyle = bodyRed;
+      ctx.fillRect(10, -37, 3, 6);
+      // Crescent insignia reads as a single light shape at gameplay scale.
+      ctx.fillStyle = bodyAmber;
+      ctx.beginPath(); ctx.arc(-10, -35, 2.1, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#f0f5ee";
+      ctx.beginPath(); ctx.arc(-9, -36, 1.7, 0, TAU); ctx.fill();
+    }
+
     const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
     const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
     const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
@@ -11359,64 +10432,28 @@
     ctx.translate(0, -43);
     ctx.rotate(-bodyLean * 0.45 - shotSettle * 0.04);
     ctx.translate(0, 43);
-    ctx.fillStyle = "#8da0aa";
-    ctx.fillRect(-10, -57, 19, 16);
-    ctx.fillStyle = "#354a58";
-    ctx.fillRect(-13, -53, 4, 9);
-    ctx.fillStyle = bodyCyan;
-    ctx.fillRect(-13, -51, 2, 4);
-    ctx.fillStyle = "#f5fbf8";
-    ctx.beginPath();
-    ctx.moveTo(-8, -56);
-    ctx.lineTo(9, -54);
-    ctx.lineTo(8, -43);
-    ctx.lineTo(-6, -41);
-    ctx.lineTo(-10, -47);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#0a111b";
-    ctx.fillRect(1, -51, 9, 3);
+    // Faceted mechanical mask, swept crown and a continuous red optic.
+    drawCharacterPlate([-12, -53, -8, -59, 5, -58, 12, -53,
+      10, -44, 3, -40, -8, -43], "#172833", "#617d86");
+    drawCharacterPlate([-8, -56, 3, -56, 9, -53, -5, -52], "#506d78", null);
+    drawCharacterPlate([-10, -49, -5, -47, 4, -47, 8, -44,
+      2, -42, -7, -44], "#e2ebe4", null);
+    drawCharacterPlate([-5, -52, 12, -52, 11, -47, -3, -48], "#050c13", null);
     ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-    ctx.fillRect(6, -51, 4, 3);
-    ctx.fillStyle = "rgba(255,73,108,0.22)";
-    ctx.fillRect(10, -51, 12, 3);
-    ctx.strokeStyle = "rgba(56, 74, 82, 0.68)";
-    ctx.beginPath();
-    ctx.moveTo(-1, -55);
-    ctx.lineTo(-1, -43);
-    ctx.moveTo(-7, -46);
-    ctx.lineTo(-3, -43);
-    ctx.moveTo(4, -43);
-    ctx.lineTo(8, -46);
-    ctx.stroke();
-    ctx.fillStyle = "#293a43";
-    ctx.fillRect(-6, -44, 3, 2);
-    ctx.fillRect(3, -44, 3, 2);
-
-    // Rigid helmet crown, cheek plates and sensor optics: no hair or skin pixels.
-    ctx.fillStyle = "#263842";
-    ctx.fillRect(-10, -57, 12, 3);
-    ctx.fillRect(-11, -55, 4, 5);
-    ctx.fillRect(-12, -56, 5, 3);
-    ctx.fillRect(-14, -53, 5, 2);
-    ctx.fillStyle = "#657e89";
-    ctx.fillRect(-9, -58, 13, 1);
-    ctx.fillRect(-14, -52, 2, 4);
-    ctx.fillStyle = "#c9d6d4";
-    ctx.fillRect(-8, -48, 3, 4);
-    ctx.fillStyle = "#738c92";
-    ctx.fillRect(-6, -44, 12, 2);
-    ctx.fillStyle = "#101923";
-    ctx.fillRect(1, -50, 3, 2);
-    ctx.fillRect(7, -47, 2, 1);
-    ctx.fillStyle = "#273d4a";
-    ctx.fillRect(3, -46, 5, 2);
-    ctx.fillStyle = "#a5b9bd";
-    ctx.fillRect(4, -45, 3, 1);
+    ctx.fillRect(-2, -51, 12, 2);
+    ctx.fillStyle = "#fff1dc";
+    ctx.fillRect(7, -51, 3, 1);
+    ctx.fillStyle = "#0b1722";
+    ctx.fillRect(-15, -53, 6, 9);
     ctx.fillStyle = bodyCyan;
-    ctx.fillRect(-12, -49, 2, 2);
-    ctx.fillStyle = "#506873";
-    ctx.fillRect(-10, -46, 2, 3);
+    ctx.fillRect(-14, -51, 2, 4);
+    ctx.fillStyle = "#607f89";
+    ctx.fillRect(-13, -57, 2, 5);
+    ctx.fillStyle = "#324853";
+    ctx.fillRect(-4, -44, 8, 2);
+    ctx.fillStyle = "#93a9ac";
+    ctx.fillRect(-2, -44, 1, 2);
+    ctx.fillRect(1, -44, 1, 2);
     ctx.restore();
 
     let armAngle = locomotionArmAngle;
@@ -13207,6 +12244,18 @@
 
     if (enemy.type === "drone") {
       const rotor = Math.sin(enemy.anim * 18) * 4;
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(side * 24, 10);
+        drawCharacterPlate([-10, -6, 8, -6, 12, 1, 7, 11, -8, 9, -12, 0], "#233746", "#75949e");
+        ctx.fillStyle = "#08121d";
+        ctx.fillRect(-8, -1, 16, 5);
+        ctx.fillStyle = "#9ab1b7";
+        ctx.fillRect(-7, -5, 12, 2);
+        ctx.fillStyle = palette.red;
+        ctx.fillRect(side > 0 ? 6 : -8, 5, 3, 3);
+        ctx.restore();
+      }
       ctx.strokeStyle = "rgba(163, 215, 222, 0.52)";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -13368,6 +12417,28 @@
       const gunLength = isMortar ? 31 : isMachinegun ? 49 : isPiercer ? 44 : 36;
       const gunHeight = isMortar ? 14 : isMachinegun ? 12 : 9;
       const muzzleX = isMortar ? 24 : isMachinegun ? 42 : isPiercer ? 37 : 29;
+      // Equipment changes the outline before colour: rack, ammo pack, sensor mast.
+      if (isMortar) {
+        for (let shell = 0; shell < 2; shell += 1) {
+          const rackX = -25 + shell * 8;
+          drawCharacterPlate([rackX, 29, rackX, 0, rackX + 3, -7,
+            rackX + 7, 0, rackX + 7, 29], "#6b4853", "#b8888d");
+          ctx.fillStyle = gunnerAccent;
+          ctx.fillRect(rackX + 1, 5, 5, 3);
+          ctx.fillStyle = "#25202b";
+          ctx.fillRect(rackX, 16, 7, 4);
+        }
+      } else if (isMachinegun) {
+        drawCharacterPlate([-28, 16, -16, 12, -12, 40, -27, 43], "#4f4951", "#87959c");
+        ctx.fillStyle = gunnerAccent;
+        for (let link = 0; link < 4; link += 1) ctx.fillRect(-25, 20 + link * 5, 7, 2);
+      } else if (isPiercer) {
+        drawCharacterPlate([-21, 28, -18, -7, -14, -11, -13, 29], "#325766", "#7fbac6");
+        ctx.fillStyle = gunnerAccent;
+        ctx.fillRect(-19, -7, 3, 8);
+      } else {
+        drawCharacterPlate([-22, 17, -16, 15, -14, 37, -22, 35], "#334956", "#75909a");
+      }
       drawRobotLeg(-7, 40, enemyGaitPhase + Math.PI, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
       drawRobotLeg(7, 40, enemyGaitPhase, 9, 9, 7, gunnerAccent, isMortar || isMachinegun);
       ctx.save();
@@ -13424,6 +12495,21 @@
       ctx.fillRect(0, 9, 15, 6);
       ctx.fillStyle = enemy.windup > 0 ? palette.white : isPiercer ? "#79dfff" : isMachinegun ? "#ff8066" : palette.red;
       ctx.fillRect(8, 10, 6, 4);
+      if (isMachinegun) {
+        drawCharacterPlate([-23, 18, -15, 12, -4, 17, -6, 27, -22, 26], "#667681", "#adbec2");
+        ctx.fillStyle = gunnerAccent;
+        ctx.fillRect(-21, 19, 13, 3);
+      } else if (isPiercer) {
+        drawCharacterPlate([-13, 4, 6, -1, 19, 6, 17, 10, -11, 8], "#90b7c0", "#315260");
+        ctx.fillStyle = "#11232e";
+        ctx.fillRect(11, 9, 8, 5);
+        ctx.fillStyle = gunnerAccent;
+        ctx.fillRect(16, 10, 3, 3);
+      } else {
+        ctx.fillStyle = isMortar ? "#cf9d9b" : "#b9c8c5";
+        ctx.fillRect(-10, 5, 14, 3);
+        ctx.fillRect(-14, 20, 7, 3);
+      }
       const weaponAim = isMortar ? -0.52 : clamp(Math.atan2(
         (enemy.targetY ?? player.y + player.h / 2) - (enemy.y + 29),
         Math.abs((enemy.targetX ?? player.x + player.w / 2) - (enemy.x + enemy.w / 2)),
@@ -13550,6 +12636,19 @@
       ctx.lineTo(18 + shieldPush, 53);
       ctx.closePath();
       ctx.fill();
+      drawCharacterPlate([18 + shieldPush, 15, 27 + shieldPush, 18,
+        29 + shieldPush, 26, 24 + shieldPush, 29, 18 + shieldPush, 24],
+      guardBroken ? "#bd6d72" : "#c1d1cc", null);
+      ctx.strokeStyle = guardBroken ? "#381c29" : "#263e4b";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(18 + shieldPush, 31); ctx.lineTo(28 + shieldPush, 35);
+      ctx.moveTo(18 + shieldPush, 43); ctx.lineTo(29 + shieldPush, 46);
+      if (guardBroken) {
+        ctx.moveTo(24 + shieldPush, 18); ctx.lineTo(21 + shieldPush, 30);
+        ctx.lineTo(26 + shieldPush, 39); ctx.lineTo(20 + shieldPush, 52);
+      }
+      ctx.stroke();
       ctx.fillStyle = guardBroken ? palette.red : palette.amber;
       ctx.fillRect(28 + shieldPush, 18, 3, 36);
       ctx.fillStyle = "#111925";
@@ -13595,277 +12694,11 @@
       ctx.restore();
       ctx.restore();
       return;
-      if (bossKind === "weaver") {
-        ctx.strokeStyle = `rgba(215, 160, 255, ${0.32 + pulse * 0.32})`;
-        ctx.lineWidth = 3;
-        for (let shard = -1; shard <= 1; shard += 1) {
-          const shardX = shard * 22 + Math.sin(enemy.anim * 1.8 + shard) * 5;
-          const shardY = 73 + Math.cos(enemy.anim * 2.1 + shard) * 8;
-          ctx.beginPath();
-          ctx.moveTo(shardX - 7, shardY);
-          ctx.lineTo(shardX, shardY + 17);
-          ctx.lineTo(shardX + 7, shardY);
-          ctx.stroke();
-        }
-      } else {
-        const legSpread = bossKind === "furnace" ? 24 : 19;
-        const legSpeed = bossKind === "censor" ? 4.3 : 3.2 + enemy.stageIndex * 0.3;
-        drawRobotLeg(-legSpread, 77, enemy.anim * legSpeed + Math.PI, 13, 13, 11, bossAccent, true);
-        drawRobotLeg(legSpread, 77, enemy.anim * legSpeed, 13, 13, 11, bossAccent, true);
-      }
-
-      if (bossKind === "warden") {
-        ctx.fillStyle = "#243f46";
-        ctx.beginPath();
-        ctx.moveTo(-62, 28);
-        ctx.lineTo(-43, 21);
-        ctx.lineTo(-35, 82);
-        ctx.lineTo(-57, 94);
-        ctx.lineTo(-72, 76);
-        ctx.lineTo(-70, 39);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1a2c32";
-        ctx.fillRect(-39, 34, 78, 50);
-        ctx.fillStyle = "#42636a";
-        ctx.fillRect(-46, 42 + shoulder, 18, 30);
-        ctx.fillRect(28, 42 - shoulder, 18, 30);
-        ctx.fillStyle = "#718b8e";
-        ctx.fillRect(-28, 9, 56, 30);
-        ctx.fillStyle = "#101a20";
-        ctx.fillRect(-21, 16, 42, 10);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(-16, 19, 32, 4);
-        ctx.fillStyle = "#8ca5a7";
-        ctx.fillRect(-4, -7, 7, 17);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(-7, -11, 13, 5);
-        ctx.globalAlpha = 0.48 + Math.sin(game.time * 12) * 0.28;
-        ctx.fillRect(-11, -14, 21, 2);
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = "#0a1218";
-        ctx.fillRect(-29, 51, 58, 23);
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(-22, 56, 44, 13);
-        ctx.fillStyle = "#a9c5c5";
-        ctx.fillRect(39, 47, 45, 9);
-        ctx.fillRect(43, 39, 38, 4);
-        ctx.fillRect(43, 61, 38, 4);
-        ctx.fillStyle = "#263b42";
-        ctx.fillRect(47, 56, 17, 7);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(78, 49, 8, 5);
-        ctx.fillRect(78, 39, 8, 3);
-        ctx.fillRect(78, 62, 8, 3);
-      } else if (bossKind === "furnace") {
-        ctx.fillStyle = "#311713";
-        ctx.fillRect(-35, 5, 13, 33);
-        ctx.fillRect(22, 5, 13, 33);
-        ctx.fillStyle = "#734034";
-        ctx.fillRect(-31, -1, 5, 10);
-        ctx.fillRect(26, -1, 5, 10);
-        const exhaust = 9 + Math.sin(game.time * 18) * 5;
-        ctx.fillStyle = `rgba(255, 123, 98, ${0.42 + pulse * 0.34})`;
-        ctx.beginPath();
-        ctx.moveTo(-34, -1);
-        ctx.lineTo(-28, -exhaust);
-        ctx.lineTo(-22, -1);
-        ctx.moveTo(22, -1);
-        ctx.lineTo(28, -exhaust * 1.18);
-        ctx.lineTo(34, -1);
-        ctx.fill();
-        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#4b2721";
-        ctx.beginPath();
-        ctx.arc(0, 57, 42, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = "#8b4b38";
-        ctx.beginPath();
-        ctx.arc(0, 57, 30, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = "#180c0b";
-        ctx.beginPath();
-        ctx.arc(0, 57, 19, 0, TAU);
-        ctx.fill();
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.arc(0, 57, 12 + pulse * 3, 0, TAU);
-        ctx.stroke();
-        ctx.fillStyle = "#c8b5a7";
-        ctx.fillRect(-23, 10, 46, 22);
-        ctx.fillStyle = "#24120f";
-        ctx.fillRect(-15, 17, 30, 7);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(5, 18, 10, 5);
-        ctx.fillStyle = "#6d3428";
-        ctx.fillRect(34, 37 + shoulder, 43, 18);
-        ctx.fillStyle = "#d49b70";
-        ctx.fillRect(67, 40 + shoulder, 15, 12);
-        ctx.fillStyle = "#2a1210";
-        ctx.fillRect(-58, 40 - shoulder, 25, 34);
-        ctx.fillStyle = "#96523c";
-        ctx.fillRect(-65, 47 - shoulder, 16, 21);
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(-42, 46);
-        ctx.bezierCurveTo(-27, 31, 22, 31, 41, 45);
-        ctx.stroke();
-      } else if (bossKind === "weaver") {
-        ctx.strokeStyle = `rgba(215, 160, 255, ${0.48 + pulse})`;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.ellipse(0, 23, 42, 16, 0, 0, TAU);
-        ctx.stroke();
-        ctx.save();
-        ctx.rotate(enemy.anim * 0.8);
-        for (let spoke = 0; spoke < 6; spoke += 1) {
-          ctx.rotate(TAU / 6);
-          ctx.fillStyle = "rgba(215, 160, 255, 0.4)";
-          ctx.fillRect(32, -2, 13, 4);
-        }
-        ctx.restore();
-        ctx.save();
-        ctx.rotate(-enemy.anim * 0.46);
-        for (let mask = 0; mask < 3; mask += 1) {
-          ctx.rotate(TAU / 3);
-          ctx.fillStyle = "rgba(241, 232, 244, 0.78)";
-          ctx.beginPath();
-          ctx.moveTo(47, -7);
-          ctx.lineTo(62, 0);
-          ctx.lineTo(47, 7);
-          ctx.lineTo(42, 0);
-          ctx.closePath();
-          ctx.fill();
-          ctx.fillStyle = bossAccent;
-          ctx.fillRect(52, -2, 7, 3);
-        }
-        ctx.restore();
-        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#21182f";
-        ctx.beginPath();
-        ctx.moveTo(-30, 30);
-        ctx.lineTo(0, 12);
-        ctx.lineTo(30, 30);
-        ctx.lineTo(24, 88);
-        ctx.lineTo(-24, 88);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#f1e8f4";
-        ctx.beginPath();
-        ctx.moveTo(-19, 14);
-        ctx.lineTo(19, 14);
-        ctx.lineTo(14, 43);
-        ctx.lineTo(0, 50);
-        ctx.lineTo(-14, 43);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#170d22";
-        ctx.fillRect(-12, 25, 24, 5);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(3, 26, 9, 3);
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 3;
-        for (let ribbon = -1; ribbon <= 1; ribbon += 2) {
-          ctx.beginPath();
-          ctx.moveTo(ribbon * 25, 45);
-          ctx.bezierCurveTo(ribbon * 58, 52 + shoulder, ribbon * 34, 78, ribbon * 64, 91);
-          ctx.stroke();
-        }
-      } else {
-        ctx.fillStyle = "#271624";
-        for (const wing of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(wing * 28, 34);
-          ctx.lineTo(wing * 76, 15);
-          ctx.lineTo(wing * 60, 48);
-          ctx.lineTo(wing * 82, 65);
-          ctx.lineTo(wing * 31, 72);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = bossAccent;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-        ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#15131f";
-        ctx.fillRect(-34, 34, 68, 58);
-        ctx.fillStyle = "#3b2637";
-        ctx.beginPath();
-        ctx.moveTo(-46, 40);
-        ctx.lineTo(-18, 31);
-        ctx.lineTo(-10, 78);
-        ctx.lineTo(-38, 84);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(46, 40);
-        ctx.lineTo(18, 31);
-        ctx.lineTo(10, 78);
-        ctx.lineTo(38, 84);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#ece8e9";
-        ctx.beginPath();
-        ctx.moveTo(-24, 8);
-        ctx.lineTo(22, 8);
-        ctx.lineTo(17, 40);
-        ctx.lineTo(-18, 40);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#1a0c14";
-        ctx.fillRect(-3, 20, 25, 7);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(11, 21, 11, 5);
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 7, 29 + pulse * 3, Math.PI, TAU);
-        ctx.stroke();
-        ctx.fillStyle = "#160d17";
-        ctx.beginPath();
-        ctx.arc(0, 59, 18, 0, TAU);
-        ctx.fill();
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 59, 11 + pulse * 2, 0, TAU);
-        ctx.stroke();
-        ctx.fillStyle = "#d8dce4";
-        ctx.fillRect(31, 49, 58, 8);
-        ctx.fillRect(43, 42, 38, 4);
-        ctx.fillStyle = "#5a4558";
-        ctx.fillRect(37, 57, 34, 8);
-        ctx.fillStyle = bossAccent;
-        ctx.fillRect(79, 51, 10, 4);
-        ctx.fillRect(79, 43, 10, 3);
-      }
-      if (chargingShot) {
-        const muzzleX = 63 - chargeProgress * 7;
-        const muzzleY = bossKind === "weaver" ? 48 : 50;
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = bossAccent;
-        ctx.lineWidth = 2 + chargeProgress * 2;
-        ctx.globalAlpha = 0.45 + chargeProgress * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(12, 55);
-        ctx.lineTo(muzzleX - 8, muzzleY);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(muzzleX, muzzleY, 5 + chargeProgress * 8 + Math.sin(game.time * 30) * 2, 0, TAU);
-        ctx.stroke();
-        ctx.fillStyle = bossAccent;
-        ctx.beginPath();
-        ctx.arc(muzzleX, muzzleY, 2 + chargeProgress * 5, 0, TAU);
-        ctx.fill();
-        ctx.restore();
-      }
     } else {
       const runnerLean = clamp(Math.abs(enemy.vx) / 240, 0, 0.28);
       const runnerAccent = variant > 0.5 ? palette.amber : palette.cyan;
+      drawCharacterPlate([-19, 16, -25, 0, -17, 6, -11, 23], "#3d5b6d", "#7a9ba6");
+      drawCharacterPlate([-15, 14, -17, -4, -10, 5, -7, 22], "#263f50", "#6c909d");
       drawRobotLeg(-6, 38, enemyGaitPhase + Math.PI, 8, 9, 6, runnerAccent);
       drawRobotLeg(6, 38, enemyGaitPhase, 8, 9, 6, runnerAccent);
       ctx.fillStyle = enemy.hurt > 0 ? "#ffffff" : "#1d2b39";
@@ -13917,6 +12750,9 @@
       ctx.fillRect(0, 9, 14, 6);
       ctx.fillStyle = palette.red;
       ctx.fillRect(8, 11, 5, 3);
+      drawCharacterPlate([-12, 4, 7, 2, 17, 8, 1, 8, -11, 11], "#94adb3", null);
+      ctx.fillStyle = runnerAccent;
+      ctx.fillRect(-15, 22, 8, 3);
       const armSwing = Math.sin(enemyGaitPhase) * movingRatio;
       const bladeHandX = 12 + (enemy.rushTimer > 0 ? 9 : enemy.windup > 0 ? -4 : armSwing * 3);
       const bladeHandY = 31 + (enemy.rushTimer > 0 ? -3 : armSwing * 2);
@@ -13930,12 +12766,10 @@
       ctx.rotate(-runnerLean + armSwing * 0.06);
       ctx.fillStyle = "#263b47";
       ctx.fillRect(-5, -5, 12, 10);
-      ctx.fillStyle = "#bacdd5";
-      ctx.fillRect(0, -2, 30, 4);
-      ctx.fillStyle = palette.cyan;
-      ctx.fillRect(24, -1, 12, 2);
-      ctx.fillStyle = palette.white;
-      ctx.fillRect(31, -0.5, 8, 1);
+      drawCharacterPlate([2, -4, 31, -6, 41, -1, 28, 3, 2, 3], "#a8bec7", "#345668");
+      ctx.strokeStyle = runnerAccent;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(8, 2); ctx.lineTo(28, 2); ctx.lineTo(39, -1); ctx.stroke();
       ctx.restore();
     }
 
@@ -15648,8 +14482,8 @@
       labels.forEach((item, index) => {
         const x = 34 + index * 414;
         drawCharacterArchiveCardFrame(x, 126, 382, 520, { name: item.name, code: item.code }, index === 1 ? palette.red : palette.cyan);
-        const poseScale = item.pose === "shotgun" ? 2.2 : item.pose === "slash" ? 2.9 : 3.25;
-        const poseCenterX = x + (item.pose === "shotgun" ? 154 : 191);
+        const poseScale = item.pose === "shotgun" ? 2.2 : item.pose === "slash" ? 2.3 : 3.25;
+        const poseCenterX = x + (item.pose === "shotgun" ? 154 : item.pose === "slash" ? 126 : 191);
         drawArchivePlayerPose(poseCenterX, 400, poseScale, item.pose);
       });
       return;
@@ -15667,7 +14501,7 @@
       const isBoss = Boolean(BOSS_DEFINITIONS[entry.key]);
       const isFixed = entry.key === "turret" || entry.key === "mortarTurret";
       const scale = isBoss ? (entry.key === "echo" ? 1.85 : 1.45) : isFixed ? 2.25 : 2.45;
-      const centerYOffset = entry.key === "echo" ? 36 : 0;
+      const centerYOffset = entry.key === "echo" ? 36 : entry.key === "shield" ? -20 : isFixed ? -12 : 0;
       drawArchiveEnemy(entry, x + cardW / 2, y + cardH * 0.66 + centerYOffset, scale);
     });
   }
@@ -15704,10 +14538,15 @@
 
   let previousTime = performance.now();
   function frame(now) {
+    if (document.hidden) {
+      previousTime = now;
+      requestAnimationFrame(frame);
+      return;
+    }
     const rawDt = clamp((now - previousTime) / 1000, 0, 0.066);
     previousTime = now;
     // Timestamp rounding must not split an ordinary 60 FPS frame in two.
-    const stepCount = Math.max(1, Math.ceil(rawDt * 60 - 1e-7));
+    const stepCount = Math.ceil(rawDt * 60 - 1e-7);
     for (let step = 0; step < stepCount; step += 1) update(rawDt / stepCount);
     music.update(rawDt);
     render();
@@ -15715,15 +14554,15 @@
   }
 
   function togglePause() {
-    player.queuedAction = null;
+    if (game.mode !== "playing" && game.mode !== "paused") return;
+    clearGameplayInput();
+    previousTime = performance.now();
     if (game.mode === "playing") {
-      clearTouchPointers();
       game.mode = "paused";
       pauseScreen.classList.add("visible");
     } else if (game.mode === "paused") {
       game.mode = "playing";
       pauseScreen.classList.remove("visible");
-      previousTime = performance.now();
     }
   }
 
@@ -15866,9 +14705,16 @@
     if (active) {
       if (!keys.has(code)) pressed.add(code);
       keys.add(code);
-    } else {
+    } else if (!keyboardKeys.has(code) && !isTouchKeyHeld(code)) {
       keys.delete(code);
     }
+  }
+
+  function isTouchKeyHeld(code) {
+    for (const entry of touchPointers.values()) {
+      if (entry.key === code || (entry.action === "jump" && code === "Space")) return true;
+    }
+    return false;
   }
 
   function syncMoveStickAimPointer() {
@@ -15931,16 +14777,25 @@
   function releaseTouchPointer(pointerId, event = null) {
     const entry = touchPointers.get(pointerId);
     if (!entry) return;
+    touchPointers.delete(pointerId);
     if (entry.key) setVirtualKey(entry.key, false);
     if (entry.action === "jump") setVirtualKey("Space", false);
     if (entry.action === "move") resetMoveJoystick();
     entry.control.classList.remove("touch-active");
     if (entry.control.matches?.("button")) entry.control.setAttribute("aria-pressed", "false");
-    touchPointers.delete(pointerId);
   }
 
   function clearTouchPointers() {
     for (const pointerId of [...touchPointers.keys()]) releaseTouchPointer(pointerId);
+  }
+
+  function clearGameplayInput() {
+    clearTouchPointers();
+    keyboardKeys.clear();
+    keys.clear();
+    pressed.clear();
+    player.jumpBuffer = 0;
+    player.queuedAction = null;
   }
 
   function isTouchDevice() {
@@ -16016,6 +14871,8 @@
     const control = event.currentTarget;
     const key = control.dataset.touchKey || null;
     const action = control.dataset.touchAction || null;
+    if (game.mode !== "playing" && action !== "pause" && action !== "fullscreen") return;
+    if ([...touchPointers.values()].some((entry) => entry.control === control)) return;
     const entry = {
       control,
       key,
@@ -16126,8 +14983,11 @@
     }
     const handled = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "Escape", "Delete", "ShiftLeft", "ShiftRight", "KeyA", "KeyD", "KeyW", "KeyS", "KeyJ", "KeyK", "KeyE", "KeyF", "KeyC", "KeyX", "KeyZ", "KeyR", "KeyL", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5"];
     if (handled.includes(event.code)) event.preventDefault();
-    const firstPress = !keys.has(event.code);
-    if (firstPress) pressed.add(event.code);
+    // Auto-repeat must never toggle pause or replay an action after input was reset.
+    if (event.repeat) return;
+    const firstPress = !keyboardKeys.has(event.code);
+    keyboardKeys.add(event.code);
+    if (firstPress && !keys.has(event.code)) pressed.add(event.code);
     keys.add(event.code);
 
     if (game.tutorialOpen) {
@@ -16167,28 +15027,35 @@
       keys.delete("KeyR");
       return;
     }
-    if (event.code === "Escape") {
+    if (firstPress && event.code === "Escape") {
       if (startScreenEditor?.hidden === false) setStartScreenEditor(false);
       else if (isAdminWorldEditing()) setAdminWorldEditor(false);
       else if (adminSpawnPanel?.hidden === false) setAdminSpawnPanel(false);
       else togglePause();
     }
-    if (event.code === "Enter" && game.mode === "menu") resetGame();
-    if (event.code === "Enter" && game.mode === "won") resetGame();
+    if (firstPress && event.code === "Enter" && (game.mode === "menu" || game.mode === "won")) resetGame();
   });
 
   window.addEventListener("keyup", (event) => {
-    keys.delete(event.code);
+    keyboardKeys.delete(event.code);
+    if (!isTouchKeyHeld(event.code)) keys.delete(event.code);
   });
 
-  window.addEventListener("blur", () => {
-    clearTouchPointers();
-    keys.clear();
-    pressed.clear();
+  function suspendGameplay() {
+    clearGameplayInput();
+    pointer.active = false;
+    finishAdminWorldTransform();
     setAdminSpawnPanel(false);
     setAdminZonePanel(false);
     setAdminDifficultyPanel(false);
     if (game.mode === "playing") togglePause();
+    previousTime = performance.now();
+  }
+
+  window.addEventListener("blur", suspendGameplay);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) suspendGameplay();
+    else previousTime = performance.now();
   });
 
   for (const button of touchControlButtons) {

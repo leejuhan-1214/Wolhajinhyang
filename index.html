@@ -13,21 +13,47 @@
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.26.png" fetchpriority="high" />
     <style>html[data-game-bootstrap="loading"] #start-screen { visibility: hidden; }</style>
-    <link rel="stylesheet" href="styles.css?v=3.7.0" />
+    <link rel="stylesheet" href="styles.css?v=3.8.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
+      <section id="loading-screen" class="overlay compact visible" role="status" aria-live="polite">
+        <div class="eyebrow">OPERATION STANDBY</div>
+        <h2>작전 준비 중</h2>
+        <p id="loading-message">기록과 전투 시스템을 불러오고 있습니다.</p>
+        <button id="loading-retry" type="button" hidden>다시 시도</button>
+      </section>
+      <noscript>이 게임을 실행하려면 브라우저에서 JavaScript를 활성화해 주세요.</noscript>
       <canvas id="game" width="1280" height="720" aria-label="게임 화면"></canvas>
 
-      <section id="start-screen" class="overlay visible">
-        <h1 id="start-title">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.7.0</div>
-        <div class="difficulty-select" aria-label="난이도 선택">
-          <span>난이도</span>
-          <button type="button" data-difficulty="chick" aria-pressed="false">쉬움</button>
-          <button type="button" data-difficulty="cadet" class="selected" aria-pressed="true">보통</button>
-          <button type="button" data-difficulty="darkhorse" aria-pressed="false">어려움</button>
-          <button type="button" data-difficulty="weapon" aria-pressed="false">지옥</button>
+      <section id="start-screen" class="overlay visible" aria-labelledby="start-title">
+        <h1 id="start-title" class="visually-hidden">월하잔향</h1>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.8.0</div>
+        <div class="start-menu">
+          <header class="start-briefing">
+            <p class="start-kicker">MOONLIT ECHO / CAMPAIGN</p>
+            <h2>백야 작전</h2>
+            <p>칼끝에 남은 기억, 다섯 막의 진실.</p>
+          </header>
+          <div class="campaign-actions">
+            <button id="start-button" type="button">게임 시작</button>
+            <button id="continue-button" type="button" disabled>이어하기</button>
+          </div>
+          <div class="difficulty-select" role="group" aria-label="난이도 선택">
+            <span>작전 난이도 <small>처음이라면 보통을 추천합니다</small></span>
+            <button type="button" data-difficulty="chick" aria-pressed="false" data-description="여유로운 전투" aria-describedby="difficulty-chick-help">쉬움</button>
+            <button type="button" data-difficulty="cadet" class="selected" aria-pressed="true" data-description="균형 잡힌 도전" aria-describedby="difficulty-cadet-help">보통</button>
+            <button type="button" data-difficulty="darkhorse" aria-pressed="false" data-description="빈틈없는 적 배치" aria-describedby="difficulty-darkhorse-help">어려움</button>
+            <button type="button" data-difficulty="weapon" aria-pressed="false" data-description="강화된 보스 연계" aria-describedby="difficulty-weapon-help">지옥</button>
+          </div>
+          <div class="visually-hidden">
+            <span id="difficulty-chick-help">적과 탄환이 느린 여유로운 전투</span>
+            <span id="difficulty-cadet-help">표준 전투 규칙, 첫 플레이에 추천</span>
+            <span id="difficulty-darkhorse-help">보통과 같은 속도, 더 많은 적과 강한 보스</span>
+            <span id="difficulty-weapon-help">빠른 적과 탄환, 강화된 보스 연계</span>
+          </div>
+          <p class="start-controls"><kbd>A</kbd><kbd>D</kbd> 이동 <span>·</span> <kbd>SPACE</kbd> 점프 <span>·</span> 마우스 공격</p>
+          <p class="start-touch-hint">가로 화면 권장 · 화면 조작으로 플레이</p>
         </div>
         <p id="admin-status" class="admin-status" role="status" hidden></p>
         <button id="start-screen-edit-toggle" class="start-screen-edit-toggle" type="button" hidden>첫 화면 편집</button>
@@ -50,16 +76,12 @@
             <button id="start-screen-edit-reset" type="button">전체 기본값 복원</button>
           </div>
         </section>
-        <div class="campaign-actions">
-          <button id="start-button" type="button">게임 시작</button>
-          <button id="continue-button" type="button" disabled>이어하기</button>
-        </div>
       </section>
 
-      <section id="pause-screen" class="overlay compact" aria-live="polite">
+      <section id="pause-screen" class="overlay compact" aria-live="polite" aria-labelledby="pause-title">
         <div class="eyebrow">OPERATION PAUSED</div>
-        <h2>일시 정지</h2>
-        <p>ESC 또는 아래 버튼으로 계속할 수 있습니다.</p>
+        <h2 id="pause-title">잠시, 숨 고르기</h2>
+        <p><kbd>ESC</kbd> 또는 계속하기로 작전에 복귀합니다.</p>
         <section class="volume-panel" aria-label="음량 설정">
           <header><strong>음량 설정</strong><button id="volume-mute" type="button" aria-pressed="false">음소거</button></header>
           <label for="volume-master"><span>전체 음량</span><input id="volume-master" type="range" min="0" max="100" step="1" value="100"><output id="volume-master-value" for="volume-master">100%</output></label>
@@ -67,6 +89,12 @@
           <label for="volume-sfx"><span>효과음</span><input id="volume-sfx" type="range" min="0" max="100" step="1" value="100"><output id="volume-sfx-value" for="volume-sfx">100%</output></label>
         </section>
         <button id="resume-button" type="button">계속하기</button>
+        <div class="pause-controls" aria-label="주요 조작">
+          <span><kbd>SPACE</kbd> 이중 점프</span>
+          <span><kbd>좌클릭</kbd> 발도</span>
+          <span><kbd>우클릭</kbd> 샷건</span>
+          <span><kbd>E</kbd> 탄환 방어</span>
+        </div>
       </section>
 
       <section id="end-screen" class="overlay">
@@ -90,6 +118,7 @@
           <article><kbd>ESC</kbd><b>일시 정지</b><span>게임을 멈추거나 모바일 일시 정지 메뉴 닫기</span></article>
         </div>
         <p>구역의 모든 적을 쓰러뜨려야 다음 봉쇄문이 열립니다. 중간 보스와 진 보스도 해당 구역의 적으로 계산됩니다.</p>
+        <div class="tutorial-mobile-note">터치 화면에서는 왼쪽 조이스틱으로 이동하고, 오른쪽의 점프·발도·산탄·버스트 버튼을 사용하세요.</div>
         <button id="tutorial-close" type="button">작전 시작</button>
       </section>
 
@@ -110,7 +139,7 @@
         <div class="admin-difficulty-grid">
           <button type="button" data-admin-difficulty="chick"><b>쉬움</b><span>체력 5 · 느린 적과 탄환</span></button>
           <button type="button" data-admin-difficulty="cadet"><b>보통</b><span>체력 5 · 표준 전투 규칙</span></button>
-          <button type="button" data-admin-difficulty="darkhorse"><b>어려움</b><span>체력 5 · 빠른 적과 탄환</span></button>
+          <button type="button" data-admin-difficulty="darkhorse"><b>어려움</b><span>체력 5 · 빈틈없는 적 배치</span></button>
           <button type="button" data-admin-difficulty="weapon"><b>지옥</b><span>체력 5 · 강화 보스 연계</span></button>
         </div>
         <p>선택 즉시 현재 위치에서 실전이 시작됩니다. 실전 중 <kbd>R</kbd>을 누르면 관리자 모드로 복귀합니다.</p>
@@ -192,18 +221,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-  <script>
-    (async () => {
-      try {
-        const response = await fetch("published-admin-profile.json?v=3.7.0", { cache: "no-store" });
-        if (response.ok) window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__ = await response.json();
-      } catch (error) {
-        console.info("공개 월드 편집본 없이 기본 맵을 시작합니다.", error?.message || error);
-      }
-      const gameScript = document.createElement("script");
-      gameScript.src = "game.js?v=3.7.0";
-      document.body.appendChild(gameScript);
-    })();
-  </script>
+    <script src="bootstrap.js?v=3.8.0"></script>
   </body>
 </html>
