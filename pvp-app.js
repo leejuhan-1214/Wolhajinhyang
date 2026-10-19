@@ -7,6 +7,7 @@
   const ctx = canvas.getContext("2d");
   const Engine = globalThis.MoonlitDuel;
   const Network = globalThis.MoonlitNetwork;
+  const View = globalThis.MoonlitDuelView;
   const Operative = globalThis.MoonlitOperative;
   const operativeClock = { time: 0, stage: 0 };
   const operativePlayers = [{ runCycle: 0 }, { runCycle: 0 }];
@@ -22,8 +23,10 @@
   const actions = ["jump", "dash", "slash", "shotgun"];
   const newPulses = () => ({ jump: 0, dash: 0, slash: 0, shotgun: 0 });
   let localPulses = newPulses(), remotePulses = newPulses();
-  let remoteInput = null, lastRemoteInputAt = 0, lastStateAt = 0, previous = null;
-  let lastSnapshotAt = 0, lastInputAt = 0, lastStepAt = performance.now(), accumulator = 0;
+  let remoteInput = null, lastRemoteInputAt = 0, lastStateAt = 0;
+  let guestView = null, hostPrevious = null, appliedInputSeq = -1, appliedActionSeq = -1;
+  let pressIds = { jump: 0, dash: 0, slash: 0, shotgun: 0 };
+  let lastSnapshotAt = 0, lastStepAt = performance.now(), accumulator = 0;
   let displayState = null, lastHudAt = 0, lastPhase = "", lastSoundEffect = -1;
   let soundEnabled = false, audioContext = null, lastQualityAt = 0, suspended = false;
   const isHost = () => localRole === "host";
@@ -90,8 +93,11 @@
     const after = heldActions();
     for (const action of actions) {
       if (!after[action] || before[action]) continue;
-      if (isHost()) localPulses[action] = Math.min(4, localPulses[action] + 1);
-      else if (!network?.send({ type: "action", matchId, seq: ++actionSeq, action })) return;
+      localPulses[action] = Math.min(4, localPulses[action] + 1);
+      if (!isHost()) {
+        pressIds[action] = ++actionSeq;
+        if (!network?.send({ type: "action", matchId, seq: actionSeq, action })) return;
+      }
     }
   }
 
@@ -116,7 +122,7 @@
   function disconnect(message = "방을 나왔습니다. 새로운 결투를 시작해 보세요.", error = false) {
     const old = network;
     network = null; localRole = null; connected = false; busy = false;
-    clearControls(); ready = [false, false]; match = null; previous = null; displayState = null;
+    clearControls(); ready = [false, false]; match = null; guestView = null; hostPrevious = null; displayState = null;
     matchId = ""; lastPhase = ""; accumulator = 0; lastInputSeq = -1; suspended = false;
     old?.close();
     $("focus-hint").hidden = true;
@@ -214,22 +220,28 @@
         lastRemoteInputAt = performance.now();
       }
     } else if (message.type === "suspend" && !isHost() && match && message.matchId === matchId && typeof message.active === "boolean") {
-      suspended = message.active; clearControls(); lastStateAt = performance.now(); previous = null;
+      suspended = message.active; clearControls(); lastStateAt = performance.now();
+      guestView?.reset(match, lastStateAt); accumulator = 0; lastStepAt = lastStateAt;
     } else if (message.type === "start" && !isHost() && !active() && typeof message.matchId === "string" && /^[a-z0-9-]{1,64}$/.test(message.matchId) && validState(message.state) && message.state.phase === "countdown") {
       matchId = message.matchId; begin(message.state);
     } else if (message.type === "state" && !isHost() && message.matchId === matchId && match && validState(message.state) && message.state.tick > match.tick) {
-      previous = { state: match, at: lastStateAt };
       match = message.state; lastStateAt = performance.now();
+      guestView?.receive(match, message.inputAck, message.actionAck, lastStateAt);
       if (match.phase !== lastPhase) syncPhase();
     }
   }
 
   function begin(state) {
-    match = state; previous = null; displayState = null; ready = [false, false];
+    match = state; displayState = null; ready = [false, false];
+    hostPrevious = match.fighters.map(f => ({ ...f }));
+    guestView = isHost() ? null : new View.DuelView(Engine, 1);
+    guestView?.reset(match, performance.now());
+    appliedInputSeq = -1; appliedActionSeq = -1;
+    pressIds = { jump: 0, dash: 0, slash: 0, shotgun: 0 };
     inputSeq = 0; lastInputSeq = -1; lastStateAt = performance.now(); lastStepAt = performance.now();
     actionSeq = 0; lastActionSeq = -1;
     localPulses = newPulses(); remotePulses = newPulses();
-    lastSnapshotAt = 0; lastInputAt = 0; lastRemoteInputAt = performance.now();
+    lastSnapshotAt = 0; lastRemoteInputAt = performance.now();
     remoteInput = emptyInput(); accumulator = 0; lastPhase = ""; lastSoundEffect = -1; suspended = false;
     clearControls(); syncPhase(); updateLobby(); canvas.focus({ preventScroll: true });
     status("결투가 시작되었습니다. 먼저 두 라운드를 승리하세요.");
@@ -261,53 +273,46 @@
     return Engine.createInput({ move: Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft")), ...heldActions(), aimX: dx, aimY: dy });
   }
 
-  function tick() {
-    const now = performance.now();
-    const elapsed = Math.min((now - lastStepAt) / 1000, .25); lastStepAt = now;
+  function tick(now = performance.now()) {
+    const elapsed = clamp((now - lastStepAt) / 1000, 0, .25); lastStepAt = now;
     if (!active() || suspended) { accumulator = 0; return; }
+    accumulator += elapsed;
     if (isHost()) {
-      accumulator += elapsed;
       const relayGrace = network.transport === "relay" ? Math.min(2000, Math.max(450, network.latency * 2.5 || 450)) : 450;
       const remoteFresh = now - lastRemoteInputAt < relayGrace;
       if (!remoteFresh) remotePulses = newPulses();
       while (accumulator >= Engine.FIXED_DT) {
+        hostPrevious = match.fighters.map(f => ({ ...f }));
         Engine.step(match, [consumePulses(readInput(), localPulses, match.fighters[0]), consumePulses(remoteFresh ? remoteInput : emptyInput(), remotePulses, match.fighters[1])], Engine.FIXED_DT);
+        if (remoteFresh) { appliedInputSeq = lastInputSeq; appliedActionSeq = lastActionSeq; }
         accumulator -= Engine.FIXED_DT;
       }
-      if (now - lastSnapshotAt >= 48 || match.phase !== lastPhase) {
-        if (!network.send({ type: "state", matchId, state: Engine.snapshot(match) })) return;
-        lastSnapshotAt = now;
+      const phaseChanged = match.phase !== lastPhase;
+      if (now - lastSnapshotAt >= 1000 / 30 || phaseChanged) {
+        // send() copies synchronously; avoid a second full JSON snapshot here.
+        if (!network.send({ type: "state", matchId, state: match, inputAck: appliedInputSeq, actionAck: appliedActionSeq, reliable: phaseChanged })) return;
+        lastSnapshotAt = phaseChanged ? now : now - ((now - lastSnapshotAt) % (1000 / 30));
       }
-      if (match && match.phase !== lastPhase) syncPhase();
+      if (match && phaseChanged) syncPhase();
     } else {
-      if (now - lastInputAt >= 30) {
-        if (!network.send({ type: "input", matchId, seq: ++inputSeq, input: readInput() })) return;
-        lastInputAt = now;
+      while (accumulator >= Engine.FIXED_DT) {
+        const raw = readInput(), input = consumePulses(raw, localPulses, guestView.predicted);
+        const seq = ++inputSeq;
+        guestView.predict(seq, input, pressIds);
+        if (!network.send({ type: "input", matchId, seq, input: raw })) return;
+        accumulator -= Engine.FIXED_DT;
       }
       if (now - lastStateAt > 10000) disconnect("상대의 응답이 없어 결투가 종료되었습니다. 새 방에서 다시 만나세요.", true);
     }
   }
 
   function renderedState(now) {
-    if (!match || isHost() || !previous) return match;
-    const state = { ...match, fighters: match.fighters.map((f) => ({ ...f })) };
-    const duration = clamp(lastStateAt - previous.at, 16, 200);
-    const t = clamp((now - lastStateAt) / duration, 0, 1);
-    if (previous.state.round === state.round && previous.state.phase === state.phase) {
-      state.fighters.forEach((f, i) => {
-        const old = previous.state.fighters[i];
-        if (Math.hypot(f.x - old.x, f.y - old.y) < 170) {
-          f.x = old.x + (f.x - old.x) * t; f.y = old.y + (f.y - old.y) * t;
-        }
-      });
-    }
-    // Short visual prediction makes held movement respond immediately. Hits and scores remain authoritative.
-    if (state.phase === "playing" && !suspended) {
-      const f = state.fighters[ownIndex()], input = readInput();
-      const lead = Math.min((now - lastStateAt) / 1000, .075);
-      f.x = clamp(f.x + input.move * 310 * lead, Engine.ARENA.left, Engine.ARENA.right - f.w);
-    }
-    return state;
+    if (!match) return null;
+    if (suspended) return match;
+    const alpha = clamp((accumulator + Math.max(0, now - lastStepAt) / 1000) / Engine.FIXED_DT, 0, 1);
+    if (!isHost()) return guestView?.render(now, alpha) || match;
+    if (match.phase !== "playing" || suspended || !hostPrevious) return match;
+    return { ...match, fighters: match.fighters.map((f, i) => View.interpolate(hostPrevious[i], f, alpha)) };
   }
 
   function updateHud(state, now) {
@@ -414,6 +419,7 @@
   }
 
   function draw(now) {
+    tick(now);
     ctx.clearRect(0,0,W,H);ctx.drawImage(backdrop,0,0);
     const time=now/1000;
     ctx.strokeStyle="#9cc4c011";ctx.lineWidth=1;
@@ -435,7 +441,7 @@
     requestAnimationFrame(draw);
   }
 
-  if (!Engine || !Network || !Operative || !ctx) {
+  if (!Engine || !Network || !View || !Operative || !ctx) {
     status("결투 화면을 불러오지 못했습니다. 새로고침해 주세요.", true);
     $("host-button").disabled = true; $("join-button").disabled = true; return;
   }
@@ -448,7 +454,7 @@
   $("leave-button").addEventListener("click",()=>disconnect());
   $("match-leave-button").addEventListener("click",()=>disconnect("결투를 나왔습니다. 다시 플레이하려면 새 방을 만드세요."));
   $("copy-code-button").addEventListener("click",()=>copy(network?.code||"","방 코드"));
-  $("copy-link-button").addEventListener("click",()=>{const url=new URL("pvp.html",location.href);url.searchParams.set("room",network?.code||"");copy(url.href,"초대 링크");});
+  $("copy-link-button").addEventListener("click",()=>{const url=new URL("pvp.html",location.href);url.searchParams.set("room",network?.code||"");url.searchParams.set("smooth","2");copy(url.href,"초대 링크");});
   $("sound-button").addEventListener("click",async()=>{
     soundEnabled=!soundEnabled;
     if(soundEnabled){try{audioContext ||= new (window.AudioContext||window.webkitAudioContext)();await audioContext.resume();}catch{soundEnabled=false;status("이 브라우저에서 소리를 켤 수 없습니다.",true);}}
@@ -472,11 +478,11 @@
       suspended=document.hidden;accumulator=0;lastStepAt=performance.now();remoteInput=emptyInput();
       remotePulses=newPulses();
       if(!network.send({type:"suspend",matchId,active:suspended}))return;
-      if(!suspended&&network&&match)network.send({type:"state",matchId,state:Engine.snapshot(match)});
+      if(!suspended&&network&&match)network.send({type:"state",matchId,state:match,inputAck:appliedInputSeq,actionAck:appliedActionSeq,reliable:true});
     }
   });
   window.addEventListener("pagehide",()=>network?.close());
   const invite=new URL(location.href).searchParams.get("room");
   if(invite&&invite.length<=160){$("room-input").value=invite;status("결투 초대를 받았습니다. 참가 버튼을 눌러 친구와 연결하세요.");}
-  updateLobby();setInterval(tick,1000/60);requestAnimationFrame(draw);
+  updateLobby();requestAnimationFrame(draw);
 })();

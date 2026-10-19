@@ -287,5 +287,19 @@
 
   function snapshot(state) { return JSON.parse(JSON.stringify(state)); }
 
-  return Object.freeze({ ARENA, FIXED_DT, createMatch, createInput, step, snapshot });
+  // Reuse the real movement, terrain and recoil for local visual prediction.
+  // Damage, scores, round timers and the supplied authoritative fighter stay untouched.
+  const predictionTarget = Object.freeze({ id: -1, x: -1e6, y: -1e6, w: 0, h: 0, invulnerable: 1 });
+  function predictFighter(fighter, rawInput, dt = FIXED_DT) {
+    const predicted = { ...fighter }, input = createInput(rawInput);
+    const scratch = { rng: 1, effects: [], nextEffectId: 1 };
+    const ticks = Math.min(6, Math.floor(clamp(finite(dt), 0, .1) / FIXED_DT + 1e-8));
+    for (let tick = 0; tick < ticks; tick += 1) {
+      moveFighter(scratch, predicted, input);
+      attack(scratch, predicted, predictionTarget, input, []);
+    }
+    return predicted;
+  }
+
+  return Object.freeze({ ARENA, FIXED_DT, createMatch, createInput, step, snapshot, predictFighter });
 });

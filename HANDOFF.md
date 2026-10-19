@@ -17,8 +17,9 @@ Node.js 20 이상에서 `npm start`를 실행하고 http://127.0.0.1:4173/ 을 �
 | `game.js` | 월드 생성·전투·저장·입력·Canvas 렌더링 |
 | `pvp.html`, `pvp.css`, `pvp-app.js` | 온라인 1:1 로비·입력·대전 렌더링 |
 | `pvp-simulation.js` | 고정 시간 간격의 결정론적 2인 대전·승패 |
+| `pvp-view.js` | 게스트 입력 예측·ACK 보정·상대 보간·고주사율 표시 |
 | `pvp-network.js` | 초대 방·WebRTC·HTTPS 중계·ACK와 세션 수명 |
-| `qa-pvp.cjs`, `qa-pvp-network.cjs`, `qa-pvp-input.cjs` | 대전 규칙, 통신 경합·재전송, 짧은 입력 보존 검사 |
+| `qa-pvp.cjs`, `qa-pvp-network.cjs`, `qa-pvp-input.cjs`, `qa-pvp-view.cjs` | 대전 규칙, 통신 경합·재전송, 짧은 입력 보존 검사 |
 | `qa-smoke.cjs` | 80구역·난이도 비율·보스·세이브 마이그레이션 검사 |
 | `qa-motion.cjs` | 실제 게임 함수와 입력 이벤트를 실행하는 조작/렌더링 회귀 검사 |
 | `qa-bootstrap.cjs` | 프로필 응답 실패·타임아웃·스크립트 실패·재시도 검사 |

@@ -69,12 +69,13 @@
         role: result.role, code: result.code, token: result.token, closed: false,
         transport: "relay", peerConnected: false, received: 0, nextId: 0, seq: 0,
         lastSuccess: performance.now(), rtcStarted: false, rtcDisabled: false,
+        inFlight: 0, latestResponseSeq: -1,
       });
       this.outbox.clear();
       this.ice = [];
       this.signalQueue = Promise.resolve();
       this.onStatus(this.role === "host" ? "상대의 입장을 기다리는 중" : "대전 방에 입장했습니다.");
-      this.timer = setTimeout(() => this.exchange(generation), 0);
+      this.timer = setTimeout(() => this.poll(generation), 0);
       return { code: this.code, role: this.role };
     }
 
@@ -85,8 +86,8 @@
       if (typeof encoded !== "string" || encoded.length > MAX_MESSAGE_BYTES || bytes(encoded) > MAX_MESSAGE_BYTES) return false;
       const copy = JSON.parse(encoded);
       if (!copy || typeof copy !== "object" || Array.isArray(copy)) return false;
-      if (VOLATILE.has(copy.type)) {
-        for (const [id, item] of this.outbox) if (item.payload.type === copy.type) this.outbox.delete(id);
+      if (VOLATILE.has(copy.type) && !copy.reliable) {
+        for (const [id, item] of this.outbox) if (item.payload.type === copy.type && !item.payload.reliable) this.outbox.delete(id);
       }
       if (this.outbox.size >= 48) {
         this.fail("통신이 지연되어 대전을 중단했습니다. 새 방에서 다시 시도해 주세요.");
@@ -126,16 +127,28 @@
       }
     }
 
+    poll(generation) {
+      if (this.closed || generation !== this.generation) return;
+      // At most three concurrent relay requests: latency no longer serializes every update.
+      this.timer = setTimeout(() => this.poll(generation), this.transport === "direct" ? 1000 : 80);
+      const limit = this.transport === "direct" ? 1 : 3;
+      if (this.inFlight < limit) this.exchange(generation);
+    }
+
     async exchange(generation) {
       if (this.closed || generation !== this.generation) return;
       const began = performance.now();
+      const sequence = ++this.seq;
+      this.inFlight += 1;
       try {
         const result = await this.request(`/rooms/${this.code}/exchange`, {
-          token: this.token, seq: ++this.seq,
+          token: this.token, seq: sequence,
           packet: [...this.outbox.values()], ack: this.received,
         }, 5000);
         if (this.closed || generation !== this.generation) return;
         this.lastSuccess = performance.now();
+        if (sequence <= this.latestResponseSeq) return;
+        this.latestResponseSeq = sequence;
         if (this.transport === "relay") this.latency = Math.round(this.lastSuccess - began);
         if (result.peerLeft) return this.fail("상대가 방을 나갔습니다. 새 방에서 다시 대전할 수 있습니다.");
         if (result.peerConnected && !this.peerConnected) {
@@ -151,14 +164,13 @@
         this.receive(result.packet, result.ack);
       } catch (error) {
         if (this.closed || generation !== this.generation) return;
+        if (sequence <= this.latestResponseSeq) return;
         if ([401, 403, 404, 410].includes(error.status) || performance.now() - this.lastSuccess > 15000) {
           return this.fail(error.status === 410 ? "대전 방이 만료되었습니다. 새 방을 만들어 주세요." : "서버 연결이 끊겼습니다. 새 방에서 다시 시도해 주세요.");
         }
         this.onStatus("연결을 복구하는 중…");
-      }
-      if (!this.closed && generation === this.generation) {
-        const interval = this.transport === "direct" ? 1000 : 100;
-        this.timer = setTimeout(() => this.exchange(generation), Math.max(16, interval - (performance.now() - began)));
+      } finally {
+        if (generation === this.generation) this.inFlight = Math.max(0, this.inFlight - 1);
       }
     }
 

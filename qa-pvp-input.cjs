@@ -55,6 +55,7 @@ async function pair() {
     context.window = context; vm.createContext(context);
     vm.runInContext(fs.readFileSync(`${__dirname}/operative-renderer.js`, 'utf8'), context, { filename: 'operative-renderer.js' });
     vm.runInContext(engineSource, context, { filename: 'pvp-simulation.js' });
+    vm.runInContext(fs.readFileSync(`${__dirname}/pvp-view.js`, 'utf8'), context, { filename: 'pvp-view.js' });
     vm.runInContext(appSource.replace(/\}\)\(\);\s*$/, hooks + '\n})();'), context, { filename: 'pvp-app.js' });
     const key = (type, code) => windowEvents.get(type)?.({ code, target: {}, preventDefault() {} });
     const pointer = (type, button) => {
@@ -152,6 +153,14 @@ async function test(name, run) { await run(); count += 1; console.log(`PASS ${na
     assert.equal(p.host.q.state().match.fighters[1].jumps, 0);
     p.host.document.hidden = false; p.host.documentEvents.get('visibilitychange')(); p.relay(); p.frame(220);
     assert.equal(p.host.q.state().match.fighters[1].jumps, 0);
+  });
+
+  await test('host snapshots maintain 30Hz on a 120Hz presentation clock', async () => {
+    const p = await pair(), client = p.host.q.state().network, send = client.send.bind(client);
+    let snapshots = 0;
+    client.send = message => { if (message.type === 'state') snapshots++; return send(message); };
+    for (let frame = 1; frame <= 240; frame++) p.frame(frame * 1000 / 120);
+    assert.ok(snapshots >= 58 && snapshots <= 61, `expected about 60 snapshots in two seconds, received ${snapshots}`);
   });
 
   await test('synchronous network failure during a snapshot does not dereference a cleared match', async () => {

@@ -264,6 +264,41 @@ async function test(name, run) {
     a.close(); b.close();
   });
 
+  await test('slow relay requests are pipelined with a strict three-request bound', async () => {
+    const rt = runtime(), a = new rt.Network({ direct: false }); await a.host();
+    const held = [];
+    a.request = async (path, body) => {
+      if (!path.endsWith('/exchange')) return {};
+      const pending = deferred(); held.push({ pending, seq: body.seq }); return pending.promise;
+    };
+    await rt.advance(800);
+    assert.equal(held.length, 3); assert.equal(a.inFlight, 3);
+    assert.deepEqual(held.map(p => p.seq), [1, 2, 3]);
+    held[1].pending.resolve({ packet: [], ack: 0, peerConnected: false }); await flush();
+    await rt.advance(80); assert.equal(held.length, 4); assert.equal(a.inFlight, 3);
+    a.close(); for (const p of held) p.pending.resolve({ packet: [], ack: 0, peerConnected: false }); await flush();
+    const count = held.length; await rt.advance(1000); assert.equal(held.length, count);
+  });
+
+  await test('an older relay response cannot undo a newer peer connection', async () => {
+    const rt = runtime(), a = new rt.Network({ direct: false }), b = new rt.Network({ direct: false });
+    await a.host(); const held = rt.backend.holdNext(), old = a.exchange(a.generation); await flush();
+    await b.join(a.code); await a.exchange(a.generation); assert.equal(a.peerConnected, true);
+    held.resolve(); await old; assert.equal(a.closed, false); assert.equal(a.peerConnected, true);
+    a.close(); b.close();
+  });
+
+  await test('round and final results remain reliable while newer visual snapshots coalesce', async () => {
+    const rt = runtime(), received = [], a = new rt.Network({ direct: false }), b = new rt.Network({ direct: false, onMessage: m => received.push(m) });
+    await a.host(); await b.join(a.code); await rt.advance(200);
+    a.send({ type: 'state', reliable: true, phase: 'matchOver', tick: 100 });
+    for (let tick = 101; tick < 130; tick++) a.send({ type: 'state', tick });
+    assert.equal(a.outbox.size, 2);
+    rt.backend.loseNextResponse(); await rt.advance(500);
+    assert.equal(received[0].phase, 'matchOver'); assert.equal(received[1].tick, 129);
+    a.close(); b.close();
+  });
+
   console.log(`PvP network: ${passed} passed, ${failed} failed.`);
   process.exitCode = failed ? 1 : 0;
 })();
