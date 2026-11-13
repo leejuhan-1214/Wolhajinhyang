@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const { recordingContext, renderer: operativeRenderer } = require('./qa-operative.cjs');
 require('./qa-smoke.cjs');
 window.__MOONLIT_ECHO_RUNTIME_ACTIVE__ = false;
 const windowEvents = new Map();
@@ -23,7 +24,7 @@ const source = fs.readFileSync('game.js', 'utf8');
 const hook = `window.__MOTION_QA__ = { player, game, keys, pressed, platforms, enemies, bullets,
   hazards, checkpoints, pickups, boostNodes, combatRooms, snowPatches, updatePlayer, update,
   keyboardKeys, touchPointers, moveStick, clearGameplayInput, handleTouchControlDown, handleTouchControlUp, setTutorialPanel, closeTutorialPanel,
-  startAttack, startComboAttack, resetSlashCombo, isAttackActive, startShotgun, updateBullets, damagePlayer, frame, togglePause, drawPlayerBody, drawEnemy,
+  startAttack, startComboAttack, resetSlashCombo, isAttackActive, startShotgun, updateBullets, damagePlayer, frame, togglePause, drawPlayerBody, drawEnemy, startCutscene,
   drawCharacterArchive, drawHud, ctx, camera, rebuildPlatformSpatialIndex,
   toggleAdminCadetMode, teleportAdminToZone,
   unlockAdmin() { adminModeUnlocked = true; },
@@ -258,9 +259,133 @@ assert(q.toggleAdminCadetMode());
 assert.equal(q.player.queuedAction,null,'returning to admin mode must not fire a queued slash');
 assert.equal(q.player.wallJumpLock,0);
 q.player.queuedAction={kind:'shotgun',aim:null,time:0.1}; q.player.wallJumpLock=0.1;
+q.player.motionPose={ground:0.3,vy:-300,squash:-0.05,wall:0.4};
 assert(q.teleportAdminToZone(0));
 assert.equal(q.player.queuedAction,null,'admin teleport must clear stale attacks');
 assert.equal(q.player.wallJumpLock,0);
+assert.equal(q.player.motionPose,null,'teleport must reset stale pose interpolation');
+
+// Temporal presentation regressions use real movement/collision/attack state and
+// compare anatomy relative to the moving actor, not its world-space travel.
+function captureActorPose() {
+  const record=recordingContext();
+  const before=JSON.stringify(q.player);
+  operativeRenderer.createRenderer(record.context,q.player,q.game)(q.player.x,q.player.y,q.player.facing);
+  assert.equal(JSON.stringify(q.player),before,'temporal rendering must not mutate game state');
+  assert(record.balanced());
+  const origin=[Math.round(q.player.x+q.player.w/2),Math.round(q.player.y+q.player.h)];
+  const local=(point)=>[point[0]-origin[0],point[1]-origin[1]];
+  return {head:local(record.headCenters[0]),waist:local(record.waistCenters[0]),
+    feet:record.feet.map(foot=>local(foot.ankle)),rear:local(record.hands[0]),
+    front:local(record.bladeHands[0]||record.hands[1])};
+}
+const poseDistance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+function prepareRunningTransition(facing,phase,dt) {
+  fixture();q.player.x=1500;q.keys.add(facing===1?'KeyD':'KeyA');
+  for(let frame=0;frame<Math.round(0.3/dt);frame++)q.updatePlayer(dt);
+  q.player.runCycle=phase*Math.PI*2;
+  assert(q.player.motionPose&&q.player.motionPose.ground>.999,'running must initialize grounded presentation');
+}
+const jumpMetrics=[];
+for(const dt of[1/60,1/120])for(const facing of[-1,1])for(const phase of[0.05,0.37,0.62,0.87]) {
+  prepareRunningTransition(facing,phase,dt);
+  const startY=q.player.y,startVX=q.player.vx;
+  let previousPose=captureActorPose(),minY=startY,landed=false,frames=0;
+  q.pressed.add('Space');q.keys.add('Space');q.updatePlayer(dt);q.pressed.clear();
+  assert(!q.player.grounded&&q.player.vy<0,'jump physics must begin immediately, without an animation delay');
+  assert.equal(q.player.vx,startVX,'blending takeoff must preserve running momentum');
+  assert(Math.abs(q.player.motionPose.ground-(1-dt/0.12))<1e-8,'takeoff must update presentation exactly once per physics step');
+  let currentPose=captureActorPose();
+  assert(poseDistance(previousPose.head,currentPose.head)<5.5,'run-to-jump must not snap the forward-leaning head upright');
+  assert(Math.max(...currentPose.feet.map((point,index)=>poseDistance(previousPose.feet[index],point)))<9,
+    'run-to-jump must blend the planted/recovering feet into the airborne pose');
+  previousPose=currentPose;
+  while(!landed&&frames<Math.ceil(2/dt)) {
+    q.updatePlayer(dt);frames++;minY=Math.min(minY,q.player.y);
+    currentPose=captureActorPose();
+    assert(poseDistance(previousPose.head,currentPose.head)<5.5,'jump, apex and landing head poses must remain continuous');
+    if(q.player.grounded) {
+      landed=true;
+      assert(Math.abs(q.player.runCycle/Math.PI-Math.round(q.player.runCycle/Math.PI))<1e-8,
+        'landing must rephase to a genuine foot contact');
+      assert(Math.abs(q.player.motionPose.ground-dt/0.1)<1e-8,'landing must blend once rather than instantly reset to running');
+      assert(Math.max(...currentPose.feet.map((point,index)=>poseDistance(previousPose.feet[index],point)))<9,
+        'landing must not pop suspended or below-floor feet into the running pose');
+    }
+    previousPose=currentPose;
+  }
+  assert(landed,'the real jump must land on the fixture floor');
+  assert(Math.abs(q.player.y+q.player.h-650)<0.001,'presentation must not change collision-floor height');
+  for(let frame=0;frame<Math.ceil(0.16/dt);frame++)q.updatePlayer(dt);
+  assert(q.player.motionPose.ground>.999,'running presentation must recover after landing');
+  jumpMetrics.push({dt,facing,phase,height:startY-minY});
+}
+for(const facing of[-1,1])for(const phase of[0.05,0.37,0.62,0.87]) {
+  const pair=jumpMetrics.filter(sample=>sample.facing===facing&&sample.phase===phase);
+  assert(Math.abs(pair[0].height-pair[1].height)<7,'visual blending must not introduce refresh-dependent jump height');
+}
+for(const dt of[1/60,1/120])for(const facing of[-1,1]) {
+  prepareRunningTransition(facing,0.37,dt);
+  q.pressed.add('Space');q.keys.add('Space');q.updatePlayer(dt);q.pressed.clear();
+  for(let frame=0;frame<Math.ceil(1/dt)&&q.player.vy<80;frame++)q.updatePlayer(dt);
+  assert(!q.player.grounded&&q.player.vy>=80,'double-jump fixture must be falling after the apex');
+  const before=captureActorPose();
+  q.pressed.add('Space');q.updatePlayer(dt);q.pressed.clear();
+  assert(q.player.vy<-500&&!q.player.airJumpAvailable,'double-jump physics must react immediately');
+  assert(q.player.motionPose.ground<0.001,'double jump must not restart a grounded transition');
+  assert(q.player.motionPose.vy>q.player.vy,'double-jump presentation must blend the velocity reversal');
+  let after=captureActorPose();
+  assert(poseDistance(before.head,after.head)<5.5,'double jump must not snap the head posture');
+  assert(Math.max(...after.feet.map((point,index)=>poseDistance(before.feet[index],point)))<9,
+    'double jump must not snap falling legs directly into a launch pose');
+  for(let frame=0;frame<8;frame++) {
+    const previous=after;q.updatePlayer(dt);after=captureActorPose();
+    assert(poseDistance(previous.head,after.head)<5.5,'double-jump head recovery must remain continuous');
+  }
+}
+for(const facing of[-1,1])for(const phase of[0.05,0.37,0.62,0.87]) {
+  prepareRunningTransition(facing,phase,1/60);
+  const beforePose=captureActorPose();
+  const expectedEntry=operativeRenderer.captureLocomotion(q.player,q.game,facing);
+  const physicsBefore=[q.player.x,q.player.y,q.player.vx,q.player.vy,q.player.runCycle];
+  q.startComboAttack();
+  assert.deepEqual([q.player.x,q.player.y,q.player.vx,q.player.vy,q.player.runCycle],physicsBefore,
+    'starting J must not freeze movement or reset the running feet');
+  for(const key of['arm','elbow','rear','rearElbow'])assert(Math.abs(q.player.slashComboEntry[key]-expectedEntry[key])<1e-8,
+    `J must capture the current ${key} before beginning its windup`);
+  const entrySnapshot=JSON.stringify(q.player.slashComboEntry);
+  const firstPose=captureActorPose();
+  assert(poseDistance(beforePose.head,firstPose.head)<0.1&&poseDistance(beforePose.waist,firstPose.waist)<0.1,
+    'the first J frame must retain the running torso instead of resetting it');
+  assert(poseDistance(beforePose.front,firstPose.front)<1.5&&poseDistance(beforePose.rear,firstPose.rear)<1.5,
+    'the first J frame must begin at the actual running wrist positions');
+  let previous=firstPose;
+  for(let frame=0;frame<4;frame++) {
+    q.updatePlayer(1/60);
+    const next=captureActorPose();
+    assert.equal(JSON.stringify(q.player.slashComboEntry),entrySnapshot,'the entry pose must not drift with the subsequent running cycle');
+    const wristStep=poseDistance(previous.front,next.front);
+    assert(wristStep<13,`J windup must connect the captured arm to its swing: ${JSON.stringify({facing,phase,frame,wristStep,from:previous.front,to:next.front})}`);
+    previous=next;
+  }
+}
+fixture();q.keys.add('KeyD');for(let frame=0;frame<12;frame++)q.updatePlayer(1/60);
+const pausedMotion=JSON.stringify(q.player.motionPose);q.togglePause();
+assert.equal(JSON.stringify(q.player.motionPose),pausedMotion,'pausing must preserve presentation history');
+q.togglePause();assert.equal(JSON.stringify(q.player.motionPose),pausedMotion,'resuming must not reset into another pose');
+q.player.motionPose={ground:0.3,vy:-300,squash:-0.05,wall:0.4};
+q.startCutscene({id:'qa-transition-cutscene',shots:[{duration:0.1}]});
+assert.equal(q.player.motionPose,null,'a cutscene must not inherit old travel interpolation');
+fixture();
+const archiveMotion={ground:0.35,vy:-280,squash:-0.04,wall:0.2};
+const archiveEntry={arm:0.6,elbow:-0.9,rear:-0.5,rearElbow:-0.8};
+q.player.motionPose=archiveMotion;q.player.slashComboEntry=archiveEntry;q.player.slashComboActive=true;
+const archiveBefore=JSON.stringify(q.player);
+q.drawCharacterArchive(0);
+assert.strictEqual(q.player.motionPose,archiveMotion,'character archive must restore the exact presentation object');
+assert.strictEqual(q.player.slashComboEntry,archiveEntry,'character archive must restore the exact J entry snapshot');
+assert.equal(q.player.slashComboActive,true,'character archive must restore the active combo flag');
+assert.equal(JSON.stringify(q.player),archiveBefore,'character archive must not change live player posture');
 
 // Exercise actual renderers through the canvas stub across every character and action phase.
 fixture();
@@ -277,4 +402,4 @@ for(const facing of [-1,1]) for(let phase=0;phase<12;phase++) {
   q.player.attackTimer=0; q.player.recoilTimer=0.3*(phase+1)/12;
   q.drawPlayerBody(500,400,facing);
 }
-console.log('Motion QA passed: ground/air gait, wall jump, input buffering, pause/visibility lifecycle, hybrid touch input, hit-stop timing, mortar, low-FPS movement, all character renderers.');
+console.log('Motion QA passed: temporal run/jump/landing/J entry, double jump, presentation resets/archive restore, 60/120Hz physics, ground/air gait, wall jump, input buffering, pause/visibility, hybrid touch, hit-stop, mortar and all character renderers.');

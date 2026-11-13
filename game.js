@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.8.3";
+  const GAME_VERSION = "3.8.4";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -671,7 +671,7 @@
 
   const camera = { x: 0, y: 0, lookX: 0 };
 
-  const J_SLASH_DEFAULTS = Object.freeze({ slashComboIndex: 0, slashComboActive: false, slashComboLinked: false, slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16, slashComboWindow: 0 });
+  const J_SLASH_DEFAULTS = Object.freeze({ slashComboIndex: 0, slashComboActive: false, slashComboLinked: false, slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16, slashComboWindow: 0, slashComboEntry: null });
   const player = {
     ...J_SLASH_DEFAULTS,
     x: 150,
@@ -732,6 +732,7 @@
     squash: 0,
     stepTimer: 0,
     runCycle: 0,
+    motionPose: null,
     queuedAction: null,
     wallJumpLock: 0,
   };
@@ -4026,6 +4027,8 @@
     if (requestedAt - lastResetAt < 700) return;
     lastResetAt = requestedAt;
     resetSlashCombo();
+    // Presentation history must not blend across a new world or a restored save.
+    window.MoonlitOperative?.resetMotion?.(player);
     setStartScreenEditor(false);
     resetBossRealityEffects();
     const saved = resume ? readCampaignSave() : null;
@@ -4792,6 +4795,7 @@
     const enteringCadetMode = game.adminMode;
     if (enteringCadetMode && !difficultySettings[difficultyKey]) return toggleAdminDifficultyPanel();
     resetSlashCombo();
+    window.MoonlitOperative?.resetMotion?.(player);
     const preservedPosition = {
       x: player.x,
       y: player.y,
@@ -4873,6 +4877,7 @@
     const checkpoint = checkpoints[checkpointIndex];
     if (!checkpoint) return false;
     resetSlashCombo();
+    window.MoonlitOperative?.resetMotion?.(player);
     const stageIndex = zones[checkpointIndex].stageIndex;
     const position = setRespawnCheckpoint(checkpoint, checkpointIndex);
     player.x = position.x;
@@ -5069,6 +5074,7 @@
   function startCutscene(event) {
     if (!event || game.cutsceneSeen.has(event.id)) return;
     resetSlashCombo();
+    window.MoonlitOperative?.resetMotion?.(player);
     player.queuedAction = null;
     game.cutscene = event;
     game.cutsceneShotIndex = 0;
@@ -5367,7 +5373,12 @@
 
     const chainDuration = player.slashChain === 3 ? 0.25 : player.slashChain === 2 ? 0.2 : 0.18;
     player.attackDuration = comboAttack ? [0.22, 0.24, 0.28][player.slashComboIndex] : player.grounded ? chainDuration : 0.23;
-    if (comboAttack) player.slashComboWindow = player.attackDuration + 0.42;
+    if (comboAttack) {
+      player.slashComboWindow = player.attackDuration + 0.42;
+      // Capture the visible locomotion stance before starting each successful J strike.
+      // Linked strikes keep their existing recovery carry as well as this entry pose.
+      player.slashComboEntry = window.MoonlitOperative?.captureLocomotion?.(player, game, player.facing) || null;
+    }
 
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
@@ -5868,6 +5879,7 @@
 
   function respawn() {
     resetSlashCombo();
+    window.MoonlitOperative?.resetMotion?.(player);
     player.queuedAction = null;
     player.wallJumpLock = 0;
     game.deaths += 1;
@@ -6651,6 +6663,8 @@
     enemy.y = Math.min(enemy.baseY - 40, playerY + player.h - enemy.h);
     player.vx = 0;
     player.vy = 0;
+    // Oracle's position swap is a teleport too, not continuous locomotion.
+    window.MoonlitOperative?.resetMotion?.(player);
     enemy.vx = 0;
     enemy.vy = 0;
     if (grantInvincibility) player.invincible = Math.max(player.invincible, 0.62);
@@ -7658,6 +7672,8 @@
     const groundedTravel = player.grounded && wasGrounded ? Math.abs(player.x - movementStartX) : 0;
     player.runCycle += groundedTravel * INPUT_TUNING.strideRadiansPerPixel;
     if (player.grounded && !wasGrounded) {
+      // Land with one planted foot, without treating this phase alignment as a step.
+      player.runCycle = Math.round(player.runCycle / Math.PI) * Math.PI;
       if (player.landingImpactArmed && impactVelocity > 260) {
         player.squash = clamp(impactVelocity / 2400, 0.12, 0.24);
         game.shake = Math.max(game.shake, Math.min(3.5, impactVelocity / 240));
@@ -7668,13 +7684,16 @@
       player.landingImpactArmed = false;
     }
     const footPlanted = Math.floor(player.runCycle / Math.PI) !== Math.floor(previousRunCycle / Math.PI);
-    if (player.grounded && Math.abs(player.vx) > 105 && footPlanted && player.stepTimer <= 0) {
+    if (player.grounded && wasGrounded && Math.abs(player.vx) > 105 && footPlanted && player.stepTimer <= 0) {
       player.stepTimer = 0.045;
       const heelX = player.x + player.w / 2 - player.facing * 10;
       spawnParticles(heelX, player.y + player.h - 2, "#5f7b82", 3, 72, 0.22, 170);
       if (USE_RECORDED_SFX) recordedSfx.footstep(Math.abs(player.vx), game.stage);
     }
     }
+
+    // Smooth only render state after resolved movement; collision and attack timing stay authoritative.
+    window.MoonlitOperative?.updateMotion?.(player, dt, wasGrounded);
 
     if (isAttackActive()) {
       const hitbox = attackBox();
@@ -14225,6 +14244,8 @@
       vx: player.vx, vy: player.vy, grounded: player.grounded,
       wallLeft: player.wallLeft, wallRight: player.wallRight,
       runCycle: player.runCycle, squash: player.squash,
+      motionPose: player.motionPose, slashComboEntry: player.slashComboEntry,
+      slashComboActive: player.slashComboActive,
       attackTimer: player.attackTimer, attackDuration: player.attackDuration,
       attackDir: player.attackDir, chargedAttack: player.chargedAttack,
       recoilTimer: player.recoilTimer, shotAimX: player.shotAimX, shotAimY: player.shotAimY,
@@ -14236,6 +14257,9 @@
       wallLeft: false,
       wallRight: false,
       runCycle: 0.8,
+      motionPose: null,
+      slashComboEntry: null,
+      slashComboActive: false,
       squash: pose === "shotgun" ? 0.12 : 0,
       attackTimer: pose === "slash" ? 0.11 : 0,
       attackDuration: 0.23,

@@ -10,7 +10,7 @@ assert.equal(gameplayCadence, renderer.strideRadiansPerPixel, 'gameplay travel a
 const tau = Math.PI * 2;
 function recordingContext() {
   let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {};
-  const feet = [], bladeTips = [], headCenters = [], waistCenters = [], hands = [];
+  const feet = [], bladeTips = [], bladeHands = [], headCenters = [], waistCenters = [], hands = [];
   const multiply = ([a, b, c, d, e, f]) => {
     const m = matrix;
     matrix = [m[0] * a + m[2] * b, m[1] * a + m[3] * b,
@@ -33,6 +33,7 @@ function recordingContext() {
       if (style.fillStyle === '#111d2c') waistCenters.push(point(0, -16.5));
     },
     quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
+    ellipse(x, y, rx, ry) { if (x === 12 && y === 0 && rx === 3 && ry === 7) bladeHands.push(point(0, 0)); },
   };
   const context = new Proxy({}, {
     get(_, name) { return style[name] ?? ((...args) => {
@@ -41,13 +42,16 @@ function recordingContext() {
     }); },
     set(_, name, value) { style[name] = value; return true; },
   });
-  return { context, feet, bladeTips, headCenters, waistCenters, hands, balanced: () => stack.length === 0 };
+  return { context, feet, bladeTips, bladeHands, headCenters, waistCenters, hands, balanced: () => stack.length === 0 };
 }
+module.exports = { recordingContext, renderer };
+if (require.main === module) {
 const player = { w: 28, h: 52, vx: 440, vy: 0, grounded: true, runCycle: 0,
   squash: 0, attackTimer: 0, attackDuration: 0.23, attackDir: { x: 1, y: 0 },
   recoilTimer: 0, shotAimX: 1, shotAimY: 0, buffTimer: 0, shotgunCharge: 0,
   slashComboActive: false, slashComboIndex: 0, slashComboLinked: false,
-  slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16 };
+  slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16,
+  slashComboEntry: null, motionPose: null };
 const game = { stage: 0, time: 0 };
 const original = { ...player };
 function draw(overrides = {}, facing = 1, style = 'player', ghost = false, x = 0) {
@@ -199,4 +203,51 @@ const echoDuringJ = draw({ vx: 0, attackTimer: 0.1, slashComboActive: true, slas
 assert(tipDistance(echo, echoDuringJ) < 0.001, 'player J combo state must never leak into Echo');
 assert.equal(draw({ slashComboActive: true, slashComboRecovery: 0 }).bladeTips.length, 0,
   'completed recovery must sheath the katana');
+
+// Presentation updates are explicit simulation work; drawing remains immutable.
+for (const name of ['updateMotion', 'resetMotion', 'captureLocomotion']) {
+  assert.equal(typeof renderer[name], 'function', `${name} must be available for temporal animation`);
+}
+const physicsKeys = ['x', 'y', 'vx', 'vy', 'grounded', 'hp', 'attackTimer', 'attackCooldown', 'runCycle', 'facing', 'squash'];
+function motionSample(dt) {
+  const actor = { ...original, x: 300, y: 200, vx: 440, vy: 0, hp: 5, attackTimer: 0,
+    attackCooldown: 0, facing: 1, grounded: true, motionPose: null, wallLeft: false, wallRight: false };
+  const physics = () => JSON.stringify(Object.fromEntries(physicsKeys.map(key => [key, actor[key]])));
+  const update = (wasGrounded) => {
+    const before = physics(); renderer.updateMotion(actor, dt, wasGrounded);
+    assert.equal(physics(), before, 'presentation blending must not change physics, health or attack timing');
+  };
+  update(true);
+  actor.grounded = false; actor.vy = -715; actor.squash = -0.16;
+  let previousGround = 1;
+  for (let frame = 0; frame < Math.round(0.1 / dt); frame++) {
+    update(frame === 0);
+    assert(actor.motionPose.ground <= previousGround && actor.motionPose.ground >= 0,
+      'takeoff presentation must approach air continuously');
+    previousGround = actor.motionPose.ground;
+  }
+  const takeoff = { ...actor.motionPose };
+  for (let frame = 0; frame < Math.round(0.2 / dt); frame++) update(false);
+  assert(actor.motionPose.ground < 0.001, 'air presentation must settle after takeoff');
+  actor.grounded = true; actor.vy = 0; actor.squash = 0.2;
+  update(false);
+  assert(actor.motionPose.ground > 0 && actor.motionPose.ground < 1, 'landing must blend rather than instantly switch poses');
+  for (let frame = 1; frame < Math.round(0.1 / dt); frame++) update(true);
+  assert(actor.motionPose.ground > 0.999, 'landing must settle within the declared blend duration');
+  const landing = { ...actor.motionPose };
+  const beforeReset = physics(); renderer.resetMotion(actor);
+  assert.equal(actor.motionPose, null); assert.equal(physics(), beforeReset);
+  return { takeoff, landing };
+}
+const motion60 = motionSample(1 / 60), motion120 = motionSample(1 / 120);
+for (const state of ['takeoff', 'landing']) for (const field of ['ground', 'vy', 'squash', 'wall']) {
+  assert(Math.abs(motion60[state][field] - motion120[state][field]) < 0.00001,
+    `${state} ${field} presentation must not depend on display refresh rate`);
+}
+const motionOverride = { ground: 0.35, vy: -420, squash: -0.05, wall: 0.2 };
+draw({ motionPose: motionOverride, grounded: false, vy: -700 });
+const echoWithMotion = draw({ vx: 0, attackTimer: 0.1, motionPose: motionOverride,
+  slashComboEntry: { arm: -1.5, elbow: -1, rear: 1.2, rearElbow: -1 } }, 1, 'echo').bladeTips[0];
+assert(tipDistance(echo, echoWithMotion) < 0.001, 'player transition state must not affect Echo rendering');
 console.log(`Operative renderer: ${cases + 122} base poses + ${comboCases} combo poses/handoffs, grounded stance and immutable gameplay passed.`);
+}

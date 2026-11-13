@@ -11,6 +11,56 @@
   const PALETTE = Object.freeze({ cyan: '#65f5ea', red: '#ff496c', amber: '#ffcd70', white: '#f2ffff' });
   const STRIDE_RADIANS_PER_PIXEL = 0.045;
   const RUN_SUPPORT_FRACTION = 0.24;
+  const poseEase = (value) => value * value * (3 - value * 2);
+  const RUN_STRIDE = [0.78, 0.62, 0.36, 0.05, -0.3, -0.62, -0.8, -0.6, -0.32, 0.02, 0.38, 0.66];
+  const RUN_BOB = [0, 0.55, 1.45, 2.15, 1.8, 0.85, 0.05, 0.5, 1.35, 2.05, 1.7, 0.72];
+  function sampleLoop(values, phase) {
+    const base = Math.floor(phase), fraction = phase - base;
+    const at = (offset) => values[((base + offset) % values.length + values.length) % values.length];
+    const previous = at(-1), current = at(0), next = at(1), after = at(2);
+    return 0.5 * (2 * current + (next - previous) * fraction
+      + (2 * previous - 5 * current + 4 * next - after) * fraction * fraction
+      + (3 * current - previous - 3 * next + after) * fraction * fraction * fraction);
+  }
+  // Presentation alone has memory. Physics and combat timers never read this state.
+  function resetMotion(player) { player.motionPose = null; }
+  function updateMotion(player, dt, wasGrounded = player.grounded) {
+    const motion = player.motionPose || (player.motionPose = {
+      ground: wasGrounded ? 1 : 0, vy: wasGrounded ? 0 : player.vy,
+      squash: 0, wall: 0,
+    });
+    const approach = (from, to, amount) => from < to ? Math.min(to, from + amount) : Math.max(to, from - amount);
+    const groundTarget = player.grounded ? 1 : 0;
+    motion.ground = approach(motion.ground, groundTarget, dt / (groundTarget ? 0.10 : 0.12));
+    motion.wall = approach(motion.wall, !player.grounded && (player.wallLeft || player.wallRight) ? 1 : 0, dt / 0.10);
+    motion.vy = lerp(motion.vy, player.vy, 1 - Math.exp(-dt / 0.06));
+    motion.squash = lerp(motion.squash, player.squash, 1 - Math.exp(-dt / 0.045));
+  }
+  function sampleLocomotion(player, game, useMotion = true) {
+    const motion = useMotion ? player.motionPose : null;
+    const groundBlend = poseEase(clamp(motion?.ground ?? (player.grounded ? 1 : 0), 0, 1));
+    const wallBlend = poseEase(clamp(motion?.wall ?? (!player.grounded && (player.wallLeft || player.wallRight) ? 1 : 0), 0, 1));
+    const speedRatio = clamp(Math.abs(player.vx) / 440, 0, 1);
+    const speedRun = clamp(Math.abs(player.vx) / 180, 0, 1);
+    const runBlend = speedRun * groundBlend;
+    const runPosePhase = player.runCycle / (TAU / 12);
+    const stride = sampleLoop(RUN_STRIDE, runPosePhase);
+    return {
+      speedRatio, groundBlend, wallBlend, runBlend, runPosePhase, stride,
+      gaitBlend: clamp(Math.abs(player.vx) / 45, 0, 1),
+      vy: motion?.vy ?? player.vy, squash: motion?.squash ?? player.squash,
+      bob: lerp(Math.sin(game.time * 2.1) * 0.35, sampleLoop(RUN_BOB, runPosePhase) * 0.8, runBlend),
+      arm: lerp(-0.48, lerp(-0.15, -stride * 0.9 - 0.08, speedRun), groundBlend),
+      rear: lerp(0.28, stride * 0.82 - 0.02, runBlend),
+      elbow: lerp(0.38, -1.05, runBlend), rearElbow: lerp(-0.42, -1.05, runBlend),
+      // A little forward momentum remains visible in the airborne silhouette.
+      sprintDrive: poseEase(speedRatio) * lerp(0.28 * (1 - wallBlend), speedRun, groundBlend),
+    };
+  }
+  function captureLocomotion(player, game, facing = player.facing || 1) {
+    const { arm, elbow, rear, rearElbow } = sampleLocomotion(player, game);
+    return { arm, elbow, rear, rearElbow };
+  }
   // Draw-cut, rising return-cut, planted finishing cut. Each row owns the whole
   // body pose so shoulders, hips, support feet and blade move as one action.
   const COMBO_POSES = [
@@ -29,7 +79,7 @@
       { at: 0.55, arm: 1.24, elbow: 0.04, blade: 0.44, lunge: 5.2, lean: 0.14, drop: 2, stance: 0.95, rear: -0.74, twist: 2 },
       { at: 1, arm: 0.92, elbow: 0.2, blade: 0.36, lunge: 2.7, lean: 0.07, drop: 1, stance: 0.65, rear: -0.43, twist: 0.9 },
     ],
-  ];
+  ].map((sequence) => sequence.map((pose) => ({ ...pose, rearElbow: lerp(-0.42, -0.62, pose.stance) })));
   const mixPose = (from, to, blend) => {
     const result = {};
     for (const key of Object.keys(from)) result[key] = lerp(from[key], to[key] ?? from[key], blend);
@@ -73,34 +123,10 @@
       const uniformRearArm = "#152638";
       const uniformFrontArm = "#294459";
 
-      const speedRatio = clamp(Math.abs(player.vx) / 440, 0, 1);
-      const runBlend = player.grounded ? clamp(Math.abs(player.vx) / 180, 0, 1) : 0;
-      const gaitBlend = player.grounded ? clamp(Math.abs(player.vx) / 45, 0, 1) : 0;
-      const walling = !player.grounded && (player.wallLeft || player.wallRight);
-      const poseEase = (value) => value * value * (3 - value * 2);
-      const sampleLoop = (values, phase) => {
-        const base = Math.floor(phase);
-        const fraction = phase - base;
-        const at = (offset) => values[((base + offset) % values.length + values.length) % values.length];
-        const previous = at(-1);
-        const current = at(0);
-        const next = at(1);
-        const after = at(2);
-        // Cubic in-betweens preserve velocity across the twelve key poses.
-        return 0.5 * (2 * current + (next - previous) * fraction
-          + (2 * previous - 5 * current + 4 * next - after) * fraction * fraction
-          + (3 * current - previous - 3 * next + after) * fraction * fraction * fraction);
-      };
-      // Twelve designed poses are blended with eased in-betweens, then snapped at
-      // the joints. This preserves pixel clarity without the old paper-doll stepping.
-      const runPosePhase = player.runCycle / (TAU / 12);
-      const runStride = [0.78, 0.62, 0.36, 0.05, -0.3, -0.62, -0.8, -0.6, -0.32, 0.02, 0.38, 0.66];
-      const runBob = [0, 0.55, 1.45, 2.15, 1.8, 0.85, 0.05, 0.5, 1.35, 2.05, 1.7, 0.72];
-      const idleBreath = Math.sin(game.time * 2.1) * 0.35;
-      const stride = sampleLoop(runStride, runPosePhase);
-      const bob = lerp(idleBreath, sampleLoop(runBob, runPosePhase) * 0.8, runBlend);
-      const squashX = 1 + player.squash * 0.18;
-      const squashY = 1 - player.squash * 0.24;
+      const locomotion = sampleLocomotion(player, game, !echoStyle);
+      const { speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob } = locomotion;
+      const squashX = 1 + locomotion.squash * 0.18;
+      const squashY = 1 - locomotion.squash * 0.24;
       const attacking = player.attackTimer > 0;
       const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
       const shooting = player.recoilTimer > 0;
@@ -109,10 +135,10 @@
       const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
       const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
       // Arms oppose the same-side leg, with bent elbows instead of marching arms.
-      const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, -stride * 0.9 - 0.08, runBlend);
-      const locomotionRearAngle = lerp(0.28, stride * 0.82 - 0.02, runBlend);
-      const locomotionElbow = lerp(0.38, -1.05, runBlend);
-      const locomotionRearElbow = lerp(-0.42, -1.05, runBlend);
+      const locomotionArmAngle = locomotion.arm;
+      const locomotionRearAngle = locomotion.rear;
+      const locomotionElbow = locomotion.elbow;
+      const locomotionRearElbow = locomotion.rearElbow;
       const comboEnabled = !echoStyle && player.slashComboActive === true;
       const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
       const recoveryRatio = comboEnabled && !attacking && !shooting
@@ -121,14 +147,25 @@
       const bladeVisible = attacking || recoveryRatio > 0.03;
       const comboCarry = player.slashComboLinked ? poseEase(clamp(player.slashComboCarry || 0, 0, 1)) : 0;
       const neutralPose = { arm: locomotionArmAngle, elbow: locomotionElbow, blade: -1.1,
-        lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, twist: 0 };
+        lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, rearElbow: locomotionRearElbow, twist: 0 };
       let comboPose = neutralPose;
       if (comboVisible) {
         if (attacking) {
           const previousFinish = COMBO_POSES[(comboIndex + 2) % 3][2];
-          let from = mixPose(neutralPose, previousFinish, comboCarry);
+          // Latch the incoming arm swing once; running feet keep their own phase.
+          const entryPose = player.slashComboEntry ? { ...neutralPose, ...player.slashComboEntry } : neutralPose;
+          let from = mixPose(entryPose, previousFinish, comboCarry);
           let fromTime = 0;
-          for (const key of COMBO_POSES[comboIndex]) {
+          for (const authoredKey of COMBO_POSES[comboIndex]) {
+            let key = authoredKey;
+            if (authoredKey === COMBO_POSES[comboIndex][0] && player.slashComboEntry && comboCarry < 0.001) {
+              // The short opening windup must not reverse a bent sprinting arm
+              // in two frames. Enter the cut from a nearby guard instead.
+              key = { ...authoredKey };
+              for (const joint of ["arm", "elbow", "rear", "rearElbow"]) {
+                key[joint] = clamp(key[joint], from[joint] - 0.55, from[joint] + 0.55);
+              }
+            }
             if (attackProgress <= key.at) {
               comboPose = mixPose(from, key, poseEase(clamp((attackProgress - fromTime) / (key.at - fromTime), 0, 1)));
               break;
@@ -162,7 +199,7 @@
             : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
         : -0.08 * shotKick + shotSettle * 0.025;
       const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
-      const sprintDrive = poseEase(speedRatio) * runBlend;
+      const sprintDrive = locomotion.sprintDrive;
       const travelSign = player.vx * facing < 0 ? -1 : 1;
       const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
       const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - sprintDrive * 1.5 * travelSign;
@@ -245,18 +282,13 @@
       }
 
       function legPose(layer) {
-        if (walling) {
-          return layer === "back"
-            ? { upper: -0.4, knee: 0.6 }
-            : { upper: 0.82, knee: 1.12 };
-        }
-        if (!player.grounded) {
-          const rise = poseEase(clamp(-player.vy / 560, 0, 1));
-          const fall = poseEase(clamp(player.vy / 680, 0, 1));
-          return layer === "back"
-            ? { upper: -0.18 - rise * 0.32 + fall * 0.46, knee: 0.62 - rise * 0.25 + fall * 0.16 }
-            : { upper: 0.42 + rise * 0.42 - fall * 0.56, knee: 1.12 + rise * 0.2 - fall * 0.66 };
-        }
+        const rise = poseEase(clamp(-locomotion.vy / 560, 0, 1));
+        const fall = poseEase(clamp(locomotion.vy / 680, 0, 1));
+        const airborne = layer === "back"
+          ? { upper: -0.18 - rise * 0.32 + fall * 0.46, knee: 0.62 - rise * 0.25 + fall * 0.16 }
+          : { upper: 0.42 + rise * 0.42 - fall * 0.56, knee: 1.12 + rise * 0.2 - fall * 0.66 };
+        const wall = layer === "back" ? { upper: -0.4, knee: 0.6 } : { upper: 0.82, knee: 1.12 };
+        return mixPose(airborne, wall, wallBlend);
       }
 
       function drawPlantedLeg(layer, width, color) {
@@ -277,7 +309,21 @@
         const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
         let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, gaitBlend);
         footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
-        const footY = -4 - footLift * gaitBlend;
+        let footY = -4 - footLift * gaitBlend;
+        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.32 * runBlend;
+        const toeAngle = lerp(clamp(-locomotion.vy / 700, -0.35, 0.35), -bodyLean + toeRoll, groundBlend);
+        const airborne = legPose(layer);
+        const airX = hipX + Math.sin(airborne.upper) * 14.5 + Math.sin(airborne.upper - airborne.knee) * 14.5;
+        const airY = hipY + Math.cos(airborne.upper) * 14.5 + Math.cos(airborne.upper - airborne.knee) * 14.5;
+        const airWorldX = bodyOffsetX + bodyScaleX * (airX * Math.cos(bodyLean) - airY * Math.sin(bodyLean));
+        const airWorldY = bodyOffsetY + bodyScaleY * (airX * Math.sin(bodyLean) + airY * Math.cos(bodyLean));
+        footX = lerp(airWorldX, footX, groundBlend);
+        footY = lerp(airWorldY, footY, groundBlend);
+        // Keep falling feet inside the physical sole boundary before contact,
+        // avoiding a last-frame upward pop or a foot disappearing into the floor.
+        const soleAngle = bodyLean + toeAngle;
+        const soleBottom = bodyScaleY * Math.max(-3 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle), 8 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle));
+        footY = Math.min(footY, -soleBottom);
         // Inverse the torso transform so planted soles do not slide vertically
         // when breathing, recoiling, leaning or compressing on landing.
         const localX = (footX - bodyOffsetX) / bodyScaleX;
@@ -298,8 +344,7 @@
         const targetX = hipX + Math.sin(axis) * reach;
         const targetY = hipY + Math.cos(axis) * reach;
         const lowerAngle = Math.atan2(targetX - kneeX, targetY - kneeY);
-        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.32 * runBlend;
-        drawJointedLimb(hipX, hipY, upperLength, lowerLength, width, upperAngle, upperAngle - lowerAngle, color, true, false, -bodyLean + toeRoll);
+        drawJointedLimb(hipX, hipY, upperLength, lowerLength, width, upperAngle, upperAngle - lowerAngle, color, true, false, toeAngle);
       }
 
       function drawArmTo(shoulderX, shoulderY, targetX, targetY, length, width, color) {
@@ -343,15 +388,8 @@
         ctx.restore();
       }
 
-      if (player.grounded) {
-        drawPlantedLeg("back", 5, uniformBack);
-        drawPlantedLeg("front", 5.5, uniformFront);
-      } else {
-        const backPose = legPose("back");
-        const frontPose = legPose("front");
-        drawJointedLimb(-3, -24, 14.5, 14.5, 5, backPose.upper, backPose.knee, uniformBack, true);
-        drawJointedLimb(3, -24, 14.5, 14.5, 5.5, frontPose.upper, frontPose.knee, uniformFront, true);
-      }
+      drawPlantedLeg("back", 5, uniformBack);
+      drawPlantedLeg("front", 5.5, uniformFront);
 
       // Shorten the oversized torso rather than hiding the upper legs inside it.
       // Total character height remains 60 px; the hip now reads above the knee.
@@ -531,7 +569,7 @@
           lerp(8, 13, shotPoseBlend), 4.5, uniformRearArm);
       } else {
         drawJointedLimb(-10 - shoulderTurn * 0.5, -38, 8, 8, 5, rearArm,
-          comboVisible ? lerp(locomotionRearElbow, -0.62, comboPose.stance) : attacking ? -0.62 : locomotionRearElbow,
+          comboVisible ? comboPose.rearElbow : attacking ? -0.62 : locomotionRearElbow,
           uniformRearArm, false, true);
       }
 
@@ -565,7 +603,6 @@
 
       let armAngle = locomotionArmAngle;
       let bladeAngle = -1.1;
-      if (!player.grounded) armAngle = -0.48;
       if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
       if (comboVisible) {
         armAngle = comboPose.arm + comboAim * 0.5 * comboAimWeight;
@@ -747,5 +784,6 @@
 
     return drawPlayerBody;
   }
-  return Object.freeze({ createRenderer, strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL, runSupportFraction: RUN_SUPPORT_FRACTION });
+  return Object.freeze({ createRenderer, captureLocomotion, updateMotion, resetMotion,
+    strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL, runSupportFraction: RUN_SUPPORT_FRACTION });
 });

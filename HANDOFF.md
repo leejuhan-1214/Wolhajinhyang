@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.8.3**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.8.4**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.8.4: `MoonlitOperative.updateMotion`이 물리 갱신 후 시각 전용 `player.motionPose`를 갱신합니다. 렌더러는 이를 읽기만 하며, 잔영과 고정 캐릭터 도감은 주인공의 시각 이력을 사용하지 않습니다. `slashComboEntry`는 J 시작 시 한 번 캡처한 팔 자세입니다. 이동·점프·공격 수치는 그대로이며 순간이동/부활/컷신에는 시각 이력을 초기화하고 일시정지에는 보존합니다.
 
 3.8.3: `operative-renderer.js`의 달리기를 골반 기준 상체 전방 기울임, 반대 위상 팔 스윙, 무릎 회수로 수정했습니다. `qa-operative.cjs`는 양쪽 발·양 방향·저/중/고속 전체 지지 구간과 머리/허리/손 위치를 측정합니다. 실제 이동·전투 수치는 3.8.2와 같습니다.
 
