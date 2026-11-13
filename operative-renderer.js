@@ -114,14 +114,14 @@
       const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
       // 처음 디자인의 검은 전투복 색을 복원한다. 잔영은 몸체 색 대신
       // 발광 색으로 구분되므로 원래의 어두운 실루엣을 함께 유지한다.
-      const uniformBack = "#0c1825";
-      const uniformFront = "#172b3c";
+      const uniformBack = "#152737";
+      const uniformFront = "#3a5363";
       const uniformTorso = "#111d2c";
       const uniformPanel = "#29475a";
       const uniformShoulder = "#3d6072";
       const uniformJoint = "#172431";
-      const uniformRearArm = "#152638";
-      const uniformFrontArm = "#294459";
+      const uniformRearArm = "#203443";
+      const uniformFrontArm = "#526c7a";
 
       const locomotion = sampleLocomotion(player, game, !echoStyle);
       const { speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob } = locomotion;
@@ -213,9 +213,9 @@
       ctx.rotate(bodyLean);
 
       if (ghost) {
-        drawCharacterPlate([-10, -57, 8, -56, 11, -45, 7, -42, 14, -38,
-          18, -6, 7, -9, 8, 0, -1, 0, -5, -15, -11, 0, -18, -3,
-          -15, -35, -11, -42], bodyCyan, null);
+        drawCharacterPlate([-8, -57, 7, -56, 9, -45, 5, -42, 10, -38,
+          12, -8, 6, -10, 7, 0, 0, 0, -4, -15, -10, 0, -15, -3,
+          -11, -35, -9, -42], bodyCyan, null);
         ctx.restore();
         return;
       }
@@ -249,12 +249,12 @@
         const endX = kneeX + Math.sin(lowerAngle) * lowerLength;
         const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
         drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)");
-        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(4, width - 1), color, "rgba(151, 207, 216, 0.18)");
+        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(3, width - 1), color, "rgba(151, 207, 216, 0.18)");
         ctx.fillStyle = "#07101a";
         ctx.beginPath();
         ctx.arc(kneeX, kneeY, width * 0.56, 0, TAU);
         ctx.fill();
-        ctx.fillStyle = "#40596a";
+        ctx.fillStyle = "#8aabb5";
         ctx.fillRect(kneeX - width * 0.4, kneeY - width * 0.3, width * 0.8, width * 0.6);
         ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
         ctx.fillRect(kneeX - 0.7, kneeY - 0.7, 1.4, 1.4);
@@ -264,19 +264,19 @@
           ctx.translate(endX, endY);
           ctx.rotate(toeLift);
           ctx.fillStyle = "#06101a";
-          ctx.fillRect(-3, -2, 11, 6);
+          ctx.fillRect(-2.5, -2, 9, 6);
           ctx.fillStyle = "#263c4b";
-          ctx.fillRect(-1, -1, 7, 3);
+          ctx.fillRect(-1, -1, 6, 3);
           ctx.fillStyle = "#657d88";
-          ctx.fillRect(-1, 2, 8, 1);
+          ctx.fillRect(-1, 2, 7, 1);
           ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-          ctx.fillRect(6, 0, 2, 1);
+          ctx.fillRect(5, 0, 1.5, 1);
           ctx.restore();
         } else if (hand) {
           ctx.fillStyle = "#0a141e";
-          ctx.fillRect(Math.round(endX - 3), Math.round(endY - 2), 7, 6);
+          ctx.fillRect(Math.round(endX - 2.5), Math.round(endY - 2), 5, 5);
           ctx.fillStyle = "#8ca1aa";
-          ctx.fillRect(Math.round(endX + 1), Math.round(endY - 1), 2, 3);
+          ctx.fillRect(Math.round(endX + 0.5), Math.round(endY - 1), 1.5, 2);
         }
         return { x: endX, y: endY, angle: lowerAngle };
       }
@@ -322,7 +322,7 @@
         // Keep falling feet inside the physical sole boundary before contact,
         // avoiding a last-frame upward pop or a foot disappearing into the floor.
         const soleAngle = bodyLean + toeAngle;
-        const soleBottom = bodyScaleY * Math.max(-3 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle), 8 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle));
+        const soleBottom = bodyScaleY * Math.max(-2.5 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle), 6.5 * Math.sin(soleAngle) + 4 * Math.cos(soleAngle));
         footY = Math.min(footY, -soleBottom);
         // Inverse the torso transform so planted soles do not slide vertically
         // when breathing, recoiling, leaning or compressing on landing.
@@ -370,26 +370,28 @@
       if (!echoStyle) {
         ctx.save();
         pitchUpperBody();
-        drawCharacterPlate([-13, -47, 10, -47, 14, -31, 15, -8,
-          8, -10, 1, -26, -4, -18, -11, -6,
-          -18, -9, -15, -31], "#b5c7cb");
-        drawCharacterPlate([-11, -44, -5, -37, -6, -23, -12, -10,
-          -16, -12, -13, -31], "#edf3ed", null);
-        drawCharacterPlate([7, -43, 11, -37, 13, -11,
-          10, -13, 5, -27], "#f6f8ef", null);
+        // Narrow, rigid split panels stop above the knees. The open center
+        // exposes both thighs rather than turning the coat into a second body.
+        drawCharacterPlate([-10, -46, 8, -46, 10, -32, 11, -16,
+          7, -17, 2, -29, -3, -28, -9, -14,
+          -14, -17, -12, -32], "#b5c7cb");
+        drawCharacterPlate([-9, -43, -5, -37, -6, -29, -10, -17,
+          -12, -18, -10, -32], "#edf3ed", null);
+        drawCharacterPlate([6, -42, 8, -37, 9, -18,
+          7, -20, 4, -30], "#f6f8ef", null);
         ctx.strokeStyle = "#ff496c";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(12, -34);
-        ctx.lineTo(13, -13);
-        ctx.moveTo(-16, -12);
-        ctx.lineTo(-11, -9);
+        ctx.moveTo(9, -32);
+        ctx.lineTo(10, -18);
+        ctx.moveTo(-12, -18);
+        ctx.lineTo(-9, -16);
         ctx.stroke();
         ctx.restore();
       }
 
-      drawPlantedLeg("back", 5, uniformBack);
-      drawPlantedLeg("front", 5.5, uniformFront);
+      drawPlantedLeg("back", 3.8, uniformBack);
+      drawPlantedLeg("front", 4.6, uniformFront);
 
       // Shorten the oversized torso rather than hiding the upper legs inside it.
       // Total character height remains 60 px; the hip now reads above the knee.
@@ -399,17 +401,17 @@
 
       // 등에 고정된 전술 신호 장치와 작은 안테나.
       ctx.fillStyle = "#0a131f";
-      ctx.fillRect(-17, -43, 7, 24);
+      ctx.fillRect(-13, -42, 4, 18);
       ctx.fillStyle = "#3c5868";
-      ctx.fillRect(-16, -39, 4, 13);
+      ctx.fillRect(-12, -38, 2, 10);
       ctx.fillStyle = bodyCyan;
       ctx.globalAlpha = alpha * (0.4 + Math.sin(game.time * 5) * 0.18);
-      ctx.fillRect(-15, -42, 2, 3);
+      ctx.fillRect(-12, -41, 1.5, 3);
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = "#526d79";
       ctx.beginPath();
-      ctx.moveTo(-14, -43);
-      ctx.lineTo(-18, -54);
+      ctx.moveTo(-11, -42);
+      ctx.lineTo(-14, -51);
       ctx.stroke();
 
       // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
@@ -449,101 +451,6 @@
       // A small opposed shoulder turn keeps the upper body involved in each cut.
       const shoulderTurn = comboVisible ? comboPose.twist : 0;
       ctx.translate(shoulderTurn, 0);
-      ctx.fillStyle = uniformTorso;
-      ctx.beginPath();
-      ctx.moveTo(-11, -43);
-      ctx.lineTo(10, -43);
-      ctx.lineTo(15, -20);
-      ctx.lineTo(8, -15);
-      ctx.lineTo(-11, -17);
-      ctx.lineTo(-15, -30);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = uniformPanel;
-      ctx.fillRect(-10, -38, 5, 17);
-      // Recessed chest armor and a top-lit edge give the dark shell thickness.
-      drawCharacterPlate([-3, -39, 8, -36, 8, -28, 3, -25, -3, -28], "#203645", "#0a1721");
-      ctx.strokeStyle = "#516c79";
-      ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(-2, -38); ctx.lineTo(7, -35); ctx.stroke();
-      ctx.fillStyle = "#09141d";
-      ctx.fillRect(-4, -44, 9, 3);
-      ctx.fillStyle = "#587380";
-      ctx.fillRect(-3, -44, 7, 1);
-      ctx.fillStyle = uniformShoulder;
-      ctx.beginPath();
-      ctx.moveTo(-15, -40);
-      ctx.lineTo(-7, -44);
-      ctx.lineTo(-2, -37);
-      ctx.lineTo(-8, -32);
-      ctx.lineTo(-15, -34);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = uniformJoint;
-      ctx.fillRect(-10, -22, 22, 5);
-      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-      ctx.fillRect(-12, -24, 25, 3);
-      ctx.fillStyle = "#7d929b";
-      ctx.fillRect(-7, -21, 4, 3);
-      ctx.fillRect(0, -21, 4, 3);
-      ctx.fillRect(7, -21, 3, 3);
-      ctx.fillStyle = bodyCyan;
-      ctx.fillRect(-4, -22, 13, 2);
-      ctx.fillStyle = bodyRed;
-      ctx.fillRect(9, -36, 3, 15);
-      ctx.strokeStyle = "rgba(143, 210, 216, 0.38)";
-      ctx.beginPath();
-      ctx.moveTo(-3, -38);
-      ctx.lineTo(7, -34);
-      ctx.lineTo(6, -26);
-      ctx.lineTo(-3, -23);
-      ctx.stroke();
-      ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-      ctx.beginPath();
-      ctx.arc(2, -31, 1.6, 0, TAU);
-      ctx.fill();
-
-      // Beveled armor seams and small fasteners preserve the mechanical silhouette.
-      ctx.strokeStyle = "rgba(151, 196, 205, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(-7, -39);
-      ctx.lineTo(-3, -34);
-      ctx.lineTo(-4, -25);
-      ctx.moveTo(7, -38);
-      ctx.lineTo(5, -26);
-      ctx.moveTo(-11, -31);
-      ctx.lineTo(-6, -30);
-      ctx.stroke();
-      ctx.fillStyle = "#0b141f";
-      ctx.fillRect(-14, -23, 7, 7);
-      ctx.fillRect(7, -23, 7, 7);
-      ctx.fillStyle = "#4c6774";
-      ctx.fillRect(-12, -21, 4, 2);
-      ctx.fillRect(8, -21, 4, 2);
-      ctx.fillStyle = "#c2d1d3";
-      ctx.fillRect(-1, -25, 3, 4);
-      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-      ctx.fillRect(0, -24, 1, 2);
-      ctx.fillStyle = "#6e8790";
-      ctx.fillRect(-9, -18, 3, 2);
-      ctx.fillRect(-4, -18, 3, 2);
-      ctx.fillRect(5, -18, 3, 2);
-
-      if (!echoStyle) {
-        drawCharacterPlate([-14, -43, -8, -46, -3, -39, -6, -29, -10, -35], "#f0f5ee", "#778f99");
-        drawCharacterPlate([6, -44, 12, -43, 15, -35, 10, -28, 7, -36], "#dce8e4", "#778f99");
-        ctx.fillStyle = "#314755";
-        ctx.fillRect(-11, -40, 5, 2);
-        ctx.fillStyle = bodyRed;
-        ctx.fillRect(10, -37, 3, 6);
-        // Crescent insignia reads as a single light shape at gameplay scale.
-        ctx.fillStyle = bodyAmber;
-        ctx.beginPath(); ctx.arc(-10, -35, 2.1, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#f0f5ee";
-        ctx.beginPath(); ctx.arc(-9, -36, 1.7, 0, TAU); ctx.fill();
-      }
-
       const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
       const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
       const gunScale = 0.62;
@@ -557,23 +464,113 @@
         : attacking
           ? -0.34 - attackLunge * 0.025
           : locomotionRearAngle;
-      if (shooting && !bladeVisible) {
-        const restRearAngle = locomotionRearAngle;
-        const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle - locomotionRearElbow) * 8;
-        const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle - locomotionRearElbow) * 8;
-        const gripOffsetX = (20 - pumpTravel) * gunScale;
-        const gripOffsetY = -5 * gunScale;
-        drawArmTo(lerp(-10, 0, shotPoseBlend), -38,
-          lerp(restRearX, shotHandX + Math.cos(weaponAngle) * gripOffsetX - Math.sin(weaponAngle) * gripOffsetY, shotPoseBlend),
-          lerp(restRearY, shotHandY + Math.sin(weaponAngle) * gripOffsetX + Math.cos(weaponAngle) * gripOffsetY, shotPoseBlend),
-          lerp(8, 13, shotPoseBlend), 4.5, uniformRearArm);
-      } else {
-        drawJointedLimb(-10 - shoulderTurn * 0.5, -38, 8, 8, 5, rearArm,
-          comboVisible ? comboPose.rearElbow : attacking ? -0.62 : locomotionRearElbow,
-          uniformRearArm, false, true);
+      // The far arm belongs behind the chest; only the shotgun support hand
+      // reaches across the front. This makes the two arm swings readable.
+      if (!shooting || bladeVisible) drawRearArm();
+      ctx.fillStyle = uniformTorso;
+      ctx.beginPath();
+      ctx.moveTo(-8, -43);
+      ctx.lineTo(8, -43);
+      ctx.lineTo(10.5, -36);
+      ctx.lineTo(6.5, -18);
+      ctx.lineTo(-6.5, -18);
+      ctx.lineTo(-10.5, -36);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = uniformPanel;
+      ctx.fillRect(-7, -37, 2.5, 11);
+      // One clean breastplate above a narrow waist: avoid layered belly plates.
+      drawCharacterPlate([-3, -39, 6, -37, 6, -30, 2, -27, -4, -30], "#203645", "#0a1721");
+      ctx.strokeStyle = "#516c79";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(-2, -38); ctx.lineTo(5, -36); ctx.stroke();
+      ctx.fillStyle = "#09141d";
+      ctx.fillRect(-4, -44, 9, 3);
+      ctx.fillStyle = "#587380";
+      ctx.fillRect(-3, -44, 7, 1);
+      ctx.fillStyle = uniformShoulder;
+      ctx.beginPath();
+      ctx.moveTo(-11, -40);
+      ctx.lineTo(-7, -43);
+      ctx.lineTo(-4, -39);
+      ctx.lineTo(-7, -35);
+      ctx.lineTo(-11, -36);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = uniformJoint;
+      ctx.fillRect(-7, -23, 14, 5);
+      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
+      ctx.fillRect(-8, -24, 16, 2);
+      ctx.fillStyle = "#7d929b";
+      ctx.fillRect(-5, -21, 2, 2);
+      ctx.fillRect(3, -21, 2, 2);
+      ctx.fillStyle = bodyCyan;
+      ctx.fillRect(-2, -22, 4, 1);
+      ctx.fillStyle = bodyRed;
+      ctx.fillRect(7, -35, 1.5, 7);
+      ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
+      ctx.beginPath();
+      ctx.arc(2, -31, 1.6, 0, TAU);
+      ctx.fill();
+
+      // A few large seams survive at gameplay scale; no noisy chest grid.
+      ctx.strokeStyle = "rgba(151, 196, 205, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-7, -36);
+      ctx.lineTo(-5, -28);
+      ctx.moveTo(6, -29);
+      ctx.lineTo(5, -26);
+      ctx.stroke();
+      ctx.fillStyle = "#0b141f";
+      ctx.fillRect(-10, -23, 4, 5);
+      ctx.fillRect(6, -23, 4, 5);
+      ctx.fillStyle = "#4c6774";
+      ctx.fillRect(-9, -22, 2, 1);
+      ctx.fillRect(7, -22, 2, 1);
+      ctx.fillStyle = "#c2d1d3";
+      ctx.fillRect(-1, -25, 3, 4);
+      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
+      ctx.fillRect(0, -24, 1, 2);
+      ctx.fillStyle = "#6e8790";
+      ctx.fillRect(-5, -19, 2, 1);
+      ctx.fillRect(3, -19, 2, 1);
+
+      if (!echoStyle) {
+        drawCharacterPlate([-10, -43, -7, -45, -3, -39, -5, -33, -8, -37], "#f0f5ee", "#778f99");
+        drawCharacterPlate([5, -43, 8, -42, 10, -37, 8, -33, 6, -37], "#dce8e4", "#778f99");
+        ctx.fillStyle = "#314755";
+        ctx.fillRect(-8, -40, 3, 1);
+        ctx.fillStyle = bodyRed;
+        ctx.fillRect(8, -37, 1, 3);
+        // Crescent insignia reads as a single light shape at gameplay scale.
+        ctx.fillStyle = bodyAmber;
+        ctx.beginPath(); ctx.arc(-7, -36, 1.5, 0, TAU); ctx.fill();
+        ctx.fillStyle = "#f0f5ee";
+        ctx.beginPath(); ctx.arc(-6.3, -36.7, 1.2, 0, TAU); ctx.fill();
       }
 
+      function drawRearArm() {
+        if (shooting && !bladeVisible) {
+          const restRearAngle = locomotionRearAngle;
+          const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle - locomotionRearElbow) * 8;
+          const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle - locomotionRearElbow) * 8;
+          const gripOffsetX = (20 - pumpTravel) * gunScale;
+          const gripOffsetY = -5 * gunScale;
+          drawArmTo(lerp(-10, 0, shotPoseBlend), -38,
+            lerp(restRearX, shotHandX + Math.cos(weaponAngle) * gripOffsetX - Math.sin(weaponAngle) * gripOffsetY, shotPoseBlend),
+            lerp(restRearY, shotHandY + Math.sin(weaponAngle) * gripOffsetX + Math.cos(weaponAngle) * gripOffsetY, shotPoseBlend),
+            lerp(8, 13, shotPoseBlend), 3.8, uniformRearArm);
+        } else {
+          drawJointedLimb(-10 - shoulderTurn * 0.5, -38, 8, 8, 3.8, rearArm,
+            comboVisible ? comboPose.rearElbow : attacking ? -0.62 : locomotionRearElbow,
+            uniformRearArm, false, true);
+        }
+      }
+      if (shooting && !bladeVisible) drawRearArm();
+
       ctx.save();
+      ctx.scale(0.85, 1);
       ctx.translate(0, -43);
       ctx.rotate(-bodyLean * 0.45 - torsoPitch * 0.75 - shotSettle * 0.04);
       ctx.translate(0, 43);
@@ -626,8 +623,8 @@
       }
 
       const frontHand = shooting && !bladeVisible
-        ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 6, uniformFrontArm)
-        : drawJointedLimb(10 + shoulderTurn * 0.5, -38, 9, 9, 6, armAngle,
+        ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 4.5, uniformFrontArm)
+        : drawJointedLimb(10 + shoulderTurn * 0.5, -38, 9, 9, 4.5, armAngle,
           comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow, uniformFrontArm, false, !bladeVisible);
       if (bladeVisible) {
         ctx.save();

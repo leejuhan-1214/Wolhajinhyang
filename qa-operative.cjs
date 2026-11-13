@@ -11,6 +11,8 @@ const tau = Math.PI * 2;
 function recordingContext() {
   let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {};
   const feet = [], bladeTips = [], bladeHands = [], headCenters = [], waistCenters = [], hands = [];
+  const handSizes = [], filledShapes = [], joints = [];
+  let path = [], pathArcs = [];
   const multiply = ([a, b, c, d, e, f]) => {
     const m = matrix;
     matrix = [m[0] * a + m[2] * b, m[1] * a + m[3] * b,
@@ -19,18 +21,26 @@ function recordingContext() {
   };
   const point = (x, y) => [matrix[0] * x + matrix[2] * y + matrix[4], matrix[1] * x + matrix[3] * y + matrix[5]];
   const operations = {
+    beginPath() { path=[];pathArcs=[]; },
+    moveTo(x,y) { path.push({local:[x,y],world:point(x,y)}); },
+    lineTo(x,y) { path.push({local:[x,y],world:point(x,y)}); },
+    arc(x,y,radius) { pathArcs.push({center:point(x,y),radius}); },
     save() { stack.push([matrix.slice(), { ...style }]); },
     restore() { assert(stack.length, 'canvas restore underflow'); [matrix, style] = stack.pop(); },
     translate(x, y) { multiply([1, 0, 0, 1, x, y]); },
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
     rotate(angle) { const c = Math.cos(angle), s = Math.sin(angle); multiply([c, s, -s, c, 0, 0]); },
     fillRect(x, y, w, h) {
-      if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h) });
-      if (style.fillStyle === '#0a141e' && w === 7 && h === 6) hands.push(point(x + w / 2, y + h / 2));
+      if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h), width:w, height:h });
+      if (style.fillStyle === '#0a141e') {
+        hands.push(point(x + w / 2, y + h / 2));handSizes.push({width:w,height:h});
+      }
     },
     fill() {
       if (style.fillStyle === '#172833') headCenters.push(point(0, -50));
       if (style.fillStyle === '#111d2c') waistCenters.push(point(0, -16.5));
+      if(path.length>=3)filledShapes.push({color:style.fillStyle,local:path.map(p=>p.local),world:path.map(p=>p.world)});
+      if(style.fillStyle==='#07101a')joints.push(...pathArcs.filter(arc=>arc.radius>=1&&arc.radius<=5));
     },
     quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
     ellipse(x, y, rx, ry) { if (x === 12 && y === 0 && rx === 3 && ry === 7) bladeHands.push(point(0, 0)); },
@@ -42,7 +52,7 @@ function recordingContext() {
     }); },
     set(_, name, value) { style[name] = value; return true; },
   });
-  return { context, feet, bladeTips, bladeHands, headCenters, waistCenters, hands, balanced: () => stack.length === 0 };
+  return { context, feet, bladeTips, bladeHands, headCenters, waistCenters, hands, handSizes, filledShapes, joints, balanced: () => stack.length === 0 };
 }
 module.exports = { recordingContext, renderer };
 if (require.main === module) {
@@ -79,6 +89,60 @@ for (const facing of [-1, 1]) for (let frame = 0; frame < 120; frame++) {
   }
 }
 draw({}, 1, 'echo'); draw({}, 1, 'player', true);
+
+// Measure the actual authored geometry, not renderer constants or a screenshot.
+const boundsOf=(points)=>({left:Math.min(...points.map(p=>p[0])),right:Math.max(...points.map(p=>p[0])),
+  top:Math.min(...points.map(p=>p[1])),bottom:Math.max(...points.map(p=>p[1]))});
+function horizontalSpans(points,y) {
+  const intersections=[];
+  for(let index=0;index<points.length;index++) {
+    const a=points[index],b=points[(index+1)%points.length];
+    if((a[1]<=y&&b[1]>y)||(b[1]<=y&&a[1]>y))intersections.push(a[0]+(b[0]-a[0])*(y-a[1])/(b[1]-a[1]));
+  }
+  intersections.sort((a,b)=>a-b);
+  const spans=[];for(let index=0;index+1<intersections.length;index+=2)spans.push([intersections[index],intersections[index+1]]);
+  return spans;
+}
+for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
+  const model=draw({vx:phase===0?0:440*facing,runCycle:phase*tau},facing);
+  const torso=model.filledShapes.find(shape=>shape.color==='#111d2c');
+  assert(torso,'the mechanical torso must remain a readable silhouette');
+  const torsoBounds=boundsOf(torso.local),torsoWidth=torsoBounds.right-torsoBounds.left;
+  assert(torsoWidth>=18&&torsoWidth<=21.2,'torso must retain the slimmer 21px silhouette');
+  assert(torsoWidth/(torsoBounds.bottom-torsoBounds.top)<0.85,'torso must read as taller than it is wide');
+  const coat=model.filledShapes.find(shape=>shape.color==='#b5c7cb');
+  assert(coat,'the fixed white officer coat must remain present');
+  const coatBounds=boundsOf(coat.local);
+  assert(coatBounds.right-coatBounds.left<=26&&coatBounds.bottom<=-14,'coat must leave the knees and shin articulation exposed');
+  // Compare the shared tail section, not the final pixel of an asymmetric hem.
+  const hems=horizontalSpans(coat.local,coatBounds.top+(coatBounds.bottom-coatBounds.top)*0.8);
+  assert(hems.length>=2&&hems[1][0]-hems[0][1]>=3,'split coat tails must keep a visible central leg gap');
+  for(const [color,maxWidth]of[['#152737',3.8],['#3a5363',4.6],['#203443',3.8],['#526c7a',4.5]]) {
+    const segments=model.filledShapes.filter(shape=>shape.color===color);
+    assert.equal(segments.length,2,'every limb must draw separate upper and lower segments');
+    const widths=segments.map(segment=>{const b=boundsOf(segment.local);return b.right-b.left;});
+    assert(widths[0]<=maxWidth+0.01&&widths[1]<=widths[0]+0.01,'limb armor must stay slender without a swollen lower segment');
+    const edgeCenter=(segment,atEnd)=>{
+      const bound=boundsOf(segment.local),edge=atEnd?bound.bottom:bound.top;
+      const points=segment.world.filter((point,index)=>Math.abs(segment.local[index][1]-edge)<0.001);
+      return[points.reduce((sum,p)=>sum+p[0],0)/points.length,points.reduce((sum,p)=>sum+p[1],0)/points.length];
+    };
+    const upperEnd=edgeCenter(segments[0],true),lowerStart=edgeCenter(segments[1],false);
+    assert(Math.hypot(upperEnd[0]-lowerStart[0],upperEnd[1]-lowerStart[1])<=3,
+      'upper and lower limb armor must meet around their joint without disconnecting');
+    const join=[(upperEnd[0]+lowerStart[0])/2,(upperEnd[1]+lowerStart[1])/2];
+    assert(model.joints.some(joint=>Math.hypot(joint.center[0]-join[0],joint.center[1]-join[1])<2),
+      'every upper/lower limb connection must expose its own articulated joint');
+  }
+  assert(model.joints.length>=4,'both knees and both elbows must retain distinct articulated joints');
+  assert(model.handSizes.every(size=>size.width<=5&&size.height<=5),'oversized gloves must not hide the wrists');
+  assert(model.feet.every(foot=>foot.width<=9&&foot.height===6),'compact boots must preserve the same sole height');
+  if(phase===0) {
+    const helmet=model.filledShapes.find(shape=>shape.color==='#172833');
+    const headBounds=boundsOf(helmet.world);
+    assert(headBounds.right-headBounds.left<=21,'the helmet must remain proportionate to the slimmer torso');
+  }
+}
 
 // One stance must hold its world-space position as the actor moves forward.
 let worstSupportError = { amount: 0 }, worstSlip = { amount: 0 };
