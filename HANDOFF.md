@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.8.2**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.8.3**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.8.3: `operative-renderer.js`의 달리기를 골반 기준 상체 전방 기울임, 반대 위상 팔 스윙, 무릎 회수로 수정했습니다. `qa-operative.cjs`는 양쪽 발·양 방향·저/중/고속 전체 지지 구간과 머리/허리/손 위치를 측정합니다. 실제 이동·전투 수치는 3.8.2와 같습니다.
 
 3.8.2: `operative-renderer.js`의 J 3연격과 금속/관절 묘사, `game.js`의 이동 거리 기반 궤도·포신 반동, 10종 보스 진행 곡선을 추가했습니다. `qa-operative.cjs`는 연계 자세 연결을, `qa-motion.cjs`는 입력·중단을, `qa-boss-balance.cjs`는 체력 비율·경고/회복·탄막 상한을 검사합니다. J 연격은 모션 변화이며 타격당 기본 피해는 올리지 않았습니다.
 

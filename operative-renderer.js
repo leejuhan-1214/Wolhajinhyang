@@ -76,7 +76,6 @@
       const speedRatio = clamp(Math.abs(player.vx) / 440, 0, 1);
       const runBlend = player.grounded ? clamp(Math.abs(player.vx) / 180, 0, 1) : 0;
       const gaitBlend = player.grounded ? clamp(Math.abs(player.vx) / 45, 0, 1) : 0;
-      const running = runBlend > 0.04;
       const walling = !player.grounded && (player.wallLeft || player.wallRight);
       const poseEase = (value) => value * value * (3 - value * 2);
       const sampleLoop = (values, phase) => {
@@ -109,8 +108,11 @@
       const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
       const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
       const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
-      const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
-      const locomotionRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
+      // Arms oppose the same-side leg, with bent elbows instead of marching arms.
+      const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, -stride * 0.9 - 0.08, runBlend);
+      const locomotionRearAngle = lerp(0.28, stride * 0.82 - 0.02, runBlend);
+      const locomotionElbow = lerp(0.38, -1.05, runBlend);
+      const locomotionRearElbow = lerp(-0.42, -1.05, runBlend);
       const comboEnabled = !echoStyle && player.slashComboActive === true;
       const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
       const recoveryRatio = comboEnabled && !attacking && !shooting
@@ -118,7 +120,7 @@
       const comboVisible = comboEnabled && (attacking || recoveryRatio > 0);
       const bladeVisible = attacking || recoveryRatio > 0.03;
       const comboCarry = player.slashComboLinked ? poseEase(clamp(player.slashComboCarry || 0, 0, 1)) : 0;
-      const neutralPose = { arm: locomotionArmAngle, elbow: 0.38, blade: -1.1,
+      const neutralPose = { arm: locomotionArmAngle, elbow: locomotionElbow, blade: -1.1,
         lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, twist: 0 };
       let comboPose = neutralPose;
       if (comboVisible) {
@@ -150,7 +152,7 @@
             : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
         : 0;
       const attackImpact = comboVisible ? comboPose.stance : attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
-      // Keep the torso above its support leg, with only a small forward lean.
+      // Keep the pelvis over its support foot; hinge the chest forward separately.
       const baseLean = clamp(player.vx * facing / 5100, -0.085, 0.085);
       const actionLean = comboVisible ? comboPose.lean : attacking
         ? attackProgress < 0.22
@@ -160,8 +162,11 @@
             : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
         : -0.08 * shotKick + shotSettle * 0.025;
       const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
-      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5;
-      const bodyOffsetY = -bob + shotKick * 1.2 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
+      const sprintDrive = poseEase(speedRatio) * runBlend;
+      const travelSign = player.vx * facing < 0 ? -1 : 1;
+      const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
+      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - sprintDrive * 1.5 * travelSign;
+      const bodyOffsetY = -bob + shotKick * 1.2 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
       const bodyScaleX = squashX * (1 + attackImpact * 0.035);
       const bodyScaleY = squashY * (1 - attackImpact * 0.025);
       const bodyLean = baseLean + actionLean;
@@ -268,7 +273,7 @@
         const strideReach = Math.PI * RUN_SUPPORT_FRACTION / STRIDE_RADIANS_PER_PIXEL;
         const strideX = contact ? lerp(strideReach, -strideReach, phase / RUN_SUPPORT_FRACTION)
           : lerp(-strideReach, strideReach, poseEase(recovery));
-        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * (4 + speedRatio * 6);
+        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) ** 0.85 * (5 + speedRatio * 12);
         const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
         let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, gaitBlend);
         footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
@@ -281,8 +286,10 @@
         const endY = -localX * Math.sin(bodyLean) + localY * Math.cos(bodyLean);
         const dx = endX - hipX;
         const dy = endY - hipY;
-        const upperLength = 13;
-        const lowerLength = 13;
+        // Fixed bone lengths cover the entire support stride without stretching
+        // or lifting the planted heel when the foot passes behind the pelvis.
+        const upperLength = 14.5;
+        const lowerLength = 14.5;
         const reach = clamp(Math.hypot(dx, dy), 1, upperLength + lowerLength - 0.1);
         const axis = Math.atan2(dx, dy);
         const upperAngle = axis + Math.acos(clamp((upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach), -1, 1));
@@ -291,7 +298,7 @@
         const targetX = hipX + Math.sin(axis) * reach;
         const targetY = hipY + Math.cos(axis) * reach;
         const lowerAngle = Math.atan2(targetX - kneeX, targetY - kneeY);
-        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.23 * runBlend;
+        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.32 * runBlend;
         drawJointedLimb(hipX, hipY, upperLength, lowerLength, width, upperAngle, upperAngle - lowerAngle, color, true, false, -bodyLean + toeRoll);
       }
 
@@ -310,7 +317,14 @@
 
       // Structured white officer coat: split tails expose the mechanical legs.
       // Fixed-cut officer coat: no independent sway, lag or billowing panels.
+      function pitchUpperBody() {
+        ctx.translate(0, -24);
+        ctx.rotate(torsoPitch);
+        ctx.translate(0, 24);
+      }
       if (!echoStyle) {
+        ctx.save();
+        pitchUpperBody();
         drawCharacterPlate([-13, -47, 10, -47, 14, -31, 15, -8,
           8, -10, 1, -26, -4, -18, -11, -6,
           -18, -9, -15, -31], "#b5c7cb");
@@ -326,6 +340,7 @@
         ctx.moveTo(-16, -12);
         ctx.lineTo(-11, -9);
         ctx.stroke();
+        ctx.restore();
       }
 
       if (player.grounded) {
@@ -334,12 +349,13 @@
       } else {
         const backPose = legPose("back");
         const frontPose = legPose("front");
-        drawJointedLimb(-3, -24, 13, 13, 5, backPose.upper, backPose.knee, uniformBack, true);
-        drawJointedLimb(3, -24, 13, 13, 5.5, frontPose.upper, frontPose.knee, uniformFront, true);
+        drawJointedLimb(-3, -24, 14.5, 14.5, 5, backPose.upper, backPose.knee, uniformBack, true);
+        drawJointedLimb(3, -24, 14.5, 14.5, 5.5, frontPose.upper, frontPose.knee, uniformFront, true);
       }
 
       // Shorten the oversized torso rather than hiding the upper legs inside it.
       // Total character height remains 60 px; the hip now reads above the knee.
+      pitchUpperBody();
       ctx.translate(0, -10);
       ctx.scale(1, 0.84);
 
@@ -494,21 +510,19 @@
       const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
       const gunScale = 0.62;
       const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
-      const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - 0.38) * 9;
-      const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - 0.38) * 9;
+      const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - locomotionElbow) * 9;
+      const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - locomotionElbow) * 9;
       const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (5 - shotKick * 2), shotPoseBlend);
       const shotHandY = lerp(restHandY, -27 + Math.sin(weaponAngle) * 7, shotPoseBlend);
       const rearArm = comboVisible ? comboPose.rear : shooting
         ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
         : attacking
           ? -0.34 - attackLunge * 0.025
-          : running
-            ? -stride * 0.58 * runBlend + 0.14
-            : 0.28;
+          : locomotionRearAngle;
       if (shooting && !bladeVisible) {
-        const restRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
-        const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle + 0.42) * 8;
-        const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle + 0.42) * 8;
+        const restRearAngle = locomotionRearAngle;
+        const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle - locomotionRearElbow) * 8;
+        const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle - locomotionRearElbow) * 8;
         const gripOffsetX = (20 - pumpTravel) * gunScale;
         const gripOffsetY = -5 * gunScale;
         drawArmTo(lerp(-10, 0, shotPoseBlend), -38,
@@ -517,13 +531,13 @@
           lerp(8, 13, shotPoseBlend), 4.5, uniformRearArm);
       } else {
         drawJointedLimb(-10 - shoulderTurn * 0.5, -38, 8, 8, 5, rearArm,
-          comboVisible ? lerp(-0.42, -0.62, comboPose.stance) : attacking ? -0.62 : -0.42,
+          comboVisible ? lerp(locomotionRearElbow, -0.62, comboPose.stance) : attacking ? -0.62 : locomotionRearElbow,
           uniformRearArm, false, true);
       }
 
       ctx.save();
       ctx.translate(0, -43);
-      ctx.rotate(-bodyLean * 0.45 - shotSettle * 0.04);
+      ctx.rotate(-bodyLean * 0.45 - torsoPitch * 0.75 - shotSettle * 0.04);
       ctx.translate(0, 43);
       // Faceted mechanical mask, swept crown and a continuous red optic.
       drawCharacterPlate([-12, -53, -8, -59, 5, -58, 12, -53,
@@ -577,7 +591,7 @@
       const frontHand = shooting && !bladeVisible
         ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 6, uniformFrontArm)
         : drawJointedLimb(10 + shoulderTurn * 0.5, -38, 9, 9, 6, armAngle,
-          comboVisible ? comboPose.elbow : attacking ? 0.12 : 0.38, uniformFrontArm, false, !bladeVisible);
+          comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow, uniformFrontArm, false, !bladeVisible);
       if (bladeVisible) {
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);

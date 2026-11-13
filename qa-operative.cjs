@@ -10,7 +10,7 @@ assert.equal(gameplayCadence, renderer.strideRadiansPerPixel, 'gameplay travel a
 const tau = Math.PI * 2;
 function recordingContext() {
   let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {};
-  const feet = [], bladeTips = [];
+  const feet = [], bladeTips = [], headCenters = [], waistCenters = [], hands = [];
   const multiply = ([a, b, c, d, e, f]) => {
     const m = matrix;
     matrix = [m[0] * a + m[2] * b, m[1] * a + m[3] * b,
@@ -24,7 +24,14 @@ function recordingContext() {
     translate(x, y) { multiply([1, 0, 0, 1, x, y]); },
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
     rotate(angle) { const c = Math.cos(angle), s = Math.sin(angle); multiply([c, s, -s, c, 0, 0]); },
-    fillRect(x, y, w, h) { if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h) }); },
+    fillRect(x, y, w, h) {
+      if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h) });
+      if (style.fillStyle === '#0a141e' && w === 7 && h === 6) hands.push(point(x + w / 2, y + h / 2));
+    },
+    fill() {
+      if (style.fillStyle === '#172833') headCenters.push(point(0, -50));
+      if (style.fillStyle === '#111d2c') waistCenters.push(point(0, -16.5));
+    },
     quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
   };
   const context = new Proxy({}, {
@@ -34,7 +41,7 @@ function recordingContext() {
     }); },
     set(_, name, value) { style[name] = value; return true; },
   });
-  return { context, feet, bladeTips, balanced: () => stack.length === 0 };
+  return { context, feet, bladeTips, headCenters, waistCenters, hands, balanced: () => stack.length === 0 };
 }
 const player = { w: 28, h: 52, vx: 440, vy: 0, grounded: true, runCycle: 0,
   squash: 0, attackTimer: 0, attackDuration: 0.23, attackDir: { x: 1, y: 0 },
@@ -70,26 +77,60 @@ for (const facing of [-1, 1]) for (let frame = 0; frame < 120; frame++) {
 draw({}, 1, 'echo'); draw({}, 1, 'player', true);
 
 // One stance must hold its world-space position as the actor moves forward.
-for (const speed of [90, 240, 440]) {
+let worstSupportError = { amount: 0 }, worstSlip = { amount: 0 };
+for (const speed of [90, 240, 440]) for (const facing of [-1, 1]) for (const footIndex of [0, 1]) {
   const planted = [];
-  for (let frame = 0; frame <= 32; frame++) {
-    const phase = renderer.runSupportFraction * (0.12 + frame / 48);
+  for (let frame = 0; frame <= 48; frame++) {
+    const contactFraction = 0.02 + frame / 48 * 0.96;
+    const phase = (footIndex === 0 ? 0.5 : 0) + renderer.runSupportFraction * contactFraction;
     const distance = phase * tau / renderer.strideRadiansPerPixel;
-    const record = draw({ vx: speed, runCycle: phase * tau }, 1, 'player', false, distance);
-    const foot = record.feet[1];
-    assert(Math.abs(foot.heel[1] - player.h) < 0.1, 'support heel must touch the floor');
-    assert(Math.abs(foot.toe[1] - player.h) < 0.1, 'support sole must remain level');
+    const record = draw({ vx: speed * facing, runCycle: phase * tau }, facing, 'player', false, distance * facing);
+    const foot = record.feet[footIndex];
+    const floorError = Math.max(Math.abs(foot.heel[1] - player.h), Math.abs(foot.toe[1] - player.h));
+    if (floorError > worstSupportError.amount) worstSupportError = { amount: floorError, speed, facing, footIndex, contactFraction };
     planted.push(foot.ankle[0]);
   }
-  assert(Math.max(...planted) - Math.min(...planted) < 1.1,
-    'walking and running support feet may only move by root pixel rounding');
+  const slip = Math.max(...planted) - Math.min(...planted);
+  if (slip > worstSlip.amount) worstSlip = { amount: slip, speed, facing, footIndex };
 }
+assert(worstSupportError.amount < 0.1,
+  `support soles must remain on the floor through the entire contact: ${JSON.stringify(worstSupportError)}`);
+assert(worstSlip.amount < 1.1,
+  `support feet may only move by root pixel rounding: ${JSON.stringify(worstSlip)}`);
 const contactsPerSecond = 440 * renderer.strideRadiansPerPixel / Math.PI;
 assert(contactsPerSecond > 5 && contactsPerSecond < 7, 'full-speed cadence must not spin the legs like a wheel');
 const supportTravel = tau * renderer.runSupportFraction / renderer.strideRadiansPerPixel;
 assert(supportTravel > 30 && supportTravel < 35, 'support distance must fit the mechanical leg reach');
 const flight = draw({ runCycle: 0.38 * tau });
 assert(flight.feet.every(foot => foot.heel[1] < player.h - 1), 'a running stride must contain a small flight phase');
+
+// Measure rendered anatomy rather than checking the angle constants: the upper
+// body must lead its hips, and each arm must oppose the leg on the same side.
+for (const facing of [-1, 1]) {
+  const leadAt = (speed) => {
+    const record = draw({ vx: speed * facing, runCycle: 0.125 * tau }, facing);
+    assert.equal(record.headCenters.length, 1, 'exactly one mechanical head must be rendered');
+    assert.equal(record.waistCenters.length, 1, 'exactly one torso must be rendered');
+    return (record.headCenters[0][0] - record.waistCenters[0][0]) * facing;
+  };
+  const idleLead = leadAt(0), walkLead = leadAt(90), runLead = leadAt(240), sprintLead = leadAt(440);
+  assert(Math.abs(idleLead) < 0.5, 'idle posture must remain upright');
+  assert(walkLead > idleLead && runLead > walkLead && sprintLead > runLead,
+    'forward torso lean must increase smoothly from walking to sprinting');
+  assert(sprintLead >= 7 && sprintLead <= 15,
+    'sprinting head must lead the waist visibly without tipping the whole body over');
+  const contact = draw({ vx: 440 * facing, runCycle: 0 }, facing);
+  const opposite = draw({ vx: 440 * facing, runCycle: Math.PI }, facing);
+  assert.equal(contact.hands.length, 2, 'running must retain both hands');
+  assert.equal(opposite.hands.length, 2, 'running must retain both hands');
+  const frontArmSwing = (contact.hands[1][0] - opposite.hands[1][0]) * facing;
+  const rearArmSwing = (contact.hands[0][0] - opposite.hands[0][0]) * facing;
+  const frontLegSwing = (contact.feet[1].ankle[0] - opposite.feet[1].ankle[0]) * facing;
+  assert(frontLegSwing > 10 && frontArmSwing < -4,
+    'front arm must drive back as its own leg reaches forward, not march with it');
+  assert(rearArmSwing > 4 && frontArmSwing * rearArmSwing < 0,
+    'both arms must counter-swing with bent elbows');
+}
 
 // Both soles remain supported during idle breathing, without a crouching bounce.
 for (let frame = 0; frame < 120; frame++) {
@@ -132,6 +173,18 @@ for (const index of [0, 1, 2]) for (const facing of [-1, 1]) {
       comboCases += 2;
     }
   }
+}
+// New sprint shoulders/elbows must also hand off without snapping while moving.
+for (const facing of [-1, 1]) for (const index of [0, 1, 2]) for (const phase of [0.125, 0.625]) {
+  const common = { vx: 440 * facing, runCycle: phase * tau, slashComboActive: true,
+    attackDir: { x: facing, y: 0 }, slashComboRecoveryDuration: 0.16 };
+  const previous = draw({ ...common, slashComboIndex: index, slashComboRecovery: 0.096 }, facing);
+  const nextIndex = (index + 1) % 3;
+  const next = draw({ ...common, slashComboIndex: nextIndex, slashComboLinked: true, slashComboCarry: 0.6,
+    attackDuration: durations[nextIndex], attackTimer: durations[nextIndex] }, facing);
+  assert(tipDistance(previous.bladeTips[0], next.bladeTips[0]) < 0.001,
+    'sprinting torso and elbow poses must remain continuous when chaining J');
+  comboCases += 2;
 }
 const distinct = durations.map((duration, index) => draw({ vx: 0, slashComboActive: true,
   slashComboIndex: index, attackDuration: duration, attackTimer: duration * 0.45 }).bladeTips[0]);
