@@ -23,7 +23,7 @@ const source = fs.readFileSync('game.js', 'utf8');
 const hook = `window.__MOTION_QA__ = { player, game, keys, pressed, platforms, enemies, bullets,
   hazards, checkpoints, pickups, boostNodes, combatRooms, snowPatches, updatePlayer, update,
   keyboardKeys, touchPointers, moveStick, clearGameplayInput, handleTouchControlDown, handleTouchControlUp, setTutorialPanel, closeTutorialPanel,
-  startAttack, startShotgun, updateBullets, damagePlayer, frame, togglePause, drawPlayerBody, drawEnemy,
+  startAttack, startComboAttack, resetSlashCombo, isAttackActive, startShotgun, updateBullets, damagePlayer, frame, togglePause, drawPlayerBody, drawEnemy,
   drawCharacterArchive, drawHud, ctx, camera, rebuildPlatformSpatialIndex,
   toggleAdminCadetMode, teleportAdminToZone,
   unlockAdmin() { adminModeUnlocked = true; },
@@ -55,7 +55,7 @@ for(let i=0;i<60;i++) {
   if(Math.floor(beforeCycle/Math.PI)!==Math.floor(q.player.runCycle/Math.PI)) footContacts++;
   if(q.player.stepTimer>beforeTimer) stepEffects++;
 }
-assert(footContacts>10 && stepEffects===footContacts,'full-speed foot contacts must each trigger a step effect');
+assert(footContacts>=5 && footContacts<=7 && stepEffects===footContacts,'natural running cadence must trigger one effect per planted foot');
 const gaitBeforeJump=q.player.runCycle;
 q.player.grounded=false; q.player.y=200; q.player.vy=-200;
 q.updatePlayer(1/60);
@@ -95,6 +95,48 @@ assert.equal(q.player.attackId,originalPlayer.attackId+1,'buffer should launch e
 assert.equal(q.player.queuedAction,null);
 q.startAttack(); q.togglePause();
 assert.equal(q.player.queuedAction,null,'pause must clear stale combat input');
+
+fixture();
+q.startComboAttack();
+assert.equal(q.player.slashComboIndex,0);
+assert(q.player.slashComboActive);
+const comboFirstId=q.player.attackId;
+for(let expected=1;expected<=2;expected++) {
+  while(q.player.attackCooldown>0.09) q.updatePlayer(1/120);
+  q.startComboAttack(); q.startComboAttack();
+  assert.equal(q.player.queuedAction?.kind,'combo','J accepts only one buffered follow-up');
+  for(let i=0;i<15;i++) q.updatePlayer(1/120);
+  assert.equal(q.player.slashComboIndex,expected,'J must advance through three distinct strikes');
+  assert.equal(q.player.attackId,comboFirstId+expected,'repeated J input must not duplicate a strike');
+  assert(q.player.slashComboLinked && q.player.slashComboCarry>0,'linked strike must inherit prior recovery pose');
+}
+while(q.player.attackCooldown>0.09) q.updatePlayer(1/120);
+q.startComboAttack();
+for(let i=0;i<15;i++) q.updatePlayer(1/120);
+assert.equal(q.player.slashComboIndex,0,'the next J after a finisher must restart the three-strike sequence');
+assert(q.player.slashComboLinked && q.player.slashComboCarry>0,'finisher-to-opening must carry the recovery pose too');
+for(let i=0;i<120;i++) q.updatePlayer(1/120);
+q.startComboAttack();
+assert.equal(q.player.slashComboIndex,0,'expired combo must restart from the opening draw');
+q.togglePause();
+assert.equal(q.player.slashComboActive,false,'pause must reset combo posture and buffered input');
+assert.equal(q.player.slashComboWindow,0);
+fixture(); q.startComboAttack(); q.damagePlayer(1,900);
+assert.equal(q.player.slashComboActive,false,'taking damage must break the combo');
+fixture(); q.startComboAttack();
+for(let i=0;i<40;i++) q.updatePlayer(1/120);
+q.startAttack({x:-1,y:0});
+assert.equal(q.player.slashComboActive,false,'mouse/default slash must preserve its separate behavior');
+assert.equal(q.player.facing,-1,'combo changes must not break directional slashes');
+for(const [index,contact] of [0.18,0.15,0.23].entries()) {
+  fixture(); q.startComboAttack(); q.player.slashComboIndex=index;
+  q.player.attackTimer=q.player.attackDuration*(1-contact+0.01);
+  assert.equal(q.isAttackActive(),false,'J wind-up must not damage enemies before the blade starts its cut');
+  q.player.attackTimer=q.player.attackDuration*(1-contact-0.01);
+  assert.equal(q.isAttackActive(),true,'J contact must begin with the corresponding cut');
+}
+fixture(); q.startComboAttack(); q.startShotgun({x:1,y:0});
+assert(q.player.slashComboActive && q.player.attackTimer>0,'shooting during J must not replace the executing cut with a legacy pose');
 
 fixture();
 q.player.attackCooldown=0.4;

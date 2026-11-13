@@ -10,7 +10,7 @@ assert.equal(gameplayCadence, renderer.strideRadiansPerPixel, 'gameplay travel a
 const tau = Math.PI * 2;
 function recordingContext() {
   let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {};
-  const feet = [];
+  const feet = [], bladeTips = [];
   const multiply = ([a, b, c, d, e, f]) => {
     const m = matrix;
     matrix = [m[0] * a + m[2] * b, m[1] * a + m[3] * b,
@@ -25,6 +25,7 @@ function recordingContext() {
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
     rotate(angle) { const c = Math.cos(angle), s = Math.sin(angle); multiply([c, s, -s, c, 0, 0]); },
     fillRect(x, y, w, h) { if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h) }); },
+    quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
   };
   const context = new Proxy({}, {
     get(_, name) { return style[name] ?? ((...args) => {
@@ -33,11 +34,13 @@ function recordingContext() {
     }); },
     set(_, name, value) { style[name] = value; return true; },
   });
-  return { context, feet, balanced: () => stack.length === 0 };
+  return { context, feet, bladeTips, balanced: () => stack.length === 0 };
 }
 const player = { w: 28, h: 52, vx: 440, vy: 0, grounded: true, runCycle: 0,
   squash: 0, attackTimer: 0, attackDuration: 0.23, attackDir: { x: 1, y: 0 },
-  recoilTimer: 0, shotAimX: 1, shotAimY: 0, buffTimer: 0, shotgunCharge: 0 };
+  recoilTimer: 0, shotAimX: 1, shotAimY: 0, buffTimer: 0, shotgunCharge: 0,
+  slashComboActive: false, slashComboIndex: 0, slashComboLinked: false,
+  slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16 };
 const game = { stage: 0, time: 0 };
 const original = { ...player };
 function draw(overrides = {}, facing = 1, style = 'player', ghost = false, x = 0) {
@@ -67,21 +70,80 @@ for (const facing of [-1, 1]) for (let frame = 0; frame < 120; frame++) {
 draw({}, 1, 'echo'); draw({}, 1, 'player', true);
 
 // One stance must hold its world-space position as the actor moves forward.
-const planted = [];
-for (let frame = 0; frame <= 32; frame++) {
-  const phase = 0.08 + frame / 100;
-  const distance = phase * tau / renderer.strideRadiansPerPixel;
-  const record = draw({ runCycle: phase * tau }, 1, 'player', false, distance);
-  const foot = record.feet[1];
-  assert(Math.abs(foot.heel[1] - player.h) < 0.1, 'support heel must touch the floor');
-  assert(Math.abs(foot.toe[1] - player.h) < 0.1, 'support sole must remain level');
-  planted.push(foot.ankle[0]);
+for (const speed of [90, 240, 440]) {
+  const planted = [];
+  for (let frame = 0; frame <= 32; frame++) {
+    const phase = renderer.runSupportFraction * (0.12 + frame / 48);
+    const distance = phase * tau / renderer.strideRadiansPerPixel;
+    const record = draw({ vx: speed, runCycle: phase * tau }, 1, 'player', false, distance);
+    const foot = record.feet[1];
+    assert(Math.abs(foot.heel[1] - player.h) < 0.1, 'support heel must touch the floor');
+    assert(Math.abs(foot.toe[1] - player.h) < 0.1, 'support sole must remain level');
+    planted.push(foot.ankle[0]);
+  }
+  assert(Math.max(...planted) - Math.min(...planted) < 1.1,
+    'walking and running support feet may only move by root pixel rounding');
 }
-assert(Math.max(...planted) - Math.min(...planted) < 1.1, 'planted foot may only move by root pixel rounding');
+const contactsPerSecond = 440 * renderer.strideRadiansPerPixel / Math.PI;
+assert(contactsPerSecond > 5 && contactsPerSecond < 7, 'full-speed cadence must not spin the legs like a wheel');
+const supportTravel = tau * renderer.runSupportFraction / renderer.strideRadiansPerPixel;
+assert(supportTravel > 30 && supportTravel < 35, 'support distance must fit the mechanical leg reach');
+const flight = draw({ runCycle: 0.38 * tau });
+assert(flight.feet.every(foot => foot.heel[1] < player.h - 1), 'a running stride must contain a small flight phase');
 
 // Both soles remain supported during idle breathing, without a crouching bounce.
 for (let frame = 0; frame < 120; frame++) {
   game.time = frame / 30;
   for (const foot of draw({ vx: 0 }).feet) assert(Math.abs(foot.heel[1] - player.h) < 0.1);
 }
-console.log(`Operative renderer: ${cases + 122} pose/state checks, grounded stance and immutable gameplay passed.`);
+
+const durations = [0.22, 0.24, 0.28];
+const tipDistance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+let comboCases = 0;
+for (const index of [0, 1, 2]) for (const facing of [-1, 1]) {
+  for (const grounded of [false, true]) for (const aimY of [-1, 0, 1]) {
+    for (let frame = 0; frame < 60; frame++) {
+      const result = draw({ vx: 0, grounded, vy: grounded ? 0 : -250,
+        slashComboActive: true, slashComboIndex: index, slashComboLinked: index > 0, slashComboCarry: 1,
+        attackDuration: durations[index], attackTimer: durations[index] * (1 - frame / 60),
+        attackDir: { x: facing, y: aimY } }, facing);
+      assert.equal(result.bladeTips.length, 1, 'each active J strike draws exactly one katana');
+      if (grounded && aimY === 0) assert(result.bladeTips[0][1] <= player.h + 1,
+        'a forward grounded combo must not drive its sword tip through the floor');
+      comboCases++;
+    }
+    // Starting the next strike must preserve the exact previous follow-through,
+    // even if part of its recovery has elapsed, and even while aiming vertically.
+    for (const carry of [1, 0.7, 0.3]) {
+      const previous = draw({ vx: 0, grounded, vy: grounded ? 0 : -250,
+        slashComboActive: true, slashComboIndex: index, slashComboRecovery: carry * 0.16,
+        attackDir: { x: facing, y: aimY } }, facing);
+      const nextIndex = (index + 1) % 3;
+      const next = draw({ vx: 0, grounded, vy: grounded ? 0 : -250,
+        slashComboActive: true, slashComboIndex: nextIndex, slashComboLinked: true, slashComboCarry: carry,
+        attackDuration: durations[nextIndex], attackTimer: durations[nextIndex],
+        attackDir: { x: facing, y: aimY } }, facing);
+      assert(tipDistance(previous.bladeTips[0], next.bladeTips[0]) < 0.001,
+        `J chain ${index + 1} -> ${nextIndex + 1} must not snap the blade (carry ${carry})`);
+      for (let foot = 0; foot < previous.feet.length; foot++) {
+        assert(tipDistance(previous.feet[foot].ankle, next.feet[foot].ankle) < 0.001,
+          'linked J strikes must preserve their supporting feet');
+      }
+      comboCases += 2;
+    }
+  }
+}
+const distinct = durations.map((duration, index) => draw({ vx: 0, slashComboActive: true,
+  slashComboIndex: index, attackDuration: duration, attackTimer: duration * 0.45 }).bladeTips[0]);
+for (let a = 0; a < distinct.length; a++) for (let b = a + 1; b < distinct.length; b++) {
+  assert(tipDistance(distinct[a], distinct[b]) > 8, 'the three strikes must have distinct blade trajectories');
+}
+const normal = draw({ vx: 0, attackTimer: 0.1 }).bladeTips[0];
+const normalWithStaleCombo = draw({ vx: 0, attackTimer: 0.1, slashComboIndex: 2, slashComboCarry: 1 }).bladeTips[0];
+assert(tipDistance(normal, normalWithStaleCombo) < 0.001, 'mouse attacks must ignore inactive J state');
+const echo = draw({ vx: 0, attackTimer: 0.1 }, 1, 'echo').bladeTips[0];
+const echoDuringJ = draw({ vx: 0, attackTimer: 0.1, slashComboActive: true, slashComboIndex: 2 }, 1, 'echo').bladeTips[0];
+assert(tipDistance(echo, echoDuringJ) < 0.001, 'player J combo state must never leak into Echo');
+assert.equal(draw({ slashComboActive: true, slashComboRecovery: 0 }).bladeTips.length, 0,
+  'completed recovery must sheath the katana');
+console.log(`Operative renderer: ${cases + 122} base poses + ${comboCases} combo poses/handoffs, grounded stance and immutable gameplay passed.`);

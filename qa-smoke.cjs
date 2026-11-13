@@ -142,8 +142,8 @@ for (const bossKind of Object.keys(diagnostics.difficultyBossHpByKind.darkhorse)
     throw new Error(`boss HP ratio invalid for ${bossKind}`);
   }
 }
-if (diagnostics.bossHp.furnace !== 54 || diagnostics.difficultyBossHpByKind.chick.furnace !== 27 || diagnostics.difficultyBossHpByKind.cadet.furnace !== 36 || diagnostics.difficultyBossHpByKind.darkhorse.furnace !== 54 || diagnostics.difficultyBossHpByKind.weapon.furnace !== 54) {
-  throw new Error("Crimson Furnace HP is not doubled across every difficulty");
+if (diagnostics.bossHp.furnace !== 40 || diagnostics.difficultyBossHpByKind.chick.furnace !== 20 || diagnostics.difficultyBossHpByKind.cadet.furnace !== 26.667 || diagnostics.difficultyBossHpByKind.darkhorse.furnace !== 40 || diagnostics.difficultyBossHpByKind.weapon.furnace !== 40) {
+  throw new Error("Crimson Furnace HP does not follow the encounter curve and difficulty ratios");
 }
 if (!diagnostics.hellBossRemixEnabled || diagnostics.hellBossRemixBossCount !== 10 || diagnostics.hellBossRemixPatternCount !== 48 || diagnostics.hellBossFollowupDelayScale !== 0.62 || diagnostics.hellBossCrisisThreshold !== 0.55 || diagnostics.hellBossCrisisCooldownScale !== 0.72 || diagnostics.hellBossCooldownScale !== 0.78 || diagnostics.hellBossWindupScale !== 0.8) {
   throw new Error("Hell boss remix configuration is invalid");
@@ -309,10 +309,10 @@ if (!diagnostics.enemyHitInterruptsFire || diagnostics.normalEnemyHitStunSeconds
 if (!gameSource.includes("function applyEnemyHitStun(enemy, duration)") || !gameSource.includes("if (enemy.hitStun > 0)")) {
   throw new Error("enemy hit-stun implementation missing");
 }
-if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "7,5" || diagnostics.wardenPanelShotsPerUnit !== 5 || diagnostics.wardenPanelShotInterval !== 0.3 || diagnostics.wardenAttackRecoveryScale !== 0.7) {
+if (diagnostics.wardenPanelPassiveCooldowns.join(",") !== "7,5" || diagnostics.wardenPanelShotsPerUnit !== 3 || diagnostics.wardenPanelShotInterval !== 0.42 || diagnostics.wardenAttackRecoveryScale !== 1) {
   throw new Error(`warden frequency tuning invalid: ${diagnostics.wardenPanelPassiveCooldowns}/${diagnostics.wardenPanelShotsPerUnit}/${diagnostics.wardenAttackRecoveryScale}`);
 }
-if (!diagnostics.wardenHpHigherThanBreaker || diagnostics.bossHp.warden !== 32 || diagnostics.midBossHp.breaker !== 24 || diagnostics.wardenPanelCountByPhase.join(",") !== "5,6" || diagnostics.wardenMissileVolleyCount !== 5 || diagnostics.wardenMobilityScale !== 1.18 || !diagnostics.wardenPhaseTwoRepeatingCoreBeam || !gameSource.includes('startBossChargedShot(enemy, "warden-core", dx, 1.55)')) {
+if (!diagnostics.wardenHpHigherThanBreaker || diagnostics.bossHp.warden !== 30 || diagnostics.midBossHp.breaker !== 24 || diagnostics.wardenPanelCountByPhase.join(",") !== "3,4" || diagnostics.wardenMissileVolleyCount !== 3 || diagnostics.wardenMobilityScale !== 1 || !diagnostics.wardenPhaseTwoRepeatingCoreBeam || !gameSource.includes('startBossChargedShot(enemy, "warden-core", dx, 1.55)')) {
   throw new Error("Cheolgak is not decisively stronger than Swae-u");
 }
 if (diagnostics.playerGroundSeamStepHeight !== 44 || diagnostics.playerPlatformStepHeight !== 12 || !diagnostics.playerStepUpRequiresClearance) {
@@ -366,7 +366,7 @@ if (!diagnostics.echoParryEnabled || diagnostics.echoParryWindowSeconds !== 0.32
 if (!gameSource.includes("&& !bullet.piercing") || !gameSource.includes("if (!bullet.piercing && isEchoParryActive(enemy))")) {
   throw new Error("overcharged shotgun does not bypass Echo parry");
 }
-if (diagnostics.echoHp !== 66 || diagnostics.echoSpeedFactor !== 1.3 || diagnostics.echoAttackRecoveryFactor !== 0.78 || diagnostics.echoShotgunPelletCount !== 9 || diagnostics.echoSkillMultiplier !== 4 || !gameSource.includes('triggerEchoParry(enemy, "shotgun", { force: true })') || !gameSource.includes("bullet.cancelled || !bullet.piercing")) {
+if (diagnostics.echoHp !== 80 || diagnostics.echoSpeedFactor !== 1 || diagnostics.echoAttackRecoveryFactor !== 1 || diagnostics.echoShotgunPelletCount !== 9 || diagnostics.echoSkillMultiplier !== 4 || !gameSource.includes('triggerEchoParry(enemy, "shotgun", { force: true })') || !gameSource.includes("bullet.cancelled || !bullet.piercing")) {
   throw new Error("strengthened echo combat tuning is missing");
 }
 if (diagnostics.echoNewPatternCount !== 3 || diagnostics.echoNewPatterns.join(",") !== "echo-triple-burst,echo-dive-barrage,echo-afterimage-crossfire" || diagnostics.echoChainBurstCount !== 3 || diagnostics.echoDiveVolleyCount !== 3 || diagnostics.echoAfterimageSourceCount !== 3) {

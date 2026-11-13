@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.8.1";
+  const GAME_VERSION = "3.8.2";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -144,7 +144,7 @@
     coyoteTime: 0.14,
     actionBuffer: 0.1,
     wallJumpGrace: 0.1,
-    strideRadiansPerPixel: 0.095,
+    strideRadiansPerPixel: 0.045,
     joystickDeadzone: 0.08,
   });
   const EMPOWERED_SLASH_BONUS = 0.5;
@@ -174,8 +174,8 @@
   const ECHO_REACTIVE_SHOTGUN_PARRY_COOLDOWN = 1.1;
   const ECHO_SHOTGUN_PELLET_COUNT = 9;
   const ECHO_PARRY_RETURN_PROJECTILES = 5;
-  const ECHO_SPEED_FACTOR = 1.3;
-  const ECHO_ATTACK_RECOVERY_FACTOR = 0.78;
+  const ECHO_SPEED_FACTOR = 1;
+  const ECHO_ATTACK_RECOVERY_FACTOR = 1;
   const ECHO_SKILL_MULTIPLIER = 4;
   const ECHO_CHAIN_BURST_COUNT = 3;
   const ECHO_DIVE_VOLLEY_COUNT = 3;
@@ -188,10 +188,10 @@
   const SENTRY_BURST_ROUNDS = 4;
   const SENTRY_BURST_INTERVAL = 0.115;
   const WARDEN_PANEL_COOLDOWNS = Object.freeze([7, 5]);
-  const WARDEN_PANEL_SHOTS_PER_UNIT = 5;
-  const WARDEN_PANEL_SHOT_INTERVAL = 0.3;
-  const WARDEN_ATTACK_RECOVERY_SCALE = 0.7;
-  const WARDEN_MOBILITY_SCALE = 1.18;
+  const WARDEN_PANEL_SHOTS_PER_UNIT = 3;
+  const WARDEN_PANEL_SHOT_INTERVAL = 0.42;
+  const WARDEN_ATTACK_RECOVERY_SCALE = 1;
+  const WARDEN_MOBILITY_SCALE = 1;
   const PLAYER_GROUND_SEAM_STEP_HEIGHT = 44;
   const PLAYER_PLATFORM_STEP_HEIGHT = 12;
   const ROUTE_TRANSITION_BUDGET_BY_STAGE = Object.freeze([
@@ -360,35 +360,35 @@
   const BOSS_DEFINITIONS = {
     warden: {
       name: "붉은 부유 지휘기 · 철각",
-      hp: 32,
+      hp: 30,
       size: [82, 102],
       accent: "#ff496c",
       patterns: ["육익 판넬 전개", "유도 포화", "판넬 교차사격", "중장 돌진", "대공 미사일", "제압 탄막"],
     },
     furnace: {
       name: "용광 심장 · 홍련",
-      hp: 54,
+      hp: 40,
       size: [72, 98],
       accent: "#ff7b62",
       patterns: ["공중 4연 박격", "총열 부채", "포신 강하", "노심 폭발", "홍련식 연사"],
     },
     weaver: {
       name: "기억 직조기 · 백면",
-      hp: 36,
+      hp: 48,
       size: [66, 88],
       accent: "#d7a0ff",
       patterns: ["공간 전이", "칠성 마법진", "빙설 대강하", "비전 돌진", "기억성 운행"],
     },
     censor: {
       name: "중앙국 검열기 · 무명",
-      hp: 48,
+      hp: 56,
       size: [68, 94],
       accent: "#ff496c",
       patterns: ["금서 탄막", "그림자 이동", "사역마 소환", "월식 도약", "검은 격자"],
     },
     echo: {
       name: "원본 대행체 · 잔영-00",
-      hp: 66,
+      hp: 80,
       size: [34, 56],
       accent: "#a879ff",
       patterns: ["거울 발도", "역상 산탄", "분석 돌진", "이중 도약 추격", "거울 패링", "기억 반전", "삼연 버스트 추격", "공중 산탄 강하", "양방향 잔상 협공"],
@@ -403,7 +403,7 @@
     },
     hunter: {
       name: "반사 사냥꾼 · 적린",
-      hp: 30,
+      hp: 34,
       size: [58, 82],
       accent: "#ff9b54",
       archetype: "furnace",
@@ -411,7 +411,7 @@
     },
     oracle: {
       name: "전위 심문관 · 육화",
-      hp: 36,
+      hp: 44,
       size: [56, 78],
       accent: "#bfa4ff",
       archetype: "weaver",
@@ -419,7 +419,7 @@
     },
     revenant: {
       name: "월광 결투기 · 공문",
-      hp: 45,
+      hp: 52,
       size: [62, 84],
       accent: "#ff6b9c",
       archetype: "censor",
@@ -427,7 +427,7 @@
     },
     proxy: {
       name: "광기 연구체 · 대역-13",
-      hp: 54,
+      hp: 60,
       size: [58, 78],
       accent: "#78ff8b",
       archetype: "echo",
@@ -503,16 +503,25 @@
 
   const STAGE_COMBAT_PRESSURE = [0.82, 0.94, 1.06, 1.18, 1.32];
   const STAGE_BULLET_PRESSURE = [0.88, 0.96, 1.03, 1.10, 1.16];
+  const BOSS_ENCOUNTER_ORDER = Object.freeze(["breaker", "warden", "hunter", "furnace", "oracle", "weaver", "revenant", "censor", "proxy", "echo"]);
+  // Warning is actual player reaction time: attacks release at windup <= 0.1.
+  // Recovery is measured from release, not from the start of the charge.
   const BOSS_DIFFICULTY_CURVE = Object.freeze([
-    { mobility: 0.78, cooldown: 1.24, windup: 1.22, reaction: 0.78 },
-    { mobility: 0.90, cooldown: 1.12, windup: 1.12, reaction: 0.90 },
-    { mobility: 1.00, cooldown: 1.00, windup: 1.00, reaction: 1.00 },
-    { mobility: 1.10, cooldown: 0.91, windup: 0.92, reaction: 1.12 },
-    { mobility: 1.22, cooldown: 0.82, windup: 0.84, reaction: 1.28 },
+    { mobility: 0.72, cooldown: 1.30, windup: 1.24, reaction: 0.74, minWarning: 0.80, minRecovery: 0.80 },
+    { mobility: 0.78, cooldown: 1.24, windup: 1.20, reaction: 0.80, minWarning: 0.76, minRecovery: 0.76 },
+    { mobility: 0.84, cooldown: 1.18, windup: 1.16, reaction: 0.86, minWarning: 0.72, minRecovery: 0.72 },
+    { mobility: 0.90, cooldown: 1.12, windup: 1.12, reaction: 0.92, minWarning: 0.68, minRecovery: 0.68 },
+    { mobility: 0.96, cooldown: 1.07, windup: 1.08, reaction: 0.98, minWarning: 0.65, minRecovery: 0.64 },
+    { mobility: 1.02, cooldown: 1.02, windup: 1.04, reaction: 1.04, minWarning: 0.62, minRecovery: 0.60 },
+    { mobility: 1.08, cooldown: 0.97, windup: 1.00, reaction: 1.10, minWarning: 0.59, minRecovery: 0.56 },
+    { mobility: 1.14, cooldown: 0.92, windup: 0.96, reaction: 1.16, minWarning: 0.56, minRecovery: 0.50 },
+    { mobility: 1.20, cooldown: 0.87, windup: 0.92, reaction: 1.22, minWarning: 0.53, minRecovery: 0.44 },
+    { mobility: 1.26, cooldown: 0.82, windup: 0.88, reaction: 1.28, minWarning: 0.50, minRecovery: 0.38 },
   ]);
 
-  function getBossDifficultyCurve(stageIndex) {
-    return BOSS_DIFFICULTY_CURVE[clamp(stageIndex || 0, 0, BOSS_DIFFICULTY_CURVE.length - 1)];
+  function getBossDifficultyCurve(stageIndex, bossKind) {
+    const encounter = BOSS_ENCOUNTER_ORDER.indexOf(bossKind);
+    return BOSS_DIFFICULTY_CURVE[encounter >= 0 ? encounter : clamp((stageIndex || 0) * 2 + 1, 0, BOSS_DIFFICULTY_CURVE.length - 1)];
   }
 
   function getBossArchetype(kind) {
@@ -662,7 +671,9 @@
 
   const camera = { x: 0, y: 0, lookX: 0 };
 
+  const J_SLASH_DEFAULTS = Object.freeze({ slashComboIndex: 0, slashComboActive: false, slashComboLinked: false, slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16, slashComboWindow: 0 });
   const player = {
+    ...J_SLASH_DEFAULTS,
     x: 150,
     y: 540,
     w: 34,
@@ -738,6 +749,10 @@
       player.hp = Math.min(player.hp, player.maxHp);
       player.shells = Math.min(player.shells, player.maxShells);
     }
+  }
+
+  function resetSlashCombo() {
+    Object.assign(player, J_SLASH_DEFAULTS);
   }
 
   function normalizeAudioSettings(value) {
@@ -4010,6 +4025,7 @@
     const requestedAt = performance.now();
     if (requestedAt - lastResetAt < 700) return;
     lastResetAt = requestedAt;
+    resetSlashCombo();
     setStartScreenEditor(false);
     resetBossRealityEffects();
     const saved = resume ? readCampaignSave() : null;
@@ -4343,7 +4359,7 @@
         <article><kbd>SPACE</kbd><b>이중 점프</b><span>공중에서 한 번 더 눌러 높이 오릅니다.</span></article>
         <article><kbd>W</kbd><kbd>SPACE</kbd><b>벽타기</b><span>벽을 밀며 오르고 점프로 벽을 찹니다.</span></article>
         <article><kbd>E</kbd><b>버스트</b><span>일반 적 탄환을 지우는 1.8초 재사용 방어 기술입니다.</span></article>
-        <article><kbd>좌클릭</kbd><b>발도</b><span>칼날에 닿은 투사체와 대역-13의 플라스크·독가스를 제거합니다.</span></article>
+        <article><kbd>좌클릭 / J</kbd><b>발도 · 3연격</b><span>J 연속 입력으로 전방 발도·올려베기·내려베기를 연결합니다. 칼날에 닿은 탄환과 플라스크·독가스를 제거합니다.</span></article>
         <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>
         <article><kbd>좌클릭</kbd><b>탄환 쳐내기</b><span>훈련탄이 칼날에 직접 닿도록 발도해 탄환을 없앱니다.</span></article>`;
     }
@@ -4775,6 +4791,7 @@
     if (!adminModeUnlocked || game.mode !== "playing" || (!game.adminMode && !game.adminCadetMode)) return false;
     const enteringCadetMode = game.adminMode;
     if (enteringCadetMode && !difficultySettings[difficultyKey]) return toggleAdminDifficultyPanel();
+    resetSlashCombo();
     const preservedPosition = {
       x: player.x,
       y: player.y,
@@ -4855,6 +4872,7 @@
     if (!Number.isInteger(checkpointIndex) || checkpointIndex < 0 || checkpointIndex >= zones.length) return false;
     const checkpoint = checkpoints[checkpointIndex];
     if (!checkpoint) return false;
+    resetSlashCombo();
     const stageIndex = zones[checkpointIndex].stageIndex;
     const position = setRespawnCheckpoint(checkpoint, checkpointIndex);
     player.x = position.x;
@@ -5050,6 +5068,7 @@
 
   function startCutscene(event) {
     if (!event || game.cutsceneSeen.has(event.id)) return;
+    resetSlashCombo();
     player.queuedAction = null;
     game.cutscene = event;
     game.cutsceneShotIndex = 0;
@@ -5205,8 +5224,9 @@
   }
 
   function queueCombatAction(kind, aim, remaining) {
-    if (remaining > 0 && remaining <= INPUT_TUNING.actionBuffer && !game.adminMode) {
-      player.queuedAction = { kind, aim: aim ? { ...aim } : null, time: INPUT_TUNING.actionBuffer };
+    const buffer = kind === "combo" ? 0.16 : INPUT_TUNING.actionBuffer;
+    if (remaining > 0 && remaining <= buffer && !game.adminMode) {
+      player.queuedAction = { kind, aim: aim ? { ...aim } : null, time: buffer };
     }
   }
 
@@ -5218,6 +5238,8 @@
     }
     player.queuedAction = null;
     markTutorialSignal("shotgun");
+    if (player.attackTimer <= 0) resetSlashCombo();
+    else player.slashComboWindow = Math.min(player.slashComboWindow, player.attackTimer + player.slashComboRecoveryDuration);
     const aim = aimOverride || getPointerAim();
     const overcharged = player.shotgunCharge >= 3;
     const pelletCount = overcharged ? OVERCHARGED_SHOTGUN_PELLETS : 6;
@@ -5288,14 +5310,26 @@
     sound.shotgun(overcharged);
   }
 
-  function startAttack(aimOverride = null) {
+  function startComboAttack() {
+    startAttack(null, true);
+  }
+
+  function startAttack(aimOverride = null, comboAttack = false) {
     if (game.mode !== "playing") return;
     if (player.attackCooldown > 0 || player.attackTimer > 0) {
-      queueCombatAction("slash", aimOverride, Math.max(player.attackCooldown, player.attackTimer));
+      queueCombatAction(comboAttack ? "combo" : "slash", aimOverride, Math.max(player.attackCooldown, player.attackTimer));
       return;
     }
     player.queuedAction = null;
     markTutorialSignal("slash");
+    if (comboAttack) {
+      const linked = player.slashComboActive && player.slashComboWindow > 0;
+      player.slashComboCarry = linked ? clamp(player.slashComboRecovery / player.slashComboRecoveryDuration, 0, 1) : 0;
+      player.slashComboIndex = linked ? (player.slashComboIndex + 1) % 3 : 0;
+      player.slashComboActive = true;
+      player.slashComboLinked = linked;
+      player.slashComboRecovery = 0;
+    } else resetSlashCombo();
 
     if (aimOverride) {
       const directionLength = Math.max(0.001, Math.hypot(aimOverride.x, aimOverride.y));
@@ -5325,14 +5359,15 @@
     player.chargedAttack = false;
 
     if (player.grounded) {
-      player.slashChain = player.slashChainTimer > 0 ? (player.slashChain % 3) + 1 : 1;
+      player.slashChain = comboAttack ? player.slashComboIndex + 1 : player.slashChainTimer > 0 ? (player.slashChain % 3) + 1 : 1;
       player.slashChainTimer = 0.68;
     } else {
       player.slashChain = 0;
     }
 
     const chainDuration = player.slashChain === 3 ? 0.25 : player.slashChain === 2 ? 0.2 : 0.18;
-    player.attackDuration = player.grounded ? chainDuration : 0.23;
+    player.attackDuration = comboAttack ? [0.22, 0.24, 0.28][player.slashComboIndex] : player.grounded ? chainDuration : 0.23;
+    if (comboAttack) player.slashComboWindow = player.attackDuration + 0.42;
 
     player.attackId += 1;
     player.attackTimer = player.attackDuration;
@@ -5424,7 +5459,8 @@
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
     const elapsed = player.attackDuration - player.attackTimer;
-    return elapsed > player.attackDuration * 0.14 && elapsed < player.attackDuration * 0.8;
+    const contactStart = player.slashComboActive ? [0.18, 0.15, 0.23][player.slashComboIndex] : 0.14;
+    return elapsed > player.attackDuration * contactStart && elapsed < player.attackDuration * 0.8;
   }
 
   function registerBossRetreatHit(enemy) {
@@ -5809,6 +5845,7 @@
 
   function damagePlayer(amount = 1, sourceX = player.x) {
     if (game.adminMode || player.invincible > 0 || game.mode !== "playing") return;
+    resetSlashCombo();
     const difficulty = difficultySettings[game.difficulty];
     const appliedDamage = difficulty.damage >= 99 ? player.hp : amount * difficulty.damage;
     player.hp = Math.max(difficulty.damage === 0 ? 1 : 0, player.hp - appliedDamage);
@@ -5830,6 +5867,7 @@
   }
 
   function respawn() {
+    resetSlashCombo();
     player.queuedAction = null;
     player.wallJumpLock = 0;
     game.deaths += 1;
@@ -6374,8 +6412,9 @@
       vy: Math.sin(angle) * speed,
       speed,
       turnRate: 2.65,
-      satelliteTimer: 0.18,
+      satelliteTimer: 0.36,
       satelliteSerial: 0,
+      satelliteWavesLeft: enemy.bossKind === "breaker" ? 2 : 3,
       piercePlatforms: true,
       life: 4.8,
       enemy: true,
@@ -6387,6 +6426,8 @@
   }
 
   function spawnMissileSatelliteShots(missile) {
+    if (!(missile.satelliteWavesLeft > 0)) return;
+    missile.satelliteWavesLeft -= 1;
     const centerX = missile.x + missile.w / 2;
     const centerY = missile.y + missile.h / 2;
     const serial = missile.satelliteSerial++;
@@ -6548,7 +6589,9 @@
   function launchBossFunnels(enemy, count = 4) {
     if (enemy?.bossKind === "breaker") return;
     const hpRatio = enemy.hp / enemy.maxHp;
-    const panelCurve = getBossDifficultyCurve(enemy.stageIndex);
+    if (bullets.some((bullet) => bullet.kind === "boss-funnel" && bullet.ownerId === enemy.id && bullet.life > 0)) return;
+    count = Math.min(count, hpRatio < 0.5 ? 4 : 3);
+    const panelCurve = getBossDifficultyCurve(enemy.stageIndex, enemy.bossKind);
     const panelCooldown = hpRatio < 0.5 ? WARDEN_PANEL_COOLDOWNS[1] : WARDEN_PANEL_COOLDOWNS[0];
     enemy.funnelCooldown = Math.max(enemy.funnelCooldown || 0, panelCooldown * panelCurve.cooldown);
     const formationSide = enemy.x + enemy.w / 2 < player.x + player.w / 2 ? -1 : 1;
@@ -6571,7 +6614,7 @@
         orbitCount: count,
         formationSide,
         shotTimer: 0.38 + index * 0.055,
-        shotsLeft: WARDEN_PANEL_SHOTS_PER_UNIT,
+        shotsLeft: WARDEN_PANEL_SHOTS_PER_UNIT + (hpRatio < 0.5 ? 1 : 0),
         color: "#ff496c",
       });
     }
@@ -6888,8 +6931,11 @@
 
   function queueBossPatternFollowup(enemy, releasedPattern) {
     if (enemy.followupChainActive) return;
+    const curve = getBossDifficultyCurve(enemy.stageIndex, enemy.bossKind);
     const difficulty = difficultySettings[game.difficulty] || difficultySettings.cadet;
     const hellRemix = difficulty.hellBossRemix;
+    if (!hellRemix && BOSS_ENCOUNTER_ORDER.indexOf(enemy.bossKind) < 2) return;
+    if (releasedPattern === "furnace-rain" || releasedPattern === "furnace-crimson-storm") return;
     if (!hellRemix && (enemy.hp / enemy.maxHp > 0.66 || (enemy.patternSerial || 0) % 2 !== 0)) return;
     let followupPattern = BOSS_FOLLOWUP_PATTERNS[releasedPattern];
     if (hellRemix) {
@@ -6907,7 +6953,7 @@
     }
     if (!followupPattern) return;
     enemy.followupPattern = followupPattern;
-    enemy.followupTimer = (0.48 + enemy.stageIndex * 0.025) * (hellRemix ? HELL_BOSS_FOLLOWUP_DELAY_SCALE : 1);
+    enemy.followupTimer = Math.max(curve.minRecovery, (0.85 - enemy.stageIndex * 0.07) * (hellRemix ? HELL_BOSS_FOLLOWUP_DELAY_SCALE : 1));
   }
 
   function startBossCrisisPattern(enemy, dx) {
@@ -6918,7 +6964,7 @@
     startBossChargedShot(enemy, crisis.pattern, dx, crisis.duration);
     enemy.crisisPatternCount = (enemy.crisisPatternCount || 0) + 1;
     enemy.crisisPatternCooldown = (6.8 - Math.min(1.6, enemy.stageIndex * 0.28)) * (hellRemix ? HELL_BOSS_CRISIS_COOLDOWN_SCALE : 1);
-    enemy.cooldown = crisis.recovery * (hellRemix ? difficulty.bossCooldownScale : 1);
+    enemy.cooldown = Math.max(enemy.windup + getBossDifficultyCurve(enemy.stageIndex, enemy.bossKind).minRecovery, crisis.recovery * (hellRemix ? difficulty.bossCooldownScale : 1));
     enemy.followupPattern = null;
     enemy.followupTimer = 0;
     enemy.followupChainActive = false;
@@ -6930,11 +6976,12 @@
 
   function startBossChargedShot(enemy, pattern, dx, duration = 0.78) {
     const rank = enemy.stageIndex;
-    const curve = getBossDifficultyCurve(rank);
+    const curve = getBossDifficultyCurve(rank, enemy.bossKind);
     const difficulty = difficultySettings[game.difficulty] || difficultySettings.cadet;
     const echoPrediction = enemy.bossKind === "echo";
-    duration *= curve.windup * (echoPrediction ? 0.72 : 1) * (difficulty.bossWindupScale || 1);
+    duration = Math.max(curve.minWarning + 0.1, duration * curve.windup * (difficulty.bossWindupScale || 1));
     enemy.windup = duration;
+    enemy.cooldown = Math.max(enemy.cooldown || 0, duration + curve.minRecovery);
     enemy.bossAction = "chargeShot";
     enemy.bossShotPattern = pattern;
     enemy.bossChargeDuration = duration;
@@ -6968,13 +7015,13 @@
         launchBossFunnels(enemy, enemy.hp / enemy.maxHp < 0.5 ? 6 : 5);
         break;
       case "warden-volley": {
-        const spreads = enemy.bossKind === "warden" ? [-0.28, -0.14, 0, 0.14, 0.28] : [-0.2, 0, 0.2];
+        const spreads = enemy.bossKind === "warden" ? [-0.22, 0, 0.22] : [-0.16, 0.16];
         spreads.forEach((spread) => fireHomingMissile(enemy, target, spread));
         break;
       }
       case "warden-crossfire":
-        [-0.3, -0.15, 0, 0.15, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
-        [-0.22, -0.11, 0, 0.11, 0.22].forEach((spread) => fireBullet(enemy, 430, spread, "phase", target));
+        [-0.2, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
+        [-0.16, 0, 0.16].forEach((spread) => fireBullet(enemy, 390, spread, "phase", target));
         break;
       case "warden-air":
         if (enemy.grounded) {
@@ -6996,24 +7043,19 @@
         break;
       case "breaker-siege":
         fireWardenBeam(enemy, target, { length: 1450, thickness: 52, duration: 0.48, damage: 1, color: "#ffcd70", beamStyle: "breaker" });
-        [-0.2, 0.2].forEach((spread) => fireHomingMissile(enemy, target, spread));
-        [-0.28, -0.1, 0.1, 0.28].forEach((spread) => fireBullet(enemy, 390, spread, "phase", target));
         break;
       case "furnace-mortar":
-        [-330, -165, 0, 165, 330].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
-        fireFurnaceRedBurst(enemy, target, 5, 0.06, 425);
+        [-240, 0, 240].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "furnace-volley":
         [-360, -180, 0, 180, 360].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
-        fireFurnaceRedBurst(enemy, target, 7, 0.048, 440);
         break;
       case "furnace-eruption":
-        [-420, -280, -140, 0, 140, 280, 420].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
-        fireFurnaceRedBurst(enemy, target, 7, 0.068, 455);
+        [-420, -210, 0, 210, 420].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
         break;
       case "furnace-rain":
         launchRainCore(enemy);
-        fireFurnaceRedBurst(enemy, target, 9, 0.042, 470);
+        enemy.cooldown = Math.max(enemy.cooldown, 4.2);
         break;
       case "furnace-rifle":
         fireFurnaceRedBurst(enemy, target, 8, 0.018, 400);
@@ -7021,8 +7063,7 @@
         break;
       case "furnace-crimson-storm":
         launchRainCore(enemy);
-        [-430, -215, 0, 215, 430].forEach((offset) => fireMortar(enemy, enemy.targetX + offset));
-        fireFurnaceRedBurst(enemy, target, 11, 0.047, 455);
+        enemy.cooldown = Math.max(enemy.cooldown, 4.2);
         break;
       case "hunter-shotgun":
         [-0.19, -0.095, 0, 0.095, 0.19].forEach((spread, index) => (
@@ -7236,9 +7277,7 @@
         break;
       }
       case "warden-redline":
-        launchBossFunnels(enemy, 6);
-        [-0.3, -0.1, 0.1, 0.3].forEach((spread) => fireHomingMissile(enemy, target, spread));
-        [-0.2, 0, 0.2].forEach((spread) => fireBullet(enemy, 455, spread, "phase", target));
+        launchBossFunnels(enemy, 4);
         break;
       case "echo-mirror-assault":
         for (let index = 0; index < 12; index += 1) {
@@ -7265,6 +7304,7 @@
     enemy.bossAction = null;
     enemy.bossShotPattern = null;
     enemy.bossChargeDuration = 0;
+    enemy.cooldown = Math.max(enemy.cooldown, getBossDifficultyCurve(enemy.stageIndex, enemy.bossKind).minRecovery);
     game.shake = Math.max(game.shake, 12 + enemy.stageIndex * 2);
   }
 
@@ -7454,7 +7494,14 @@
     const movementStartX = player.x;
     const previousRunCycle = player.runCycle;
     const impactVelocity = player.vy;
+    const previousAttackTimer = player.attackTimer;
     player.attackTimer = Math.max(0, player.attackTimer - dt);
+    player.slashComboWindow = Math.max(0, (player.slashComboWindow || 0) - dt);
+    player.slashComboRecovery = Math.max(0, (player.slashComboRecovery || 0) - dt);
+    if (player.slashComboActive && previousAttackTimer > 0 && player.attackTimer <= 0) {
+      player.slashComboRecovery = Math.max(0, player.slashComboRecoveryDuration - Math.max(0, dt - previousAttackTimer));
+    }
+    if (player.slashComboActive && player.slashComboWindow <= 0 && player.attackTimer <= 0) resetSlashCombo();
     player.attackCooldown = Math.max(0, player.attackCooldown - dt);
     player.invincible = Math.max(0, player.invincible - dt);
     player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
@@ -7478,12 +7525,13 @@
     if (player.queuedAction) {
       const action = player.queuedAction;
       action.time -= dt;
-      const ready = action.kind === "slash"
+      const ready = action.kind !== "shotgun"
         ? player.attackCooldown <= 0 && player.attackTimer <= 0
         : player.shotgunCooldown <= 0 && player.shells > 0;
       if (ready) {
         player.queuedAction = null;
-        if (action.kind === "slash") startAttack(action.aim);
+        if (action.kind === "combo") startComboAttack();
+        else if (action.kind === "slash") startAttack(action.aim);
         else startShotgun(action.aim);
       } else if (action.time <= 0) player.queuedAction = null;
     }
@@ -7493,7 +7541,8 @@
     if (player.slashChainTimer <= 0 && player.attackTimer <= 0) player.slashChain = 0;
 
     if (pressed.has("Space") || pressed.has("KeyK")) player.jumpBuffer = INPUT_TUNING.jumpBuffer;
-    if (pressed.has("KeyJ") || (pressed.has("KeyX") && !game.adminMode)) startAttack();
+    if (pressed.has("KeyJ")) startComboAttack();
+    if (pressed.has("KeyX") && !game.adminMode) startAttack();
     if (pressed.has("KeyZ") && game.adminMode) startAdminEraseAttack();
     if (pressed.has("KeyX") && game.adminMode) toggleAdminSpawnPanel();
     if (pressed.has("KeyF") || pressed.has("KeyC")) startShotgun();
@@ -8181,13 +8230,16 @@
   }
 
   function updateBoss(enemy, dt, dx, distance) {
+    if (enemy.bossAction === "idle" && enemy.windup <= 0) {
+      enemy.bossAction = null;
+    }
     const rank = enemy.stageIndex;
     const bossKind = enemy.bossKind || stages[rank]?.bossKind || "warden";
     const definition = BOSS_DEFINITIONS[bossKind] || BOSS_DEFINITIONS.warden;
     const kind = getBossArchetype(bossKind);
     const hpRatio = enemy.hp / enemy.maxHp;
     const speedScale = difficultySettings[game.difficulty].enemySpeed;
-    const bossCurve = getBossDifficultyCurve(rank);
+    const bossCurve = getBossDifficultyCurve(rank, bossKind);
     const enrage = hpRatio < 0.45 ? 1.16 : 1;
     const echoSpeedFactor = bossKind === "echo" ? ECHO_SPEED_FACTOR : 1;
     const mobility = { warden: 98, furnace: 116, weaver: 108, censor: 132, echo: 146 };
@@ -8356,8 +8408,8 @@
       const activeFunnels = bullets.filter((bullet) => bullet.kind === "boss-funnel" && bullet.ownerId === enemy.id).length;
       if (enemy.funnelCooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && distance < bossEngagementRange && activeFunnels === 0) {
         launchBossFunnels(enemy, hpRatio < 0.5 ? 6 : 5);
-        enemy.cooldown = Math.max(enemy.cooldown, 0.82 * bossCurve.cooldown);
-        game.hint = "철각 · 육익 판넬 재전개";
+        enemy.cooldown = Math.max(enemy.cooldown, 2.8);
+        game.hint = "철각 · 판넬 재전개";
         game.hintTimer = 1.45;
       }
     }
@@ -8400,6 +8452,7 @@
           sound.tone(320 + chainStep * 120, 0.11, "sawtooth", 0.035, 1.9);
           enemy.echoChainDashRemaining -= 1;
           enemy.echoChainDashTimer = 0.2;
+          if (enemy.echoChainDashRemaining <= 0) enemy.cooldown = Math.max(enemy.cooldown, 0.19 + bossCurve.minRecovery);
         }
       }
       if ((enemy.echoDiveShotsRemaining || 0) > 0) {
@@ -8419,6 +8472,7 @@
           spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.42, diveStep === 2 ? "#63ffc6" : "#b994ff", 20, 430, 0.36, 0);
           enemy.echoDiveShotsRemaining -= 1;
           enemy.echoDiveShotTimer = 0.16;
+          if (enemy.echoDiveShotsRemaining <= 0) enemy.cooldown = Math.max(enemy.cooldown, bossCurve.minRecovery);
         }
       }
       const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
@@ -8450,9 +8504,11 @@
         sound.tone(185, 0.38, "sine", 0.04, 1.9);
       }
       enemy.summonCooldown = Math.max(0, (enemy.summonCooldown || 0) - dt);
-      const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id).length;
-      if (enemy.summonCooldown <= 0 && distance < bossEngagementRange && livingSummons < 4) {
-        const summonPool = ["runner", "gunner", "machinegun", "turret", "mortarTurret", "piercer", "drone", "shield", "mortar"];
+      const livingSummons = enemies.filter((candidate) => candidate.alive && candidate.summonedByBossId === enemy.id);
+      if (enemy.summonCooldown <= 0 && distance < bossEngagementRange && livingSummons.length < (hpRatio < 0.5 ? 3 : 2)) {
+        const heavyTypes = ["turret", "mortarTurret", "shield"];
+        const heavyPresent = livingSummons.some((candidate) => heavyTypes.includes(candidate.type));
+        const summonPool = ["runner", "gunner", "machinegun", "turret", "mortarTurret", "piercer", "drone", "shield", "mortar"].filter((type) => !heavyPresent || !heavyTypes.includes(type));
         const summonType = summonPool[Math.floor(hash(enemy.anim * 17.7 + enemy.summonCount * 9.3) * summonPool.length)];
         const summonDirection = enemy.summonCount % 2 ? -1 : 1;
         const summonArena = getBossArenaBounds(enemy, 180);
@@ -8574,6 +8630,8 @@
       && enemy.cooldown <= 0
       && enemy.windup <= 0
       && !enemy.bossAction
+      && !enemy.followupPattern
+      && !echoSequenceActive
       && distance < bossEngagementRange
       && startBossCrisisPattern(enemy, dx)
     ) {
@@ -8581,7 +8639,7 @@
       return;
     }
 
-    if (!retreating && enemy.cooldown <= 0 && distance < bossEngagementRange) {
+    if (!retreating && enemy.cooldown <= 0 && enemy.windup <= 0 && !enemy.bossAction && !enemy.followupPattern && !echoSequenceActive && distance < bossEngagementRange) {
       const phaseCount = definition.patterns.length;
       selectBossPatternPhase(enemy, phaseCount, hpRatio, distance);
       const recovery = hpRatio < 0.45 ? 0.82 : 1;
@@ -8839,7 +8897,8 @@
       const difficultyBossCooldownScale = difficultySettings[game.difficulty]?.bossCooldownScale || 1;
       const difficultyBossWindupScale = difficultySettings[game.difficulty]?.bossWindupScale || 1;
       enemy.cooldown = Math.max(0.42, enemy.cooldown * bossCurve.cooldown * (bossKind === "echo" ? ECHO_ATTACK_RECOVERY_FACTOR : 1) * difficultyBossCooldownScale);
-      if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup *= bossCurve.windup * difficultyBossWindupScale;
+      if (enemy.windup > 0 && enemy.bossAction !== "chargeShot") enemy.windup = Math.max(bossCurve.minWarning + 0.1, enemy.windup * bossCurve.windup * difficultyBossWindupScale);
+      enemy.cooldown = Math.max(enemy.cooldown, enemy.windup + bossCurve.minRecovery);
     }
 
     if (enemy.bossAction === "mutantCombo" && enemy.comboHitsRemaining > 0) {
@@ -8858,6 +8917,7 @@
         enemy.comboHitTimer = finisher ? 0.36 : 0.17;
         if (enemy.comboHitsRemaining <= 0) {
           enemy.bossAction = null;
+          enemy.cooldown = Math.max(enemy.cooldown, bossCurve.minRecovery);
           enemy.vx *= 0.3;
         }
       }
@@ -8886,6 +8946,7 @@
         enemy.thrustsRemaining -= 1;
         enemy.thrustInterval = finisher ? 0.3 : 0.13;
         if (enemy.thrustsRemaining <= 0) {
+          enemy.cooldown = Math.max(enemy.cooldown, bossCurve.minRecovery);
           enemy.bossAction = null;
           enemy.vx *= 0.28;
           enemy.pendingRetreatDelay = 0.18;
@@ -8998,6 +9059,7 @@
         if (enemy.bossAction === releasedAction && releasedAction && releasedAction !== "idle") {
           enemy.bossAction = null;
         }
+        enemy.cooldown = Math.max(enemy.cooldown, bossCurve.minRecovery);
         game.shake = Math.max(game.shake, 10 + rank * 2);
       }
     }
@@ -9190,9 +9252,9 @@
         bullet.vx = Math.cos(nextAngle) * bullet.speed;
         bullet.vy = Math.sin(nextAngle) * bullet.speed;
         bullet.satelliteTimer -= dt;
-        if (bullet.satelliteTimer <= 0) {
+        if (bullet.satelliteTimer <= 0 && bullet.satelliteWavesLeft > 0) {
           spawnMissileSatelliteShots(bullet);
-          bullet.satelliteTimer += 0.38;
+          bullet.satelliteTimer += 0.65;
         }
       }
 
@@ -10053,7 +10115,29 @@
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
     if (!blink) drawPlayerBody(player.x, player.y, player.facing);
 
-    if (isAttackActive()) {
+    if (isAttackActive() && player.slashComboActive) {
+      const progress = 1 - player.attackTimer / player.attackDuration;
+      const index = player.slashComboIndex;
+      const starts = [0.18, 0.15, 0.23];
+      const sweep = clamp((progress - starts[index]) / (0.8 - starts[index]), 0, 1);
+      const reverse = index === 1;
+      const tipAngle = reverse ? lerp(0.8, -1.25, sweep) : lerp(index === 2 ? -1.55 : -0.95, 0.65, sweep);
+      const tailAngle = tipAngle + (reverse ? 0.64 : -0.64);
+      ctx.save();
+      ctx.translate(player.x + player.w / 2, player.y + player.h * 0.46);
+      ctx.rotate(Math.atan2(player.attackDir.y, player.attackDir.x));
+      ctx.scale(1, player.facing);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = Math.sin(sweep * Math.PI) * 0.8;
+      for (const [radius, width, color] of [[76, 8, flameSword ? "#ff813a" : "#65f5ea"], [72, 2, "#ffffff"]]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, tailAngle, tipAngle, reverse);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (isAttackActive()) {
       const centerX = player.x + player.w / 2;
       const centerY = player.y + player.h / 2;
       const angle = Math.atan2(player.attackDir.y, player.attackDir.x);
@@ -10494,6 +10578,82 @@
     ctx.restore();
   }
 
+  function drawTrackedUndercarriage(enemy) {
+    // Belt distance and wheel angles share the same displacement: the lower run grips the floor.
+    const travel = (enemy.x - enemy.originX) * enemy.facing;
+    const halfSpan = 36;
+    const radius = 10;
+    const centerY = 71;
+    const straight = halfSpan * 2;
+    const loopLength = straight * 2 + TAU * radius;
+    const beltOffset = ((travel % loopLength) + loopLength) % loopLength;
+    const capsule = (inset) => {
+      ctx.beginPath();
+      ctx.arc(halfSpan, centerY, radius - inset, -Math.PI / 2, Math.PI / 2);
+      ctx.arc(-halfSpan, centerY, radius - inset, Math.PI / 2, Math.PI * 1.5);
+      ctx.closePath();
+    };
+    ctx.save();
+    capsule(-2); ctx.fillStyle = "#080d12"; ctx.fill();
+    capsule(0); ctx.fillStyle = "#333b38"; ctx.fill();
+    capsule(3); ctx.fillStyle = "#101b20"; ctx.fill();
+    // Suspension arms remain fixed while their wheel hubs rotate beneath them.
+    for (let wheel = 0; wheel < 6; wheel += 1) {
+      const wheelX = -35 + wheel * 14;
+      const wheelRadius = wheel === 0 || wheel === 5 ? 7.4 : 6.6;
+      ctx.strokeStyle = "#333d3b"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(wheelX - 4, 60); ctx.lineTo(wheelX, centerY); ctx.stroke();
+      ctx.fillStyle = "#090f16"; ctx.beginPath(); ctx.arc(wheelX, centerY, wheelRadius + 1, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#7e8773"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(wheelX, centerY, wheelRadius, 0, TAU); ctx.stroke();
+      ctx.save(); ctx.translate(wheelX, centerY); ctx.rotate(travel / wheelRadius);
+      if (wheel === 0 || wheel === 5) {
+        ctx.fillStyle = "#788374";
+        for (let tooth = 0; tooth < 8; tooth += 1) {
+          ctx.save(); ctx.rotate(tooth * TAU / 8); ctx.fillRect(wheelRadius - 1, -1.2, 2.5, 2.4); ctx.restore();
+        }
+      }
+      ctx.strokeStyle = wheel % 2 ? "#939781" : "#65776e"; ctx.lineWidth = 1.7;
+      for (let spoke = 0; spoke < 3; spoke += 1) {
+        const angle = spoke * TAU / 3;
+        ctx.beginPath(); ctx.moveTo(Math.cos(angle) * 2, Math.sin(angle) * 2);
+        ctx.lineTo(Math.cos(angle) * (wheelRadius - 2), Math.sin(angle) * (wheelRadius - 2)); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = "#a9ad94"; ctx.beginPath(); ctx.arc(wheelX, centerY, 2.3, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#253a3c"; ctx.fillRect(wheelX - 1, centerY - 1, 2, 2);
+    }
+    const linkCount = 30;
+    const pitch = loopLength / linkCount;
+    for (let link = 0; link < linkCount; link += 1) {
+      let distance = (link * pitch + beltOffset) % loopLength;
+      let x, y, angle;
+      if (distance < straight) {
+        x = -halfSpan + distance; y = centerY - radius; angle = 0;
+      } else if (distance < straight + Math.PI * radius) {
+        const turn = (distance - straight) / radius - Math.PI / 2;
+        x = halfSpan + Math.cos(turn) * radius; y = centerY + Math.sin(turn) * radius; angle = turn + Math.PI / 2;
+      } else if (distance < straight * 2 + Math.PI * radius) {
+        x = halfSpan - (distance - straight - Math.PI * radius); y = centerY + radius; angle = Math.PI;
+      } else {
+        const turn = (distance - straight * 2 - Math.PI * radius) / radius + Math.PI / 2;
+        x = -halfSpan + Math.cos(turn) * radius; y = centerY + Math.sin(turn) * radius; angle = turn + Math.PI / 2;
+      }
+      ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+      ctx.fillStyle = "#101820"; ctx.fillRect(-pitch * 0.4, -2.2, pitch * 0.8, 4.4);
+      ctx.fillStyle = link % 3 === 0 ? "#7f887b" : "#5e6b65";
+      ctx.fillRect(-pitch * 0.32, -1.7, pitch * 0.64, 3.4);
+      ctx.fillStyle = "#b6b69c"; ctx.fillRect(-pitch * 0.32, -1.7, pitch * 0.64, 0.8);
+      ctx.fillStyle = "#293d41"; ctx.fillRect(-0.6, -1, 1.2, 2.5);
+      ctx.restore();
+    }
+    // Raised fender and dark gap separate the heavy hull from the moving running gear.
+    drawCharacterPlate([-43,55,32,55,43,60,39,64,-42,63,-48,60], "#4d5143", "#101b24", 1.5);
+    ctx.fillStyle = "#a6a38a"; ctx.fillRect(-39,56,69,1);
+    ctx.fillStyle = "#151f25"; ctx.fillRect(-35,60,67,2);
+    ctx.restore();
+  }
+
   function drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot) {
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
@@ -10599,13 +10759,7 @@
       ctx.fillStyle = "#d05061"; ctx.fillRect(65, 44, 28, 6);
     } else if (rawBossKind === "breaker") {
       // 구형 철각 계열의 무한궤도 포격 차체를 폐철 부품으로 재조립한 집행기.
-      ctx.fillStyle = flash ? "#fff" : "#43371f"; ctx.fillRect(-48, 57, 96, 24);
-      ctx.fillStyle = "#100f0a"; ctx.fillRect(-44, 62, 88, 18);
-      ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.strokeRect(-49, 56, 98, 26);
-      for (let wheel = -36; wheel <= 36; wheel += 12) {
-        ctx.fillStyle = "#837345"; ctx.beginPath(); ctx.arc(wheel, 71 + Math.sin(enemy.anim * 9 + wheel) * 1.2, 6, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#272116"; ctx.beginPath(); ctx.arc(wheel, 71, 2.5, 0, TAU); ctx.fill();
-      }
+      drawTrackedUndercarriage(enemy);
       ctx.fillStyle = flash ? "#fff" : "#564525";
       ctx.beginPath(); ctx.moveTo(-34, 58); ctx.lineTo(-27, 31); ctx.lineTo(-12, 18); ctx.lineTo(20, 20); ctx.lineTo(33, 39); ctx.lineTo(37, 59); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#17150f"; ctx.fillRect(-16, 27, 33, 18);
@@ -11079,10 +11233,6 @@
       ctx.fillStyle = "#e6c376"; ctx.fillRect(-10, 34, 20, 2);
       ctx.fillStyle = "#252923"; ctx.fillRect(-39, 58, 78, 6);
       ctx.fillStyle = "#a8996b"; ctx.fillRect(-35, 58, 70, 1);
-      for (let tread = -40; tread < 42; tread += 12) {
-        ctx.fillStyle = "#34372d"; ctx.fillRect(tread, 77, 8, 3);
-        ctx.fillStyle = "#8a896e"; ctx.fillRect(tread, 77, 8, 1);
-      }
       ctx.fillStyle = "#2a2c24"; ctx.fillRect(24, 41, 35, 11);
       ctx.fillStyle = "#b0a483"; ctx.fillRect(28, 42, 27, 2);
       for (let bore = 0; bore < 5; bore += 1) port(72, 40 + bore * 4, 8, 3, "#c0b694");
@@ -11708,7 +11858,7 @@
     // Distance, rather than an idle clock, drives the steps so a stopped robot stops walking.
     const enemyGaitPhase = (enemy.x - enemy.originX) * enemy.facing * (enemy.type === "runner" ? 0.189 : enemy.type === "shield" ? 0.377 : 0.27);
     const movingRatio = clamp(Math.abs(enemy.vx) / (enemy.type === "shield" ? 58 : 104), 0, 1);
-    const fixedBase = enemy.type === "turret" || enemy.type === "mortarTurret";
+    const fixedBase = enemy.type === "turret" || enemy.type === "mortarTurret" || (enemy.type === "boss" && enemy.bossKind === "breaker");
     const floatingBoss = enemy.type === "boss" && ["warden", "weaver", "oracle", "censor"].includes(enemy.bossKind);
     const bodyBob = fixedBase ? 0 : enemy.type === "drone" || floatingBoss
       ? Math.sin(enemy.anim * 2.8) * 1.25
@@ -11722,7 +11872,8 @@
     ctx.fill();
     ctx.restore();
     ctx.save();
-    ctx.translate(enemy.x + enemy.w / 2, enemy.y + bodyBob);
+    const runningGearOffset = enemy.type === "boss" && enemy.bossKind === "breaker" ? enemy.h - 83 : 0;
+    ctx.translate(enemy.x + enemy.w / 2, enemy.y + bodyBob + runningGearOffset);
     ctx.scale(enemy.facing, 1);
     if (enemy.type === "drone") ctx.rotate(clamp(enemy.vx * enemy.facing / 1500, -0.07, 0.07));
     if (enemy.hurt > 0) ctx.globalCompositeOperation = "screen";
@@ -11766,6 +11917,11 @@
       const kneeY = hipY + Math.cos(hipAngle) * upperLength;
       const rearShell = heavy ? "#241b26" : "#111c29";
       const frontShell = heavy ? "#5b3448" : "#324b5b";
+      // A telescoping strut connects the upper bracket to the ankle behind the armor.
+      ctx.strokeStyle = "#0b1721"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(hipX - 3, hipY + 2); ctx.lineTo(footX - 3, footY - 3); ctx.stroke();
+      ctx.strokeStyle = "#7c929b"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(kneeX - 3, kneeY); ctx.lineTo(footX - 3, footY - 3); ctx.stroke();
       drawRobotSegment(hipX, hipY, kneeX, kneeY, width, rearShell, accent);
       drawRobotSegment(kneeX, kneeY, footX, footY, Math.max(5, width - 1), frontShell, accent);
       ctx.fillStyle = "#080e16";
@@ -11947,10 +12103,17 @@
       ctx.fillStyle = "#ffcf62";
       ctx.beginPath(); ctx.arc(2, 24, 4 + Math.sin(enemy.anim * 5) * 0.6, 0, TAU); ctx.fill();
       ctx.save();
-      ctx.translate(7 - cannonRecoil, 23);
+      ctx.translate(7, 23);
       ctx.rotate(aimAngle);
       ctx.fillStyle = "#1a2329";
       ctx.beginPath(); ctx.arc(3, 0, 14, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#667d88"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(3, 0, 11, -2.6, 0.7); ctx.stroke();
+      // The trunnion stays bolted to the base; only barrel and piston rod slide after firing.
+      ctx.fillStyle = "#111f2a"; ctx.fillRect(2,7,28,8);
+      ctx.fillStyle = "#536e7a"; ctx.fillRect(3,8,13,5);
+      ctx.fillStyle = "#b8c8c8"; ctx.fillRect(14,9,Math.max(2,16-cannonRecoil),2);
+      ctx.save(); ctx.translate(-cannonRecoil,0);
       ctx.fillStyle = "#8f9ca1";
       ctx.beginPath();
       ctx.moveTo(3, -8); ctx.lineTo(39, -7); ctx.lineTo(44, -11); ctx.lineTo(51, -11);
@@ -11967,6 +12130,9 @@
       ctx.fillStyle = "#b7c4c7";
       ctx.fillRect(5, -7, 31, 2);
       ctx.restore();
+      ctx.restore();
+      drawCharacterPlate([-27,38,-20,29,-15,33,-17,44,-29,47], "#334d5b", "#859ba4");
+      drawCharacterPlate([16,33,21,30,29,40,28,47,17,44], "#2c414f", "#6f858d");
       ctx.fillStyle = "#111a21";
       ctx.fillRect(-26, 43, 11, 5);
       ctx.fillRect(15, 43, 11, 5);
@@ -11975,6 +12141,7 @@
       ctx.fillRect(15, 37, 7, 2);
     } else if (enemy.type === "mortarTurret") {
       const chargePulse = enemy.windup > 0 ? 0.55 + Math.sin(enemy.anim * 22) * 0.28 : 0.2;
+      const mortarKick = enemy.windup > 0 && enemy.windup < 0.1 ? Math.sin((1 - enemy.windup / 0.1) * Math.PI) * 7 : 0;
       ctx.fillStyle = "#11171d";
       ctx.fillRect(-31, 49, 62, 10);
       ctx.fillStyle = "#4d3b40";
@@ -11991,6 +12158,9 @@
         ctx.save();
         ctx.translate(barrel * 11, 31);
         ctx.rotate(-1.08 + barrel * 0.12);
+        ctx.fillStyle = "#111c27"; ctx.fillRect(-5,5,24,7);
+        ctx.fillStyle = "#8197a1"; ctx.fillRect(7,7,Math.max(2,17-mortarKick),2);
+        ctx.translate(-mortarKick,0);
         ctx.fillStyle = barrel === 0 ? "#a7afb2" : "#727f84";
         ctx.fillRect(0, -6, 43, 12);
         ctx.fillStyle = "#252d31";
@@ -12008,6 +12178,9 @@
       }
       ctx.fillStyle = "#88969c";
       ctx.fillRect(-21, 54, 42, 3);
+      drawCharacterPlate([-31,48,-24,40,-18,41,-19,55,-33,58], "#403e4c", "#8d8992");
+      drawCharacterPlate([18,42,26,42,33,51,32,58,20,55], "#3b3544", "#8b7e88");
+      ctx.fillStyle = "#111e28"; ctx.fillRect(-31,56,15,4); ctx.fillRect(18,56,15,4);
     } else if (enemy.type === "gunner" || enemy.type === "machinegun" || enemy.type === "piercer" || enemy.type === "mortar") {
       const isMachinegun = enemy.type === "machinegun";
       const isPiercer = enemy.type === "piercer";
@@ -14401,6 +14574,7 @@
   }
 
   function clearGameplayInput() {
+    resetSlashCombo();
     clearTouchPointers();
     keyboardKeys.clear();
     keys.clear();
@@ -14957,8 +15131,8 @@
     wardenPanelShotInterval: WARDEN_PANEL_SHOT_INTERVAL,
     wardenAttackRecoveryScale: WARDEN_ATTACK_RECOVERY_SCALE,
     wardenMobilityScale: WARDEN_MOBILITY_SCALE,
-    wardenPanelCountByPhase: [5, 6],
-    wardenMissileVolleyCount: 5,
+    wardenPanelCountByPhase: [3, 4],
+    wardenMissileVolleyCount: 3,
     wardenPhaseTwoRepeatingCoreBeam: true,
     wardenHpHigherThanBreaker: BOSS_DEFINITIONS.warden.hp > BOSS_DEFINITIONS.breaker.hp,
     wardenPanelWaveOverlap: false,
@@ -15424,12 +15598,12 @@
     bossDifficultyCurveProgressive: "true",
     wardenFloatingChassis: "true",
     wardenPanelPassiveCooldowns: WARDEN_PANEL_COOLDOWNS.join(","),
-    wardenPanelCountByPhase: "5,6",
+    wardenPanelCountByPhase: "3,4",
     wardenPanelShotsPerUnit: String(WARDEN_PANEL_SHOTS_PER_UNIT),
     wardenPanelShotInterval: String(WARDEN_PANEL_SHOT_INTERVAL),
     wardenAttackRecoveryScale: String(WARDEN_ATTACK_RECOVERY_SCALE),
     wardenMobilityScale: String(WARDEN_MOBILITY_SCALE),
-    wardenMissileVolleyCount: "5",
+    wardenMissileVolleyCount: "3",
     wardenPhaseTwoRepeatingCoreBeam: "true",
     wardenHpHigherThanBreaker: String(BOSS_DEFINITIONS.warden.hp > BOSS_DEFINITIONS.breaker.hp),
     wardenPanelWaveOverlap: "false",

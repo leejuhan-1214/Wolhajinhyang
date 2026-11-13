@@ -13,7 +13,7 @@
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.26.png" fetchpriority="high" />
     <style>html[data-game-bootstrap="loading"] #start-screen { visibility: hidden; }</style>
-    <link rel="stylesheet" href="styles.css?v=3.8.1" />
+    <link rel="stylesheet" href="styles.css?v=3.8.2" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -28,7 +28,7 @@
 
       <section id="start-screen" class="overlay visible" aria-labelledby="start-title">
         <h1 id="start-title" class="visually-hidden">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.8.1</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.8.2</div>
         <div class="start-menu">
           <header class="start-briefing">
             <p class="start-kicker">MOONLIT ECHO / CAMPAIGN</p>
@@ -52,7 +52,7 @@
             <span id="difficulty-darkhorse-help">보통과 같은 속도, 더 많은 적과 강한 보스</span>
             <span id="difficulty-weapon-help">빠른 적과 탄환, 강화된 보스 연계</span>
           </div>
-          <p class="start-controls"><kbd>A</kbd><kbd>D</kbd> 이동 <span>·</span> <kbd>SPACE</kbd> 점프 <span>·</span> 마우스 공격</p>
+          <p class="start-controls"><kbd>A</kbd><kbd>D</kbd> 이동 <span>·</span> <kbd>SPACE</kbd> 점프 <span>·</span> <kbd>J</kbd> 연속 발도 · 마우스 공격</p>
           <p class="start-touch-hint">가로 화면 권장 · 화면 조작으로 플레이</p>
         </div>
         <p id="admin-status" class="admin-status" role="status" hidden></p>
@@ -92,6 +92,7 @@
         <div class="pause-controls" aria-label="주요 조작">
           <span><kbd>SPACE</kbd> 이중 점프</span>
           <span><kbd>좌클릭</kbd> 발도</span>
+          <span><kbd>J</kbd> 연속 입력 · 3연속 발도</span>
           <span><kbd>우클릭</kbd> 샷건</span>
           <span><kbd>E</kbd> 탄환 방어</span>
         </div>
@@ -221,6 +222,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-    <script src="bootstrap.js?v=3.8.1"></script>
+    <script src="bootstrap.js?v=3.8.2"></script>
   </body>
 </html>

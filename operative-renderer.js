@@ -9,7 +9,32 @@
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
   const lerp = (a, b, t) => a + (b - a) * t;
   const PALETTE = Object.freeze({ cyan: '#65f5ea', red: '#ff496c', amber: '#ffcd70', white: '#f2ffff' });
-  const STRIDE_RADIANS_PER_PIXEL = 0.095;
+  const STRIDE_RADIANS_PER_PIXEL = 0.045;
+  const RUN_SUPPORT_FRACTION = 0.24;
+  // Draw-cut, rising return-cut, planted finishing cut. Each row owns the whole
+  // body pose so shoulders, hips, support feet and blade move as one action.
+  const COMBO_POSES = [
+    [
+      { at: 0.18, arm: -0.72, elbow: 0.5, blade: -1.55, lunge: -1.2, lean: -0.045, drop: 0.4, stance: 0.25, rear: -0.15, twist: -0.9 },
+      { at: 0.56, arm: 1.3, elbow: 0.14, blade: 0.12, lunge: 4.3, lean: 0.11, drop: 1.1, stance: 0.75, rear: -0.65, twist: 1.5 },
+      { at: 1, arm: 1.08, elbow: 0.2, blade: 0.3, lunge: 2.1, lean: 0.055, drop: 0.6, stance: 0.5, rear: -0.46, twist: 0.8 },
+    ],
+    [
+      { at: 0.15, arm: 1.4, elbow: 0.36, blade: 0.62, lunge: 2.3, lean: 0.06, drop: 1, stance: 0.55, rear: -0.62, twist: 1.2 },
+      { at: 0.57, arm: -0.88, elbow: -0.16, blade: -1.82, lunge: -0.8, lean: -0.055, drop: -0.3, stance: 0.65, rear: 0.42, twist: -1.5 },
+      { at: 1, arm: -0.6, elbow: 0.12, blade: -1.25, lunge: -0.5, lean: -0.025, drop: 0, stance: 0.35, rear: 0.26, twist: -0.6 },
+    ],
+    [
+      { at: 0.23, arm: -1.16, elbow: -0.36, blade: -2.08, lunge: -2.2, lean: -0.08, drop: -0.7, stance: 0.35, rear: 0.44, twist: -1.4 },
+      { at: 0.55, arm: 1.24, elbow: 0.04, blade: 0.44, lunge: 5.2, lean: 0.14, drop: 2, stance: 0.95, rear: -0.74, twist: 2 },
+      { at: 1, arm: 0.92, elbow: 0.2, blade: 0.36, lunge: 2.7, lean: 0.07, drop: 1, stance: 0.65, rear: -0.43, twist: 0.9 },
+    ],
+  ];
+  const mixPose = (from, to, blend) => {
+    const result = {};
+    for (const key of Object.keys(from)) result[key] = lerp(from[key], to[key] ?? from[key], blend);
+    return result;
+  };
   function createRenderer(ctx, player, game, palette = PALETTE) {
     function drawCharacterPlate(points, fill, edge = "#07111b", width = 1) {
       ctx.beginPath();
@@ -50,6 +75,7 @@
 
       const speedRatio = clamp(Math.abs(player.vx) / 440, 0, 1);
       const runBlend = player.grounded ? clamp(Math.abs(player.vx) / 180, 0, 1) : 0;
+      const gaitBlend = player.grounded ? clamp(Math.abs(player.vx) / 45, 0, 1) : 0;
       const running = runBlend > 0.04;
       const walling = !player.grounded && (player.wallLeft || player.wallRight);
       const poseEase = (value) => value * value * (3 - value * 2);
@@ -83,17 +109,50 @@
       const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
       const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
       const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
-      const attackLunge = attacking
+      const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
+      const locomotionRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
+      const comboEnabled = !echoStyle && player.slashComboActive === true;
+      const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
+      const recoveryRatio = comboEnabled && !attacking && !shooting
+        ? clamp((player.slashComboRecovery || 0) / (player.slashComboRecoveryDuration || 0.16), 0, 1) : 0;
+      const comboVisible = comboEnabled && (attacking || recoveryRatio > 0);
+      const bladeVisible = attacking || recoveryRatio > 0.03;
+      const comboCarry = player.slashComboLinked ? poseEase(clamp(player.slashComboCarry || 0, 0, 1)) : 0;
+      const neutralPose = { arm: locomotionArmAngle, elbow: 0.38, blade: -1.1,
+        lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, twist: 0 };
+      let comboPose = neutralPose;
+      if (comboVisible) {
+        if (attacking) {
+          const previousFinish = COMBO_POSES[(comboIndex + 2) % 3][2];
+          let from = mixPose(neutralPose, previousFinish, comboCarry);
+          let fromTime = 0;
+          for (const key of COMBO_POSES[comboIndex]) {
+            if (attackProgress <= key.at) {
+              comboPose = mixPose(from, key, poseEase(clamp((attackProgress - fromTime) / (key.at - fromTime), 0, 1)));
+              break;
+            }
+            from = key;
+            fromTime = key.at;
+          }
+        } else {
+          comboPose = mixPose(neutralPose, COMBO_POSES[comboIndex][2], poseEase(recoveryRatio));
+        }
+      }
+      const comboAim = Math.atan2(player.attackDir?.y || 0, Math.max(0.01, Math.abs(player.attackDir?.x ?? 1)));
+      const comboAimWeight = attacking
+        ? lerp(comboCarry, 1, poseEase(clamp(attackProgress / 0.18, 0, 1)))
+        : poseEase(recoveryRatio);
+      const attackLunge = comboVisible ? comboPose.lunge * 4 : attacking
         ? attackProgress < 0.22
           ? -poseEase(attackProgress / 0.22) * 4.5
           : attackProgress < 0.64
             ? lerp(-4.5, 14, poseEase((attackProgress - 0.22) / 0.42))
             : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
         : 0;
-      const attackImpact = attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
+      const attackImpact = comboVisible ? comboPose.stance : attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
       // Keep the torso above its support leg, with only a small forward lean.
       const baseLean = clamp(player.vx * facing / 5100, -0.085, 0.085);
-      const actionLean = attacking
+      const actionLean = comboVisible ? comboPose.lean : attacking
         ? attackProgress < 0.22
           ? lerp(0, -0.07, poseEase(attackProgress / 0.22))
           : attackProgress < 0.64
@@ -102,7 +161,7 @@
         : -0.08 * shotKick + shotSettle * 0.025;
       const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
       const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5;
-      const bodyOffsetY = -bob + shotKick * 1.2 + attackImpact * 1.1;
+      const bodyOffsetY = -bob + shotKick * 1.2 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
       const bodyScaleX = squashX * (1 + attackImpact * 0.035);
       const bodyScaleY = squashY * (1 - attackImpact * 0.025);
       const bodyLean = baseLean + actionLean;
@@ -129,12 +188,15 @@
         ctx.rotate(-Math.atan2(dx, dy));
         ctx.fillStyle = "#07101a";
         ctx.fillRect(-width / 2 - 0.6, -0.5, width + 1.2, length + 1);
-        ctx.fillStyle = color;
-        ctx.fillRect(-width / 2, 0, width, length);
+        drawCharacterPlate([-width / 2 + 1, 0, width / 2 - 1, 0,
+          width / 2, 1, width / 2, length - 1, width / 2 - 1, length,
+          -width / 2 + 1, length, -width / 2, length - 1, -width / 2, 1], color, null);
         ctx.fillStyle = highlight;
-        ctx.fillRect(-width / 2 + 1, 1, 2, Math.max(2, Math.floor(length) - 2));
+        ctx.fillRect(-width / 2 + 0.6, 1, 1, Math.max(2, length - 2));
         ctx.fillStyle = "rgba(5, 10, 17, 0.48)";
-        ctx.fillRect(width / 2 - 2, 2, 2, Math.max(2, Math.floor(length) - 3));
+        ctx.fillRect(width / 2 - 1.4, 2, 1.2, Math.max(2, length - 3));
+        ctx.fillStyle = "#6a818b";
+        ctx.fillRect(-0.5, 1.5, 1, 1);
         ctx.restore();
       }
 
@@ -196,19 +258,21 @@
         const hipX = layer === "back" ? -3 : 3;
         const hipY = -24;
         const phase = (((runPosePhase + (layer === "back" ? 6 : 0)) / 12) % 1 + 1) % 1;
-        const contact = phase < 0.5;
-        const recovery = clamp((phase - 0.5) / 0.5, 0, 1);
+        const contact = phase < RUN_SUPPORT_FRACTION;
+        const recovery = clamp((phase - RUN_SUPPORT_FRACTION) / (1 - RUN_SUPPORT_FRACTION), 0, 1);
         const travelSign = player.vx * facing < 0 ? -1 : 1;
         // The supporting foot travels straight back along the floor; the other
         // lifts at the heel, folds at the knee and returns over an arc.
-        const strideReach = Math.PI / (STRIDE_RADIANS_PER_PIXEL * 2);
-        const strideX = contact ? lerp(strideReach, -strideReach, phase / 0.5)
+        // Short support and a longer recovery permit a plausible running cadence
+        // without sliding: support travel exactly equals the world's travel.
+        const strideReach = Math.PI * RUN_SUPPORT_FRACTION / STRIDE_RADIANS_PER_PIXEL;
+        const strideX = contact ? lerp(strideReach, -strideReach, phase / RUN_SUPPORT_FRACTION)
           : lerp(-strideReach, strideReach, poseEase(recovery));
-        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * (7 + speedRatio * 3);
-        const actionStance = Math.max(attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
-        let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, runBlend);
+        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * (4 + speedRatio * 6);
+        const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
+        let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, gaitBlend);
         footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
-        const footY = -4 - footLift * runBlend;
+        const footY = -4 - footLift * gaitBlend;
         // Inverse the torso transform so planted soles do not slide vertically
         // when breathing, recoiling, leaning or compressing on landing.
         const localX = (footX - bodyOffsetX) / bodyScaleX;
@@ -305,7 +369,7 @@
       ctx.fillStyle = bodyRed;
       ctx.fillRect(5, -4, 3, 9);
       ctx.fillRect(50, -3, 2, 6);
-      if (!attacking) {
+      if (!bladeVisible) {
         ctx.fillStyle = "#12151d";
         ctx.fillRect(-15, -3, 16, 7);
         ctx.strokeStyle = bodyRed;
@@ -328,6 +392,9 @@
       ctx.fill();
       ctx.restore();
 
+      // A small opposed shoulder turn keeps the upper body involved in each cut.
+      const shoulderTurn = comboVisible ? comboPose.twist : 0;
+      ctx.translate(shoulderTurn, 0);
       ctx.fillStyle = uniformTorso;
       ctx.beginPath();
       ctx.moveTo(-11, -43);
@@ -340,6 +407,15 @@
       ctx.fill();
       ctx.fillStyle = uniformPanel;
       ctx.fillRect(-10, -38, 5, 17);
+      // Recessed chest armor and a top-lit edge give the dark shell thickness.
+      drawCharacterPlate([-3, -39, 8, -36, 8, -28, 3, -25, -3, -28], "#203645", "#0a1721");
+      ctx.strokeStyle = "#516c79";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(-2, -38); ctx.lineTo(7, -35); ctx.stroke();
+      ctx.fillStyle = "#09141d";
+      ctx.fillRect(-4, -44, 9, 3);
+      ctx.fillStyle = "#587380";
+      ctx.fillRect(-3, -44, 7, 1);
       ctx.fillStyle = uniformShoulder;
       ctx.beginPath();
       ctx.moveTo(-15, -40);
@@ -418,19 +494,18 @@
       const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
       const gunScale = 0.62;
       const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
-      const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
       const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - 0.38) * 9;
       const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - 0.38) * 9;
       const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (5 - shotKick * 2), shotPoseBlend);
       const shotHandY = lerp(restHandY, -27 + Math.sin(weaponAngle) * 7, shotPoseBlend);
-      const rearArm = shooting
+      const rearArm = comboVisible ? comboPose.rear : shooting
         ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
         : attacking
           ? -0.34 - attackLunge * 0.025
           : running
             ? -stride * 0.58 * runBlend + 0.14
             : 0.28;
-      if (shooting && !attacking) {
+      if (shooting && !bladeVisible) {
         const restRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
         const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle + 0.42) * 8;
         const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle + 0.42) * 8;
@@ -441,7 +516,9 @@
           lerp(restRearY, shotHandY + Math.sin(weaponAngle) * gripOffsetX + Math.cos(weaponAngle) * gripOffsetY, shotPoseBlend),
           lerp(8, 13, shotPoseBlend), 4.5, uniformRearArm);
       } else {
-        drawJointedLimb(-10, -38, 8, 8, 5, rearArm, attacking ? -0.62 : -0.42, uniformRearArm, false, true);
+        drawJointedLimb(-10 - shoulderTurn * 0.5, -38, 8, 8, 5, rearArm,
+          comboVisible ? lerp(-0.42, -0.62, comboPose.stance) : attacking ? -0.62 : -0.42,
+          uniformRearArm, false, true);
       }
 
       ctx.save();
@@ -476,7 +553,10 @@
       let bladeAngle = -1.1;
       if (!player.grounded) armAngle = -0.48;
       if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
-      if (attacking) {
+      if (comboVisible) {
+        armAngle = comboPose.arm + comboAim * 0.5 * comboAimWeight;
+        bladeAngle = comboPose.blade + comboAim * comboAimWeight;
+      } else if (attacking) {
         if (attackProgress < 0.2) {
           const t = poseEase(attackProgress / 0.2);
           armAngle = lerp(-0.42, -1.18, t);
@@ -494,10 +574,11 @@
         bladeAngle += player.attackDir.y * 0.9;
       }
 
-      const frontHand = shooting && !attacking
+      const frontHand = shooting && !bladeVisible
         ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 6, uniformFrontArm)
-        : drawJointedLimb(10, -38, 9, 9, 6, armAngle, attacking ? 0.12 : 0.38, uniformFrontArm, false, !attacking);
-      if (attacking) {
+        : drawJointedLimb(10 + shoulderTurn * 0.5, -38, 9, 9, 6, armAngle,
+          comboVisible ? comboPose.elbow : attacking ? 0.12 : 0.38, uniformFrontArm, false, !bladeVisible);
+      if (bladeVisible) {
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);
         ctx.rotate(bladeAngle);
@@ -652,5 +733,5 @@
 
     return drawPlayerBody;
   }
-  return Object.freeze({ createRenderer, strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL });
+  return Object.freeze({ createRenderer, strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL, runSupportFraction: RUN_SUPPORT_FRACTION });
 });
