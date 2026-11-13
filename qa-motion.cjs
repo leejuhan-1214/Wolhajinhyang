@@ -48,6 +48,14 @@ q.keys.add('KeyD');
 for(let i=0;i<60;i++) q.updatePlayer(1/60);
 assert(q.player.x > 700 && q.player.grounded, 'running must advance along the floor');
 assert(q.player.runCycle > 0, 'ground travel must animate feet');
+let stepEffects=0,footContacts=0;
+for(let i=0;i<60;i++) {
+  const beforeCycle=q.player.runCycle, beforeTimer=q.player.stepTimer;
+  q.updatePlayer(1/60);
+  if(Math.floor(beforeCycle/Math.PI)!==Math.floor(q.player.runCycle/Math.PI)) footContacts++;
+  if(q.player.stepTimer>beforeTimer) stepEffects++;
+}
+assert(footContacts>10 && stepEffects===footContacts,'full-speed foot contacts must each trigger a step effect');
 const gaitBeforeJump=q.player.runCycle;
 q.player.grounded=false; q.player.y=200; q.player.vy=-200;
 q.updatePlayer(1/60);
@@ -62,6 +70,21 @@ q.player.y=480; q.player.grounded=false; q.player.wallRight=true;
 q.pressed.add('Space'); q.keys.add('Space'); q.updatePlayer(1/60); q.pressed.clear();
 for(let i=0;i<4;i++) q.updatePlayer(1/60);
 assert(q.player.vx < -450,'wall jump must push away despite the held toward-wall key');
+
+for (const facing of [-1,1]) {
+  fixture();
+  q.platforms.length=0;
+  const wallX=facing===1?500:100;
+  q.platforms.push({x:wallX,y:0,w:60,h:1400,kind:'wall'}); q.rebuildPlatformSpatialIndex();
+  q.player.x=facing===1?wallX-q.player.w:wallX+60;
+  q.player.y=500; q.player.grounded=false; q.player.wallRight=facing===1; q.player.wallLeft=facing===-1;
+  q.keys.add(facing===1?'KeyD':'KeyA'); q.keys.add('KeyW');
+  for(let i=0;i<30;i++) q.updatePlayer(1/60);
+  assert(q.player.y<440 && q.player.vy<0,'holding up at either wall must climb, not accelerate down');
+  q.keys.delete('KeyW'); q.player.vy=400;
+  q.updatePlayer(1/60);
+  assert(q.player.vy<=145,'wall slide cap must apply after gravity');
+}
 
 fixture();
 q.player.attackCooldown=0.045;

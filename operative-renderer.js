@@ -1,4 +1,4 @@
-/* One canonical Han Seo-rin renderer for campaign and online duels. */
+/* Canonical Han Seo-rin renderer for the campaign and its character archive. */
 (function (root, factory) {
   const api = factory();
   root.MoonlitOperative = api;
@@ -9,6 +9,7 @@
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
   const lerp = (a, b, t) => a + (b - a) * t;
   const PALETTE = Object.freeze({ cyan: '#65f5ea', red: '#ff496c', amber: '#ffcd70', white: '#f2ffff' });
+  const STRIDE_RADIANS_PER_PIXEL = 0.095;
   function createRenderer(ctx, player, game, palette = PALETTE) {
     function drawCharacterPlate(points, fill, edge = "#07111b", width = 1) {
       ctx.beginPath();
@@ -47,8 +48,8 @@
       const uniformRearArm = "#152638";
       const uniformFrontArm = "#294459";
 
-      const speedRatio = clamp(Math.abs(player.vx) / 320, 0, 1);
-      const runBlend = player.grounded ? clamp((speedRatio - 0.03) / 0.42, 0, 1) : 0;
+      const speedRatio = clamp(Math.abs(player.vx) / 440, 0, 1);
+      const runBlend = player.grounded ? clamp(Math.abs(player.vx) / 180, 0, 1) : 0;
       const running = runBlend > 0.04;
       const walling = !player.grounded && (player.wallLeft || player.wallRight);
       const poseEase = (value) => value * value * (3 - value * 2);
@@ -73,8 +74,8 @@
       const idleBreath = Math.sin(game.time * 2.1) * 0.35;
       const stride = sampleLoop(runStride, runPosePhase);
       const bob = lerp(idleBreath, sampleLoop(runBob, runPosePhase) * 0.8, runBlend);
-      const squashX = 1 + player.squash * 0.42;
-      const squashY = 1 - player.squash * 0.52;
+      const squashX = 1 + player.squash * 0.18;
+      const squashY = 1 - player.squash * 0.24;
       const attacking = player.attackTimer > 0;
       const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
       const shooting = player.recoilTimer > 0;
@@ -90,17 +91,18 @@
             : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
         : 0;
       const attackImpact = attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
-      const baseLean = clamp(player.vx * facing / 2100, -0.15, 0.15);
+      // Keep the torso above its support leg, with only a small forward lean.
+      const baseLean = clamp(player.vx * facing / 5100, -0.085, 0.085);
       const actionLean = attacking
         ? attackProgress < 0.22
-          ? lerp(0, -0.12, poseEase(attackProgress / 0.22))
+          ? lerp(0, -0.07, poseEase(attackProgress / 0.22))
           : attackProgress < 0.64
-            ? lerp(-0.12, 0.2, poseEase((attackProgress - 0.22) / 0.42))
-            : lerp(0.2, 0, poseEase((attackProgress - 0.64) / 0.36))
-        : -0.14 * shotKick + shotSettle * 0.035;
+            ? lerp(-0.07, 0.13, poseEase((attackProgress - 0.22) / 0.42))
+            : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
+        : -0.08 * shotKick + shotSettle * 0.025;
       const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
-      const bodyOffsetX = attackLunge * 0.48 - shotKick * 4;
-      const bodyOffsetY = -bob + shotKick * 2 + attackImpact * 1.4;
+      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5;
+      const bodyOffsetY = -bob + shotKick * 1.2 + attackImpact * 1.1;
       const bodyScaleX = squashX * (1 + attackImpact * 0.035);
       const bodyScaleY = squashY * (1 - attackImpact * 0.025);
       const bodyLean = baseLean + actionLean;
@@ -122,13 +124,13 @@
         const dy = y2 - y1;
         const length = Math.hypot(dx, dy);
         ctx.save();
-        ctx.translate(Math.round(x1), Math.round(y1));
+        ctx.translate(x1, y1);
         // Canvas rotates +Y toward -X; negate the angle to connect the real joints.
         ctx.rotate(-Math.atan2(dx, dy));
         ctx.fillStyle = "#07101a";
-        ctx.fillRect(-width / 2 - 1, -1, width + 2, Math.ceil(length) + 2);
+        ctx.fillRect(-width / 2 - 0.6, -0.5, width + 1.2, length + 1);
         ctx.fillStyle = color;
-        ctx.fillRect(-width / 2, 0, width, Math.ceil(length));
+        ctx.fillRect(-width / 2, 0, width, length);
         ctx.fillStyle = highlight;
         ctx.fillRect(-width / 2 + 1, 1, 2, Math.max(2, Math.floor(length) - 2));
         ctx.fillStyle = "rgba(5, 10, 17, 0.48)";
@@ -137,34 +139,34 @@
       }
 
       function drawJointedLimb(px, py, upperLength, lowerLength, width, upperAngle, kneeBend, color, foot = false, hand = false, footAngle = null) {
-        const kneeX = Math.round(px + Math.sin(upperAngle) * upperLength);
-        const kneeY = Math.round(py + Math.cos(upperAngle) * upperLength);
+        const kneeX = px + Math.sin(upperAngle) * upperLength;
+        const kneeY = py + Math.cos(upperAngle) * upperLength;
         const lowerAngle = upperAngle - kneeBend;
-        const endX = Math.round(kneeX + Math.sin(lowerAngle) * lowerLength);
-        const endY = Math.round(kneeY + Math.cos(lowerAngle) * lowerLength);
+        const endX = kneeX + Math.sin(lowerAngle) * lowerLength;
+        const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
         drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)");
         drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(4, width - 1), color, "rgba(151, 207, 216, 0.18)");
         ctx.fillStyle = "#07101a";
         ctx.beginPath();
-        ctx.arc(Math.round(kneeX), Math.round(kneeY), width * 0.62, 0, TAU);
+        ctx.arc(kneeX, kneeY, width * 0.56, 0, TAU);
         ctx.fill();
         ctx.fillStyle = "#40596a";
-        ctx.fillRect(Math.round(kneeX - width * 0.44), Math.round(kneeY - width * 0.34), Math.ceil(width * 0.88), Math.ceil(width * 0.68));
+        ctx.fillRect(kneeX - width * 0.4, kneeY - width * 0.3, width * 0.8, width * 0.6);
         ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-        ctx.fillRect(Math.round(kneeX - 1), Math.round(kneeY - 1), 2, 2);
+        ctx.fillRect(kneeX - 0.7, kneeY - 0.7, 1.4, 1.4);
         if (foot) {
           const toeLift = footAngle ?? (player.grounded ? -bodyLean : clamp(-player.vy / 700, -0.35, 0.35));
           ctx.save();
-          ctx.translate(Math.round(endX), Math.round(endY));
+          ctx.translate(endX, endY);
           ctx.rotate(toeLift);
           ctx.fillStyle = "#06101a";
-          ctx.fillRect(-3, -2, 13, 7);
+          ctx.fillRect(-3, -2, 11, 6);
           ctx.fillStyle = "#263c4b";
-          ctx.fillRect(-1, -1, 9, 4);
+          ctx.fillRect(-1, -1, 7, 3);
           ctx.fillStyle = "#657d88";
-          ctx.fillRect(0, 2, 8, 1);
+          ctx.fillRect(-1, 2, 8, 1);
           ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-          ctx.fillRect(8, 0, 3, 2);
+          ctx.fillRect(6, 0, 2, 1);
           ctx.restore();
         } else if (hand) {
           ctx.fillStyle = "#0a141e";
@@ -191,19 +193,21 @@
       }
 
       function drawPlantedLeg(layer, width, color) {
-        const hipX = layer === "back" ? -5 : 5;
-        const hipY = -19;
+        const hipX = layer === "back" ? -3 : 3;
+        const hipY = -24;
         const phase = (((runPosePhase + (layer === "back" ? 6 : 0)) / 12) % 1 + 1) % 1;
-        const contact = phase < 0.58;
-        const recovery = clamp((phase - 0.58) / 0.42, 0, 1);
+        const contact = phase < 0.5;
+        const recovery = clamp((phase - 0.5) / 0.5, 0, 1);
         const travelSign = player.vx * facing < 0 ? -1 : 1;
         // The supporting foot travels straight back along the floor; the other
         // lifts at the heel, folds at the knee and returns over an arc.
-        const strideX = contact ? lerp(12, -12, phase / 0.58) : lerp(-12, 12, poseEase(recovery));
-        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * 10;
+        const strideReach = Math.PI / (STRIDE_RADIANS_PER_PIXEL * 2);
+        const strideX = contact ? lerp(strideReach, -strideReach, phase / 0.5)
+          : lerp(-strideReach, strideReach, poseEase(recovery));
+        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) * (7 + speedRatio * 3);
         const actionStance = Math.max(attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
-        let footX = lerp(layer === "back" ? -6 : 7, strideX * travelSign, runBlend);
-        footX = lerp(footX, layer === "back" ? -13 : 16, actionStance);
+        let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, runBlend);
+        footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
         const footY = -4 - footLift * runBlend;
         // Inverse the torso transform so planted soles do not slide vertically
         // when breathing, recoiling, leaning or compressing on landing.
@@ -213,15 +217,17 @@
         const endY = -localX * Math.sin(bodyLean) + localY * Math.cos(bodyLean);
         const dx = endX - hipX;
         const dy = endY - hipY;
-        const upperLength = 12;
-        const lowerLength = 12;
+        const upperLength = 13;
+        const lowerLength = 13;
         const reach = clamp(Math.hypot(dx, dy), 1, upperLength + lowerLength - 0.1);
         const axis = Math.atan2(dx, dy);
         const upperAngle = axis + Math.acos(clamp((upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach), -1, 1));
         const kneeX = hipX + Math.sin(upperAngle) * upperLength;
         const kneeY = hipY + Math.cos(upperAngle) * upperLength;
-        const lowerAngle = Math.atan2(endX - kneeX, endY - kneeY);
-        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.35 * runBlend;
+        const targetX = hipX + Math.sin(axis) * reach;
+        const targetY = hipY + Math.cos(axis) * reach;
+        const lowerAngle = Math.atan2(targetX - kneeX, targetY - kneeY);
+        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.23 * runBlend;
         drawJointedLimb(hipX, hipY, upperLength, lowerLength, width, upperAngle, upperAngle - lowerAngle, color, true, false, -bodyLean + toeRoll);
       }
 
@@ -229,43 +235,49 @@
         const dx = targetX - shoulderX;
         const dy = targetY - shoulderY;
         const reach = clamp(Math.hypot(dx, dy), 1, length * 2 - 0.1);
-        const upper = Math.atan2(dx, dy) - Math.acos(reach / (length * 2));
+        const axis = Math.atan2(dx, dy);
+        const upper = axis - Math.acos(reach / (length * 2));
         const elbowX = shoulderX + Math.sin(upper) * length;
         const elbowY = shoulderY + Math.cos(upper) * length;
-        const lower = Math.atan2(targetX - elbowX, targetY - elbowY);
+        const lower = Math.atan2(shoulderX + Math.sin(axis) * reach - elbowX,
+          shoulderY + Math.cos(axis) * reach - elbowY);
         return drawJointedLimb(shoulderX, shoulderY, length, length, width, upper, upper - lower, color, false, true);
       }
 
       // Structured white officer coat: split tails expose the mechanical legs.
-      // The shoulder stays fixed; only the lower panels follow the body's momentum.
+      // Fixed-cut officer coat: no independent sway, lag or billowing panels.
       if (!echoStyle) {
-        const hemLag = clamp(-player.vx * facing / 95, -3, 3) - attackImpact * 2;
-        drawCharacterPlate([-14, -44, 11, -44, 17, -29, 19 + hemLag, -5,
-          8 + hemLag, -7, 1, -23, -4, -13, -10 + hemLag, -3,
-          -21 + hemLag, -7, -16, -29], "#b5c7cb");
-        drawCharacterPlate([-12, -41, -5, -34, -6, -20, -12 + hemLag, -7,
-          -18 + hemLag, -10, -14, -29], "#edf3ed", null);
-        drawCharacterPlate([7, -40, 13, -34, 16 + hemLag, -8,
-          10 + hemLag, -10, 5, -24], "#f6f8ef", null);
+        drawCharacterPlate([-13, -47, 10, -47, 14, -31, 15, -8,
+          8, -10, 1, -26, -4, -18, -11, -6,
+          -18, -9, -15, -31], "#b5c7cb");
+        drawCharacterPlate([-11, -44, -5, -37, -6, -23, -12, -10,
+          -16, -12, -13, -31], "#edf3ed", null);
+        drawCharacterPlate([7, -43, 11, -37, 13, -11,
+          10, -13, 5, -27], "#f6f8ef", null);
         ctx.strokeStyle = "#ff496c";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(13, -32);
-        ctx.lineTo(16 + hemLag, -10);
-        ctx.moveTo(-17 + hemLag, -9);
-        ctx.lineTo(-11 + hemLag, -6);
+        ctx.moveTo(12, -34);
+        ctx.lineTo(13, -13);
+        ctx.moveTo(-16, -12);
+        ctx.lineTo(-11, -9);
         ctx.stroke();
       }
 
       if (player.grounded) {
-        drawPlantedLeg("back", 7, uniformBack);
-        drawPlantedLeg("front", 8, uniformFront);
+        drawPlantedLeg("back", 5, uniformBack);
+        drawPlantedLeg("front", 5.5, uniformFront);
       } else {
         const backPose = legPose("back");
         const frontPose = legPose("front");
-        drawJointedLimb(-5, -19, 11, 11, 7, backPose.upper, backPose.knee, uniformBack, true);
-        drawJointedLimb(5, -19, 11, 12, 8, frontPose.upper, frontPose.knee, uniformFront, true);
+        drawJointedLimb(-3, -24, 13, 13, 5, backPose.upper, backPose.knee, uniformBack, true);
+        drawJointedLimb(3, -24, 13, 13, 5.5, frontPose.upper, frontPose.knee, uniformFront, true);
       }
+
+      // Shorten the oversized torso rather than hiding the upper legs inside it.
+      // Total character height remains 60 px; the hip now reads above the knee.
+      ctx.translate(0, -10);
+      ctx.scale(1, 0.84);
 
       // 등에 고정된 전술 신호 장치와 작은 안테나.
       ctx.fillStyle = "#0a131f";
@@ -279,27 +291,20 @@
       ctx.strokeStyle = "#526d79";
       ctx.beginPath();
       ctx.moveTo(-14, -43);
-      const equipmentLag = running
-        ? -2 - (stride + 1) * 0.8
-        : attacking
-          ? -attackLunge * 0.24
-          : shooting
-            ? shotKick * 4
-            : 0;
-      ctx.lineTo(-18 + equipmentLag, -54 + stride * runBlend * 0.6);
+      ctx.lineTo(-18, -54);
       ctx.stroke();
 
       // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
       ctx.save();
-      ctx.translate(-7 + equipmentLag * 0.25, -23 + stride * runBlend * 0.4);
-      ctx.rotate(2.66 + stride * runBlend * 0.035);
+      ctx.translate(-7, -23);
+      ctx.rotate(2.66);
       ctx.fillStyle = "#070d16";
-      ctx.fillRect(0, -3, 42, 7);
+      ctx.fillRect(0, -3, 58, 6);
       ctx.fillStyle = "#334d5b";
-      ctx.fillRect(4, -2, 31, 2);
+      ctx.fillRect(4, -2, 47, 2);
       ctx.fillStyle = bodyRed;
       ctx.fillRect(5, -4, 3, 9);
-      ctx.fillRect(34, -3, 2, 7);
+      ctx.fillRect(50, -3, 2, 6);
       if (!attacking) {
         ctx.fillStyle = "#12151d";
         ctx.fillRect(-15, -3, 16, 7);
@@ -316,9 +321,9 @@
       }
       ctx.fillStyle = "#151f29";
       ctx.beginPath();
-      ctx.moveTo(42, -3);
-      ctx.lineTo(47, 0);
-      ctx.lineTo(42, 4);
+      ctx.moveTo(58, -3);
+      ctx.lineTo(63, 0);
+      ctx.lineTo(58, 3);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
@@ -365,7 +370,7 @@
       ctx.stroke();
       ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
       ctx.beginPath();
-      ctx.arc(2, -31, 2.4, 0, TAU);
+      ctx.arc(2, -31, 1.6, 0, TAU);
       ctx.fill();
 
       // Beveled armor seams and small fasteners preserve the mechanical silhouette.
@@ -411,11 +416,13 @@
 
       const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
       const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
+      const gunScale = 0.62;
+      const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
       const locomotionArmAngle = !player.grounded ? -0.48 : lerp(-0.15, stride * 0.5, runBlend);
       const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - 0.38) * 9;
       const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - 0.38) * 9;
-      const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (7 - shotKick * 3), shotPoseBlend);
-      const shotHandY = lerp(restHandY, -32 + Math.sin(weaponAngle) * 7, shotPoseBlend);
+      const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (5 - shotKick * 2), shotPoseBlend);
+      const shotHandY = lerp(restHandY, -27 + Math.sin(weaponAngle) * 7, shotPoseBlend);
       const rearArm = shooting
         ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
         : attacking
@@ -427,10 +434,12 @@
         const restRearAngle = running ? -stride * 0.58 * runBlend + 0.14 : 0.28;
         const restRearX = -10 + Math.sin(restRearAngle) * 8 + Math.sin(restRearAngle + 0.42) * 8;
         const restRearY = -38 + Math.cos(restRearAngle) * 8 + Math.cos(restRearAngle + 0.42) * 8;
-        drawArmTo(lerp(-10, 6, shotPoseBlend), -38,
-          lerp(restRearX, shotHandX + Math.cos(weaponAngle) * 14, shotPoseBlend),
-          lerp(restRearY, shotHandY + Math.sin(weaponAngle) * 14 + 2, shotPoseBlend),
-          lerp(8, 13, shotPoseBlend), 5, uniformRearArm);
+        const gripOffsetX = (20 - pumpTravel) * gunScale;
+        const gripOffsetY = -5 * gunScale;
+        drawArmTo(lerp(-10, 0, shotPoseBlend), -38,
+          lerp(restRearX, shotHandX + Math.cos(weaponAngle) * gripOffsetX - Math.sin(weaponAngle) * gripOffsetY, shotPoseBlend),
+          lerp(restRearY, shotHandY + Math.sin(weaponAngle) * gripOffsetX + Math.cos(weaponAngle) * gripOffsetY, shotPoseBlend),
+          lerp(8, 13, shotPoseBlend), 4.5, uniformRearArm);
       } else {
         drawJointedLimb(-10, -38, 8, 8, 5, rearArm, attacking ? -0.62 : -0.42, uniformRearArm, false, true);
       }
@@ -492,6 +501,7 @@
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);
         ctx.rotate(bladeAngle);
+        ctx.scale(0.86, 0.86);
 
         // 붉은 끈으로 감은 손잡이와 원형 코등이.
         ctx.fillStyle = "#10141d";
@@ -558,7 +568,9 @@
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);
         ctx.rotate(weaponAngle);
-        ctx.scale(0.78, 0.78);
+        ctx.scale(gunScale, gunScale);
+        // Trigger hand anchors to the actual pistol grip, not the receiver.
+        ctx.translate(-4, -11);
 
         // M-12 compact combat shotgun: stock, receiver, loading port, pump,
         // twin barrel, sights and chamber indicator are separate pixel clusters.
@@ -587,7 +599,6 @@
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(6, 7, 4, 0.15, Math.PI - 0.15); ctx.stroke();
         ctx.fillStyle = "#263c47";
-        const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
         ctx.fillRect(15 - pumpTravel, -6, 19, 12);
         ctx.fillStyle = "#58727c";
         for (let grip = 18; grip < 33; grip += 4) ctx.fillRect(grip - pumpTravel, -5, 2, 10);
@@ -641,5 +652,5 @@
 
     return drawPlayerBody;
   }
-  return Object.freeze({ createRenderer });
+  return Object.freeze({ createRenderer, strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL });
 });
