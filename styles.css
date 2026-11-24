@@ -205,6 +205,19 @@ canvas {
 }
 
 .touch-capable .tutorial-mobile-note { display: block; }
+.duel-overlay[hidden], .duel-card [hidden], #duel-leave[hidden] { display: none !important; }
+#duel-menu.visible { z-index: 28; display: grid; place-items: center; padding: 10px; background: rgba(4,12,20,.92); }
+.duel-card { box-sizing: border-box; width: min(600px,95%); max-height: 94%; overflow: auto; overscroll-behavior: contain; padding: clamp(12px,3vh,28px); border: 1px solid #335358; background: #0c1b25; text-align: left; }
+#duel-menu small { color: #83dfd8; letter-spacing: .12em; }
+#duel-menu h2 { font-size: clamp(22px,4vh,42px); margin: .3em 0; }
+#duel-menu h3 { color: #b7d9dd; font-size: 15px; margin: 14px 0 7px; }
+#duel-menu p { white-space: pre-line; margin: 8px 0; font-size: 13px; line-height: 1.5; }
+.duel-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; margin-bottom: 8px; }
+#duel-menu button, #duel-leave, #duel-end-menu { min-width: 0; min-height: 36px; padding: 6px 10px; font-size: 13px; letter-spacing: 0; }
+#duel-menu .duel-list button { text-align: left; white-space: pre-line; line-height: 1.45; }
+#duel-menu button:focus-visible { outline: 2px solid #ffda87; outline-offset: -3px; }
+#duel-menu button:disabled { opacity: .56; cursor: default; }
+#duel-leave { margin-top: 5px; }
 .tutorial-chain-note strong { color: #ffdb8e; margin-right: 5px; }
 
 .volume-panel {

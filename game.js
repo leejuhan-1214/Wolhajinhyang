@@ -98,7 +98,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.8.8";
+  const GAME_VERSION = "3.9.0";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -1367,7 +1367,7 @@
   }
 
   function getZoneRemaining(zoneIndex) {
-    return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive).length;
+    return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive && !enemy.optionalTraversal).length;
   }
 
   function getBossArenaBounds(enemy, inset = BOSS_ARENA_EDGE_INSET) {
@@ -2056,7 +2056,7 @@
   function configureCombatRooms() {
     const anchorTypes = ["shield", "drone", "mortar", "piercer"];
     combatRooms.forEach((room, roomIndex) => {
-      const members = enemies.filter((enemy) => enemy.alive && enemy.type !== "boss" && enemy.originX > room.left && enemy.originX < room.right);
+      const members = enemies.filter((enemy) => enemy.alive && !enemy.optionalTraversal && enemy.type !== "boss" && enemy.originX > room.left && enemy.originX < room.right);
       const preferred = anchorTypes.map((_, offset) => anchorTypes[(roomIndex + offset) % anchorTypes.length]);
       const formationAnchorType = preferred.find((type) => members.some((enemy) => enemy.type === type)) || members[0]?.type || "shield";
       const formation = SQUAD_FORMATIONS[formationAnchorType] || SQUAD_FORMATIONS.shield;
@@ -2823,6 +2823,74 @@
     }
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
+  }
+
+  function addAerialShortcutRoutes() {
+    // Author two contained forks after the ordinary map is built. Existing IDs
+    // outside these lanes stay stable, so saved admin edits cannot drift.
+    for (const zone of zones) zone.aerialShortcut = null;
+    for (const zoneIndex of [5, 2 * ZONES_PER_STAGE + 11]) {
+      const zone = zones[zoneIndex];
+      const ground = platforms.find((p) => p.x === zone.x && p.w >= ZONE_W && p.h > 500);
+      if (!ground) continue;
+      const floorY = ground.y, origin = zone.x;
+      const left = origin + 600, right = origin + 3150;
+      const intersectsLane = (object) => object.x + (object.w || 0) > left && object.x < right;
+      for (let i = platforms.length - 1; i >= 0; i--) {
+        if (platforms[i].y < floorY && intersectsLane(platforms[i])) platforms.splice(i, 1);
+      }
+      for (const collection of [hazards, boostNodes, pickups]) {
+        for (let i = collection.length - 1; i >= 0; i--) {
+          if (intersectsLane(collection[i])) collection.splice(i, 1);
+        }
+      }
+      // Required combat stays at the entrance/exit. The high lane skips only
+      // the three traversal baffles, never the zone's required enemies or seal.
+      const relocated = enemies.filter((enemy) => enemy.type !== "boss" && intersectsLane(enemy));
+      relocated.forEach((enemy, index) => {
+        const x = origin + (index % 2 ? 3260 + Math.floor(index / 2) * 74 : 230 + Math.floor(index / 2) * 68);
+        const y = enemy.type === "drone" ? floorY - 160 : floorY - enemy.h;
+        Object.assign(enemy, {x, y, originX:x, spawnX:x, spawnY:y, baseY:y, range:54});
+      });
+      const routeId = `air-route:${zoneIndex}`;
+      const routePlatform = (name, x, y, w, h = 24) => {
+        const platform = addPlatform(origin + x, y, w, h, zone.kind);
+        platform.id = `${routeId}:platform:${name}`;
+        platform.aerialRouteId = routeId;
+        return platform;
+      };
+      routePlatform("approach", 650, floorY - 85, 200);
+      const launch = routePlatform("launch", 900, floorY - 180, 260);
+      const landingX = zone.stageIndex === 0 ? 2000 : 2020;
+      const landing = routePlatform("landing", landingX, floorY - 180, 300);
+      routePlatform("descent-1", landingX + 340, floorY - 120, 210);
+      routePlatform("descent-2", landingX + 650, floorY - 60, 210);
+      for (let index = 0; index < 3; index++) {
+        const height = 140 + (zone.stageIndex > 0 ? 12 : 0);
+        routePlatform(`lower-baffle-${index}`, 1280 + index * 350, floorY - height, 82, height);
+      }
+      const droneIds = [];
+      [1440, 1770].forEach((offset, index) => {
+        const drone = addEnemy("drone", origin + offset, floorY - 395, 0);
+        drone.id = `${routeId}:drone:${index + 1}`;
+        drone.optionalTraversal = true;
+        drone.aerialRouteId = routeId;
+        drone.cooldown = 1;
+        droneIds.push(drone.id);
+      });
+      zone.baseTargetEnemyCount += droneIds.length;
+      zone.aerialShortcut = {
+        id:routeId, floorY, launchX:launch.x, launchY:launch.y, launchWidth:launch.w,
+        landingX:landing.x, landingY:landing.y, landingWidth:landing.w,
+        droneIds, lowerBaffleCount:3, gap:landing.x - (launch.x + launch.w),
+      };
+      addSign(origin + 865, floorY - 277, "공중 우회로", "드론 2기 참격 → 점프 회복");
+      signs[signs.length - 1].id = `${routeId}:sign:launch`;
+      addSign(origin + 1020, floorY - 77, "안전 하층로", "드론은 선택 · 실패해도 하층 복귀");
+      signs[signs.length - 1].id = `${routeId}:sign:lower`;
+      zone.routeProfile += ":optional-two-drone-shortcut";
+    }
+    markPlatformSpatialIndexDirty();
   }
 
   function buildLevel() {
@@ -3595,6 +3663,7 @@
       addCheckpoint(origin + 120, floorY - 88, zone.name, `${zone.stageIndex}:${zone.localIndex}`);
     }
 
+    addAerialShortcutRoutes();
     initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies();
     applyAdminWorldEdits();
     normalizeCheckpointPlacements();
@@ -3638,7 +3707,9 @@
       groups.get(zoneIndex).push(enemy);
     }
 
-    const retained = new Set();
+    // These optional traversal anchors stay available in every difficulty;
+    // they still use slots within the exact normal-mob population budget.
+    const retained = new Set(candidates.filter((enemy) => enemy.optionalTraversal));
     for (const group of groups.values()) {
       group.sort(compareCandidates);
       if (group[0]) retained.add(group[0]);
@@ -3921,11 +3992,123 @@
     return closestIndex;
   }
 
+  // Sparring records live outside the replaceable campaign checkpoint slot.
+  const DUEL_RECORD_KEY = "moonlit-echo-duel-records-v1";
+  const duelBook = {cleared:new Set(), best:Object.create(null)};
+  const duelPanel = document.getElementById("duel-menu");
+  const duelEl = id => document.getElementById("duel-" + id);
+  let duelSelectionResult = false;
+  function readDuelBook() {
+    try {
+      const raw = JSON.parse(window.localStorage?.getItem(DUEL_RECORD_KEY) || "{}");
+      for (const k of Object.keys(BOSS_DEFINITIONS)) {
+        if (Array.isArray(raw.cleared) && raw.cleared.includes(k)) duelBook.cleared.add(k);
+        for (const d of Object.keys(difficultySettings)) {
+          const key=d+":"+k, e=raw.best?.[key];
+          if (e && Number.isFinite(e.time) && e.time>0 && Number.isInteger(e.hits) && e.hits>=0) duelBook.best[key]={time:e.time,hits:e.hits};
+        }
+      }
+    } catch { /* Records remain available in memory. */ }
+  }
+  function writeDuelBook() {
+    try { window.localStorage?.setItem(DUEL_RECORD_KEY,JSON.stringify({cleared:[...duelBook.cleared],best:duelBook.best})); } catch { /* Optional storage. */ }
+  }
+  function importLegacyDuelWins(saved) {
+    if (!saved) return;
+    const ids=new Set(saved.countedKillEnemyIds ?? saved.defeatedEnemyIds ?? []), kinds=new Set(saved.defeatedBosses || []);
+    let changed=false;
+    for (const e of enemies) if (e.type==="boss" && !isAdminRemovedEnemy(e) && !duelBook.cleared.has(e.bossKind) && (ids.has(e.id)||kinds.has(e.bossKind))) {
+      duelBook.cleared.add(e.bossKind); changed=true;
+    }
+    if (changed) writeDuelBook();
+  }
+  function duelTime(seconds) {
+    const t=Math.floor(seconds*100);
+    return Math.floor(t/6000)+":"+String(Math.floor(t/100)%60).padStart(2,"0")+"."+String(t%100).padStart(2,"0");
+  }
+  function currentDuelBest(kind) { return duelBook.best[selectedDifficulty+":"+kind]; }
+  function availableDuelBoss(kind) {
+    return enemies.find(e => e.type === "boss" && e.bossKind === kind && !isAdminRemovedEnemy(e));
+  }
+  function duelStats(e) { return "최단 "+duelTime(e.time)+" · 최소 피격 "+e.hits+"회"; }
+  function markDuelWin(enemy) {
+    if (!enemy.combatStarted || game.adminMode || game.adminCadetMode || (adminModeUnlocked && !game.bossReplay) || player.hp<=0) return;
+    const kind=enemy.bossKind, key=game.difficulty+":"+kind;
+    const time=Math.max(.01,game.runTime-(enemy.duelBeganAt ?? game.runTime)), hits=enemy.duelHits || 0, prior=duelBook.best[key];
+    duelBook.cleared.add(kind);
+    if (enemy.duelBeganAt!=null) duelBook.best[key]={time:Math.min(prior?.time ?? Infinity,time),hits:Math.min(prior?.hits ?? Infinity,hits)};
+    writeDuelBook();
+    if (game.bossReplay?.kind===kind) showDuelResult(true,time,hits);
+  }
+  function showDuelMenu(result=false) {
+    clearGameplayInput(); duelSelectionResult=result; game.mode=result ? "duelResult" : "duelMenu";
+    for (const panel of [startScreen,pauseScreen,endScreen]) panel.classList.remove("visible");
+    duelPanel.hidden=false; duelPanel.classList.add("visible");
+    const saved=readCampaignSave();
+    duelEl("campaign").hidden=result || !saved;
+    duelEl("campaign").textContent=saved ? "본편 "+continueButton.textContent : "본편 이어하기";
+    duelEl("retry").hidden=!result;
+    duelEl("list-title").hidden=result; duelEl("list").hidden=result;
+    duelEl("back").textContent=result ? "기록실로" : "제목으로";
+    if (!result) {
+      duelEl("title").textContent="이어하기";
+      duelEl("description").textContent=difficultySettings[selectedDifficulty].name+" 재대결 · 쓰러뜨린 보스만 도전할 수 있어요. 본편 진행은 바뀌지 않습니다.";
+      const buttons=stages.flatMap((s,i)=>[s.midBossKind,s.bossKind].map((kind,j)=>{
+        const b=document.createElement("button"), open=duelBook.cleared.has(kind), best=currentDuelBest(kind);
+        b.type="button"; b.disabled=!open || !availableDuelBoss(kind);
+        b.textContent=(i+1)+"막 "+(j?"진보스":"중간")+" · "+(open?BOSS_DEFINITIONS[kind].name.split(" · ").pop():"미격파")+(open?"\n"+(best?duelStats(best):"첫 기록에 도전"):"");
+        if (open && b.disabled) b.textContent += " · 현재 맵에서 제외됨";
+        b.addEventListener("click",()=>beginBossReplay(kind)); return b;
+      }));
+      duelEl("list").replaceChildren(...buttons);
+    }
+    (result ? duelEl("retry") : saved ? duelEl("campaign") : duelEl("back")).focus?.();
+  }
+  function hideDuelPanel() {
+    duelPanel.hidden=true; duelPanel.classList.remove("visible"); duelEl("leave").hidden=true;
+  }
+  function leaveDuels(toTitle) {
+    hideDuelPanel(); clearGameplayInput(); resetBossRealityEffects();
+    levelReady=false; game.bossReplay=null; game.duelOpponent=null; game.cutscene=null;
+    game.story=null; game.storyQueue=[]; game.freeze=0; game.mode="menu";
+    pauseScreen.classList.remove("visible"); endScreen.classList.remove("visible"); updateContinueButton();
+    if (toTitle) { startScreen.classList.add("visible"); continueButton.focus?.(); }
+    else showDuelMenu();
+  }
+  function beginBossReplay(kind) {
+    if (!duelBook.cleared.has(kind) || !Object.hasOwn(BOSS_DEFINITIONS,kind) || !availableDuelBoss(kind) || !["duelMenu","duelResult"].includes(game.mode)) return false;
+    hideDuelPanel(); enterMobileFullscreen(); resetGame(false,kind); return true;
+  }
+  function prepareBossReplay(kind) {
+    const target=availableDuelBoss(kind);
+    if (!target) { leaveDuels(false); return; }
+    for (const e of enemies) e.alive=e===target;
+    for (const room of combatRooms) { room.triggered=true; room.cleared=true; }
+    game.defeatedBosses=new Set(stages.slice(0,target.stageIndex).map(s=>s.bossKind));
+    game.tutorialActive=false; game.tutorialCompleted=true; game.burstUnlocked=true;
+    game.stage=target.stageIndex; game.zone=target.homeZoneIndex;
+    const pos=setRespawnCheckpoint(checkpoints[game.zone],game.zone);
+    player.x=pos.x; player.y=pos.y; player.vx=0; player.vy=0;
+    game.cutsceneSeen=new Set(CUTSCENE_EVENTS.map(e=>e.id)); game.storySeen=new Set(STORY_EVENTS.map(e=>e.id));
+    game.story=null; game.storyQueue=[]; game.stageTitle=0; game.zoneTitle=0; game.stageAbilityNoticeTimer=0;
+    game.hint="재대결 · "+BOSS_DEFINITIONS[kind].name; game.hintTimer=2;
+    camera.x=clamp(player.x-W*.36,0,WORLD_W-W); camera.y=clamp(player.y-H*.56,0,WORLD_H-H);
+    setTutorialPanel(false); duelEl("leave").hidden=false;
+    startBossSignatureIntro(target,{replay:true});
+  }
+  function showDuelResult(won,time,hits) {
+    if (!game.bossReplay || game.mode!=="playing") return;
+    const kind=game.bossReplay.kind, best=currentDuelBest(kind);
+    showDuelMenu(true);
+    duelEl("title").textContent=BOSS_DEFINITIONS[kind].name.split(" · ").pop()+(won?" 격파":" · 도전 종료");
+    duelEl("description").textContent=(won?"이번 기록 "+duelTime(time)+" · 피격 "+hits+"회":"본편 체크포인트는 그대로입니다.")+(best?"\n"+duelStats(best):"");
+  }
+
   function updateContinueButton() {
     if (!continueButton) return;
     const saved = readCampaignSave();
     continueButton.hidden = false;
-    continueButton.disabled = !saved;
+    continueButton.disabled = !saved && !duelBook.cleared.size;
     const editData = normalizeStartScreenEdits(startScreenEditData) || START_SCREEN_DEFAULTS;
     const savedCheckpointIndex = saved && checkpoints.length ? resolveCampaignCheckpointIndex(saved) : -1;
     const savedStage = saved
@@ -3940,7 +4123,7 @@
   }
 
   function saveCampaign() {
-    if (game.mode !== "playing") return;
+    if (game.mode !== "playing" || game.bossReplay) return;
     try {
       const checkpointZone = clamp(Number(player.respawnZone) || 0, 0, zones.length - 1);
       const defeatedBeforeCheckpoint = enemies.filter((enemy) => (
@@ -3971,6 +4154,7 @@
         cutsceneSeen: [...game.cutsceneSeen],
         defeatedEnemyIds: defeatedBeforeCheckpoint.map((enemy) => enemy.id),
         countedKillEnemyIds: defeatedBeforeCheckpoint.filter((enemy) => enemy.countedKill).map((enemy) => enemy.id),
+        mirrorHabits: exportMirrorHabits(checkpointZone),
         roomStates: combatRooms.map((room) => {
           const beforeCheckpoint = getZoneIndexAt(room.left) < checkpointZone;
           return { left: room.left, triggered: beforeCheckpoint && room.triggered, cleared: beforeCheckpoint && room.cleared };
@@ -3986,6 +4170,8 @@
   function restoreCampaign(saved) {
     const savedCheckpointIndex = resolveCampaignCheckpointIndex(saved);
     const restartZoneIndex = getZoneIndexAt(checkpoints[savedCheckpointIndex]?.x || 0);
+    resetMirrorHabits(saved.mirrorHabits);
+    pruneMirrorHabits(restartZoneIndex);
     const deadIds = new Set(saved.defeatedEnemyIds || []);
     const migratedZoneLayout = Number.isInteger(saved.zonesPerStage) && saved.zonesPerStage !== ZONES_PER_STAGE;
     const legacyTutorialCompleted = (saved.respawnZone || 0) > 0
@@ -4071,9 +4257,9 @@
     saveCampaign();
   }
 
-  function resetGame(resume = false) {
+  function resetGame(resume = false, replayKind = null) {
     const requestedAt = performance.now();
-    if (requestedAt - lastResetAt < 700) return;
+    if (!replayKind && !resume && requestedAt - lastResetAt < 700) return;
     lastResetAt = requestedAt;
     resetCrossChain();
     resetSlashCombo();
@@ -4082,8 +4268,11 @@
     setStartScreenEditor(false);
     resetBossRealityEffects();
     const saved = resume ? readCampaignSave() : null;
+    game.bossReplay = replayKind ? {kind:replayKind} : null;
+    game.duelOpponent = null;
+    resetMirrorHabits(saved?.mirrorHabits || (replayKind ? readCampaignSave()?.mirrorHabits : null));
     if (saved?.difficulty && difficultySettings[saved.difficulty]) selectedDifficulty = saved.difficulty;
-    if (!resume) {
+    if (!resume && !replayKind) {
       try { window.localStorage?.removeItem(SAVE_KEY); } catch { /* Ignore unavailable storage. */ }
     }
     if (!levelReady || game.mode !== "menu" || levelBuildDifficulty !== selectedDifficulty) {
@@ -4155,7 +4344,7 @@
       deaths: 0,
       kills: 0,
       difficulty: selectedDifficulty,
-      adminMode: adminModeUnlocked,
+      adminMode: !replayKind && adminModeUnlocked,
       adminCadetMode: false,
       adminPreviousDifficulty: selectedDifficulty,
       adminCadetStartZone: 0,
@@ -4194,7 +4383,7 @@
       lastAbilityNoticeStage: -1,
     });
     if (saved) restoreCampaign(saved);
-    if (!saved) {
+    if (!saved && !replayKind) {
       game.tutorialActive = !game.adminMode;
       game.tutorialCompleted = game.adminMode;
       game.burstUnlocked = true;
@@ -4215,8 +4404,9 @@
     pauseScreen.classList.remove("visible");
     endScreen.classList.remove("visible");
     syncTutorialDataset();
-    setTutorialPanel(!saved && !game.adminMode);
-    if (!saved) saveCampaign();
+    setTutorialPanel(!saved && !game.adminMode && !replayKind);
+    if (replayKind) prepareBossReplay(replayKind);
+    else if (!saved) saveCampaign();
     updateContinueButton();
     sound.wake();
   }
@@ -5123,13 +5313,99 @@
     }
   }
 
+  // These short, wordless beats use the existing dialogue lock. They never
+  // create projectiles, move collision bodies, or change a boss's combat state.
+  const BOSS_SIGNATURE_INTROS = Object.freeze({
+    breaker: { duration: 1.65, cues: [0, 0.14, 0.28, 0.42, 0.78], motif: "track-lock" },
+    warden: { duration: 1.65, cues: [0, 0.48, 1.04], motif: "funnel-launch" },
+    hunter: { duration: 1.45, cues: [0, 0.5, 1.02], motif: "shield-seal" },
+    furnace: { duration: 1.7, cues: [0, 0.42, 0.84], motif: "furnace-vent" },
+    oracle: { duration: 1.5, cues: [0, 0.48, 0.96], motif: "mirror-fold" },
+    weaver: { duration: 1.7, cues: [0, 0.52, 1.04], motif: "ice-sigil" },
+    revenant: { duration: 1.75, cues: [0, 0.6, 1.2], motif: "blade-scrape" },
+    censor: { duration: 1.6, cues: [0, 0.5, 1], motif: "black-seal" },
+    proxy: { duration: 1.6, cues: [0, 0.5, 1], motif: "toxic-vial" },
+    echo: { duration: 1.8, cues: [0, 0.62, 1.2], motif: "mirror-draw" },
+  });
+
+  function getBossSignatureShot() {
+    const shot = game.cutscene?.shots?.[game.cutsceneShotIndex];
+    return shot?.bossSignature && BOSS_SIGNATURE_INTROS[shot.bossSignature] ? shot : null;
+  }
+
+  function getBossSignatureEnemy() {
+    const shot = getBossSignatureShot();
+    if (!shot) return null;
+    const replayActor = game.cutscene.signatureEnemy;
+    if (replayActor?.alive && enemies.includes(replayActor)) return replayActor;
+    return enemies.find(enemy => enemy.alive && enemy.type === "boss" && enemy.bossKind === shot.bossSignature) || null;
+  }
+
+  function playBossSignatureCue(kind, beat) {
+    // No delayed timers: pausing or skipping cannot leave a scheduled barrage
+    // of intro sounds behind. Every cue respects the existing master/SFX bus.
+    if (kind === "breaker") {
+      if (beat < 4) {
+        sound.noise(0.085, 0.024, 680 + beat * 75, "bandpass", 0, 1.7);
+        sound.tone(98 + beat * 11, 0.085, "triangle", 0.022, 0.5);
+      } else {
+        sound.noise(0.11, 0.027, 1750, "highpass");
+        sound.tone(220, 0.18, "triangle", 0.025, 0.45);
+      }
+    } else if (kind === "revenant" || kind === "echo") {
+      sound.noise(beat === 1 ? 0.19 : 0.075, beat === 1 ? 0.032 : 0.014,
+        beat === 1 ? 2200 : 1100, "bandpass", 0, 2.3);
+      sound.tone(beat === 2 ? 880 : 240, beat === 2 ? 0.2 : 0.12,
+        "triangle", 0.018, beat === 2 ? 0.72 : 1.9);
+    } else if (kind === "warden" || kind === "furnace") {
+      sound.noise(0.14, 0.022, kind === "warden" ? 1200 : 420, "bandpass", 0, 1.4);
+      sound.tone((kind === "warden" ? 150 : 88) + beat * 55, 0.18, "sine", 0.025, 1.5);
+    } else if (kind === "proxy") {
+      sound.tone(beat === 1 ? 1320 : 540, 0.16, "sine", 0.019, 0.7);
+      sound.noise(0.1, 0.012, 1700, "bandpass");
+    } else {
+      const base = kind === "hunter" ? 410 : kind === "weaver" ? 660 : kind === "oracle" ? 470 : 165;
+      sound.tone(base + beat * 120, 0.18, "sine", 0.022, kind === "censor" ? 0.6 : 1.32);
+      sound.noise(0.09, 0.009, 1250 + beat * 180, "highpass");
+    }
+  }
+
+  function updateBossSignatureCues() {
+    const shot = getBossSignatureShot();
+    if (!shot) return;
+    const cues = BOSS_SIGNATURE_INTROS[shot.bossSignature].cues;
+    let next = game.cutscene.signatureCueIndex || 0;
+    while (next < cues.length && game.cutsceneShotElapsed >= cues[next]) {
+      playBossSignatureCue(shot.bossSignature, next++);
+    }
+    game.cutscene.signatureCueIndex = next;
+  }
+
+  function makeBossSignatureShot(kind) {
+    return { bossSignature: kind, duration: BOSS_SIGNATURE_INTROS[kind].duration,
+      speaker: "", text: "", tone: "hostile" };
+  }
+
+  function startBossSignatureIntro(enemy, { replay = false } = {}) {
+    if (!enemy?.alive || !BOSS_SIGNATURE_INTROS[enemy.bossKind] || game.cutscene) return false;
+    startCutscene({ id: `boss-signature-${enemy.bossKind}`, x: enemy.x,
+      visual: "signature", signatureOnly: true, signatureReplay: replay,
+      signatureEnemy: enemy, shots: [makeBossSignatureShot(enemy.bossKind)] });
+    return Boolean(game.cutscene);
+  }
+
   function startCutscene(event) {
-    if (!event || game.cutsceneSeen.has(event.id)) return;
+    if (!event || (!event.signatureOnly && game.cutsceneSeen.has(event.id))) return;
     resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
     player.queuedAction = null;
-    game.cutscene = event;
+    const introKind = Object.keys(BOSS_INTRO_CUTSCENE_IDS).find(kind => BOSS_INTRO_CUTSCENE_IDS[kind] === event.id);
+    // Clone the runtime scene: source dialogue and its saved completion ID stay
+    // unchanged, and replaying can never append duplicate signature shots.
+    game.cutscene = { ...event, signatureCueIndex: 0,
+      shots: introKind && !event.shots.some(shot => shot.bossSignature)
+        ? [...event.shots, makeBossSignatureShot(introKind)] : event.shots.slice() };
     game.cutsceneShotIndex = 0;
     game.cutsceneTimer = event.shots[0]?.duration || 5;
     game.cutsceneShotElapsed = 0;
@@ -5141,7 +5417,8 @@
     player.vx = 0;
     player.attackTimer = 0;
     bullets.length = 0;
-    sound.tone(118, 0.28, "sine", 0.035, 0.72);
+    if (getBossSignatureShot()) updateBossSignatureCues();
+    else sound.tone(118, 0.28, "sine", 0.035, 0.72);
   }
 
   function advanceCutscene() {
@@ -5150,12 +5427,15 @@
     game.cutsceneShotIndex += 1;
     const nextShot = game.cutscene.shots[game.cutsceneShotIndex];
     if (!nextShot) {
-      game.cutsceneSeen.add(finishedScene.id);
+      if (!finishedScene.signatureOnly) game.cutsceneSeen.add(finishedScene.id);
       game.cutscene = null;
       game.cutsceneShotIndex = 0;
       game.cutsceneTimer = 0;
       game.cutsceneShotElapsed = 0;
-      if (finishedScene.gateTransition) {
+      if (finishedScene.signatureOnly) {
+        // Practice intros do not touch campaign flags, hints, or the save slot.
+        return;
+      } else if (finishedScene.gateTransition) {
         game.stageTitle = 4.4;
         game.zoneTitle = 2.8;
         game.hint = `${stages[game.stage]?.name || "다음 작전"} 진입`;
@@ -5170,6 +5450,11 @@
     }
     game.cutsceneTimer = nextShot.duration || 5;
     game.cutsceneShotElapsed = 0;
+    if (nextShot.bossSignature) {
+      game.cutscene.signatureCueIndex = 0;
+      updateBossSignatureCues();
+      return;
+    }
     const tone = nextShot.tone === "hostile" ? 104 : nextShot.tone === "operative" ? 330 : 470;
     sound.tone(tone, 0.09, "square", 0.016, 1.2);
   }
@@ -5177,6 +5462,10 @@
   function requestCutsceneAdvance() {
     if (!game.cutscene) return;
     const shot = game.cutscene.shots[game.cutsceneShotIndex];
+    if (shot?.bossSignature) {
+      if (game.cutsceneShotElapsed >= 0.25) advanceCutscene();
+      return;
+    }
     const revealTime = Math.min(1.8, 0.32 + (shot?.text.length || 0) * 0.018);
     if (game.cutsceneShotElapsed < revealTime) {
       game.cutsceneShotElapsed = revealTime;
@@ -5192,6 +5481,26 @@
     game.cutsceneShotElapsed += dt;
     player.vx = 0;
     player.attackTimer = 0;
+    const signatureEnemy = getBossSignatureEnemy();
+    if (signatureEnemy) {
+      updateBossSignatureCues();
+      player.facing = signatureEnemy.x >= player.x ? 1 : -1;
+      const midpoint = (player.x + player.w / 2 + signatureEnemy.x + signatureEnemy.w / 2) / 2;
+      const targetX = clamp(midpoint - W * 0.5, 0, WORLD_W - W);
+      const targetY = clamp(Math.max(player.y + player.h, signatureEnemy.y + signatureEnemy.h) - H * 0.72, 0, WORLD_H - H);
+      camera.x = lerp(camera.x, targetX, 1 - Math.pow(0.001, dt));
+      camera.y = lerp(camera.y, targetY, 1 - Math.pow(0.004, dt));
+      if (pressed.has("Space") || pressed.has("Enter")) requestCutsceneAdvance();
+      else if (game.cutsceneTimer <= 0) advanceCutscene();
+      pressed.clear();
+      return;
+    }
+    if (getBossSignatureShot()) {
+      // An editor-deleted boss must not strand the player in a wordless scene.
+      advanceCutscene();
+      pressed.clear();
+      return;
+    }
     if (scene.visual === "duel" || scene.visual === "mirror") player.facing = 1;
     const focusOffset = scene.gateTransition ? 170 : scene.visual === "duel" ? 110 : 45;
     const targetX = clamp(player.x + player.w / 2 - W * 0.42 + focusOffset, 0, WORLD_W - W);
@@ -5211,6 +5520,7 @@
   function isBossIntroLocked(enemy) {
     if (!enemy || enemy.type !== "boss" || game.adminMode) return false;
     if (enemy.combatStarted) return false;
+    if (game.bossReplay?.kind === enemy.bossKind) return Boolean(game.cutscene);
     const introCutsceneId = getBossIntroCutsceneId(enemy);
     const introEvent = CUTSCENE_EVENT_BY_ID.get(introCutsceneId);
     if (!introCutsceneId || !introEvent || player.x < introEvent.x || !game.cutsceneSeen.has(introCutsceneId)) return true;
@@ -5221,6 +5531,9 @@
     if (!isBossIntroLocked(enemy)) {
       if (!enemy.combatStarted) {
         enemy.combatStarted = true;
+        enemy.duelBeganAt = game.runTime;
+        enemy.duelHits = 0;
+        game.duelOpponent = enemy;
         enemy.cooldown = Math.max(enemy.cooldown, 0.78);
         enemy.windup = 0;
         enemy.bossAction = "idle";
@@ -5741,6 +6054,7 @@
       !game.adminMode
       && enemy.type === "boss"
       && enemy.bossKind === "echo"
+      && !enemy.echoMimic
       && !bullet.piercing
       && (enemy.echoReactiveParryCooldown || 0) <= 0
     ) {
@@ -5824,6 +6138,7 @@
   }
 
   function killEnemy(enemy, { silent = false, countKill = true } = {}) {
+    if (enemy.type === "boss" && countKill) finishMirrorFight(enemy);
     enemy.alive = false;
     const squadRoom = getCombatRoomForEnemy(enemy);
     if (squadRoom && enemy.type === squadRoom.formationAnchorType) {
@@ -5873,6 +6188,9 @@
       resetBossRealityEffects();
       const rank = enemy.stageIndex;
       const kind = enemy.bossKind || stages[rank].bossKind;
+      if (countKill && !silent) markDuelWin(enemy);
+      if (game.duelOpponent === enemy) game.duelOpponent = null;
+      if (game.bossReplay) return;
       for (const summon of enemies) {
         if (summon.alive && summon.summonedByBossId === enemy.id) killEnemy(summon, { silent: true, countKill: false });
       }
@@ -5932,7 +6250,8 @@
   }
 
   function damagePlayer(amount = 1, sourceX = player.x) {
-    if (game.adminMode || player.invincible > 0 || game.mode !== "playing") return;
+    if (game.adminMode || player.invincible > 0 || game.mode !== "playing" || player.hp <= 0) return;
+    if (game.duelOpponent?.alive && game.duelOpponent.homeZoneIndex === getZoneIndexAt(player.x + player.w / 2) && amount > 0) game.duelOpponent.duelHits++;
     resetCrossChain();
     resetSlashCombo();
     const difficulty = difficultySettings[game.difficulty];
@@ -5949,6 +6268,7 @@
     sound.hurt();
 
     if (player.hp <= 0) {
+      if (game.bossReplay) { showDuelResult(false); return; }
       setTimeout(() => {
         if (game.mode === "playing" && player.hp <= 0) respawn();
       }, 260);
@@ -5956,6 +6276,8 @@
   }
 
   function respawn() {
+    if (game.bossReplay) { showDuelResult(false); return; }
+    game.duelOpponent = null;
     resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
@@ -5973,6 +6295,7 @@
     const checkpoint = checkpoints[checkpointIndex];
     const checkpointPosition = setRespawnCheckpoint(checkpoint, checkpointIndex);
     const restartZoneIndex = getZoneIndexAt(checkpoint.x);
+    pruneMirrorHabits(restartZoneIndex);
     let restartedEnemyCount = 0;
 
     // 무명이 전투 중 만든 사역마는 스테이지 원본 배치가 아니다.
@@ -6057,6 +6380,8 @@
       enemy.echoAnalysis = null;
       enemy.echoDecisionSerial = 0;
       enemy.echoMimicJumpCooldown = 0;
+      enemy.echoMimic = null;
+      enemy.echoMimicSerial = 0;
       enemy.passivePanelCooldown = 4.8;
       enemy.combatStarted = false;
       enemy.summonCooldown = 6.5;
@@ -6935,6 +7260,178 @@
     spawnParticles(sourceX, floorY - 4, "#474f55", 26, 380, 0.58, 760);
     game.shake = Math.max(game.shake, 16);
     sound.tone(58, 0.26, "sawtooth", 0.065, 0.34);
+  }
+
+  // Only completed campaign encounters teach the mirror. Pending attempts are
+  // deliberately not saved, so retries, editor tests and practice cannot vote twice.
+  let mirrorHabits = { version: 1, records: {} };
+  let mirrorAttempt = null;
+  const MIRROR_HABIT_NAMES = Object.freeze({ slash: "연속 발도", shotgun: "산탄 사격", air: "점프 사격", rush: "접근 돌진" });
+  function resetMirrorHabits(saved = null) {
+    mirrorHabits = { version: 1, records: {} };
+    mirrorAttempt = null;
+    if (saved?.version !== 1 || !saved.records || typeof saved.records !== "object") return;
+    for (const kind of BOSS_ENCOUNTER_ORDER) {
+      if (kind === "echo") continue;
+      const entry = saved.records[kind];
+      if (!entry || !Number.isInteger(entry.zone) || entry.zone < 0 || entry.zone >= zones.length) continue;
+      const scores = {};
+      for (const key of Object.keys(MIRROR_HABIT_NAMES)) scores[key] = clamp(Number(entry.scores?.[key]) || 0, 0, 500);
+      const seconds = clamp(Number(entry.seconds) || 0, 0, 90);
+      if (seconds >= 2 && Object.values(scores).some((value) => value > 0)) mirrorHabits.records[kind] = { zone: entry.zone, seconds, scores };
+    }
+  }
+  function exportMirrorHabits(checkpointZone = zones.length) {
+    const records = {};
+    for (const [kind, entry] of Object.entries(mirrorHabits.records)) {
+      if (entry.zone < checkpointZone) records[kind] = { zone: entry.zone, seconds: entry.seconds, scores: { ...entry.scores } };
+    }
+    return { version: 1, records };
+  }
+  function pruneMirrorHabits(restartZone) {
+    mirrorAttempt = null;
+    if (game.bossReplay || game.adminMode || game.adminCadetMode) return;
+    for (const [kind, entry] of Object.entries(mirrorHabits.records)) if (entry.zone >= restartZone) delete mirrorHabits.records[kind];
+  }
+  function mirrorLearningAllowed() {
+    return game.mode === "playing" && player.hp > 0 && !game.adminMode && !game.adminCadetMode && !game.bossReplay && !game.cutscene;
+  }
+  function observeMirrorFight(enemy, dt) {
+    const kind = enemy.bossKind;
+    if (!mirrorLearningAllowed() || kind === "echo" || !BOSS_ENCOUNTER_ORDER.includes(kind)
+      || mirrorHabits.records[kind] || !enemy.alive || isBossIntroLocked(enemy)
+      || normalizeEnemyHomeZone(enemy) !== getCurrentPlayerZoneIndex()) return;
+    if (mirrorAttempt?.id !== enemy.id) mirrorAttempt = {
+      id: enemy.id, kind, zone: normalizeEnemyHomeZone(enemy), seconds: 0,
+      scores: { slash: 0, shotgun: 0, air: 0, rush: 0 }, lastAttackId: -1, lastShotId: -1,
+      grounded: player.grounded, vy: player.vy,
+    };
+    const sample = mirrorAttempt;
+    const elapsed = Math.min(Math.max(dt, 0), Math.max(0, 90 - sample.seconds));
+    if (!elapsed) return;
+    sample.seconds += elapsed;
+    if (player.attackTimer > 0 && player.burstTimer <= 0 && player.attackId !== sample.lastAttackId) {
+      sample.scores.slash += 1; sample.lastAttackId = player.attackId;
+    }
+    if (player.recoilTimer > 0 && player.shotId !== sample.lastShotId) {
+      sample.scores.shotgun += 1.35; sample.lastShotId = player.shotId;
+    }
+    if (!player.grounded) {
+      sample.scores.air += elapsed * 0.16;
+      if (player.vy < -180 && (sample.grounded || sample.vy >= -60)) sample.scores.air += 1.5;
+    }
+    const towardBoss = Math.sign(enemy.x + enemy.w / 2 - player.x - player.w / 2);
+    if (Math.abs(player.vx) > INPUT_TUNING.moveSpeed * 0.72 && Math.sign(player.vx) === towardBoss) sample.scores.rush += elapsed * 0.7;
+    sample.grounded = player.grounded; sample.vy = player.vy;
+  }
+  function finishMirrorFight(enemy) {
+    if (!mirrorLearningAllowed() || mirrorAttempt?.id !== enemy.id || mirrorHabits.records[enemy.bossKind]) return;
+    if (mirrorAttempt.seconds >= 2 && Object.values(mirrorAttempt.scores).some((value) => value > 0)) {
+      mirrorHabits.records[enemy.bossKind] = {
+        zone: mirrorAttempt.zone, seconds: mirrorAttempt.seconds, scores: { ...mirrorAttempt.scores },
+      };
+    }
+    mirrorAttempt = null;
+  }
+  function getMirrorHabitSummary() {
+    const scores = { slash: 0, shotgun: 0, air: 0, rush: 0 };
+    const records = Object.values(mirrorHabits.records);
+    for (const entry of records) for (const key of Object.keys(scores)) scores[key] += entry.scores[key] / Math.max(8, entry.seconds);
+    const ordered = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+    const strongest = scores[ordered[0]];
+    return { scores, count: records.length, known: records.length > 0 && strongest > 0,
+      styles: ordered.filter((key) => scores[key] > 0 && scores[key] >= strongest * 0.38).slice(0, 2) };
+  }
+  function beginLearnedEchoMimic(enemy, dx) {
+    const learned = getMirrorHabitSummary();
+    if (!learned.known || enemy.echoMimic) return false;
+    const serial = enemy.echoMimicSerial || 0;
+    const kind = learned.styles[serial % learned.styles.length];
+    enemy.echoMimicSerial = serial + 1;
+    enemy.echoMimic = { kind, phase: "tell", timer: 0.76, step: 0, next: 0, strike: 0, dash: 0,
+      targetX: player.x + player.w / 2, targetY: player.y + player.h / 2,
+      direction: Math.sign(dx || enemy.facing || 1), hit: false };
+    enemy.echoReadout = kind;
+    enemy.echoLearnedCount = learned.count;
+    enemy.followupPattern = null; enemy.followupTimer = 0; enemy.followupChainActive = false;
+    enemy.retreatTimer = 0; enemy.pendingRetreatTimer = 0; enemy.pendingRetreatDelay = 0;
+    enemy.echoChainDashRemaining = 0; enemy.echoDiveShotsRemaining = 0; enemy.echoChainDashWindow = 0;
+    enemy.bossAction = kind === "slash" ? "echoSlash" : kind === "rush" ? "echoDash" : "chargeShot";
+    enemy.bossShotPattern = kind === "shotgun" ? "echo-shotgun" : "echo-air";
+    enemy.windup = 0.76; enemy.dashDirection = enemy.echoMimic.direction; enemy.dashRange = kind === "rush" ? 290 : 150;
+    enemy.bossChargeDuration = 0.76;
+    enemy.cooldown = 3.2;
+    enemy.echoReactiveParryCooldown = Math.max(enemy.echoReactiveParryCooldown || 0, 3.2);
+    game.hint = `잔영-00 · 이전 전투의 ${MIRROR_HABIT_NAMES[kind]} 복제 · 방향을 바꿔 빈틈을 노려라`;
+    game.hintTimer = 2.6;
+    spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.45, "#63ffc6", 18, 200, 0.5, 0);
+    sound.tone(470, 0.22, "triangle", 0.035, 1.3);
+    return true;
+  }
+  function updateLearnedEchoMimic(enemy, dt) {
+    const mimic = enemy.echoMimic;
+    if (!mimic) return false;
+    const arena = getBossArenaBounds(enemy);
+    const previousX = enemy.x;
+    enemy.facing = mimic.direction;
+    if (mimic.phase === "tell") {
+      mimic.timer = Math.max(0, mimic.timer - dt); enemy.windup = mimic.timer;
+      enemy.vx = moveToward(enemy.vx, 0, 1600 * dt);
+      if (mimic.timer <= 0) { mimic.phase = "act"; mimic.next = 0; }
+    } else if (mimic.phase === "recover") {
+      mimic.timer = Math.max(0, mimic.timer - dt);
+      enemy.vx = moveToward(enemy.vx, 0, 1800 * dt);
+      enemy.windup = 0; enemy.bossAction = null;
+      enemy.echoReactiveParryCooldown = Math.max(enemy.echoReactiveParryCooldown || 0, mimic.timer + 0.2);
+      if (mimic.timer <= 0) { enemy.echoMimic = null; enemy.cooldown = Math.max(enemy.cooldown, 0.3); }
+    } else {
+      mimic.next -= dt; mimic.strike = Math.max(0, mimic.strike - dt); mimic.dash = Math.max(0, mimic.dash - dt);
+      const count = mimic.kind === "slash" ? 3 : 2;
+      if (mimic.next <= 0 && mimic.step < count) {
+        const target = { x: mimic.targetX, y: mimic.targetY };
+        mimic.hit = false;
+        if (mimic.kind === "slash") {
+          enemy.vx = mimic.direction * 270; mimic.strike = 0.14; mimic.next = 0.27;
+          spawnParticles(enemy.x + enemy.w / 2 + mimic.direction * 55, enemy.y + enemy.h * 0.45, "#d6b7ff", 12, 260, 0.23, 0);
+          sound.tone(320 + mimic.step * 95, 0.08, "triangle", 0.025, 0.6);
+        } else if (mimic.kind === "shotgun") {
+          [-0.16, -0.08, 0, 0.08, 0.16].forEach((spread) => fireBullet(enemy, 410, spread, "standard", target));
+          enemy.vx = -mimic.direction * 110; mimic.next = 0.38;
+        } else if (mimic.kind === "air") {
+          if (mimic.step === 0) { if (enemy.grounded) enemy.vy = -610; enemy.vx = mimic.direction * 190; }
+          else [-0.12, 0, 0.12].forEach((spread) => fireBullet(enemy, 395, spread, "standard", target));
+          mimic.next = 0.38;
+        } else {
+          enemy.vx = mimic.direction * 580; mimic.dash = 0.22; mimic.next = 0.48;
+          spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h * 0.5, "#63ffc6", 12, 250, 0.25, 0);
+        }
+        mimic.step++;
+      }
+      enemy.windup = Math.max(0.04, mimic.next);
+      if (mimic.kind === "rush" && mimic.dash > 0) enemy.vx = mimic.direction * 580;
+      else enemy.vx = moveToward(enemy.vx, 0, 850 * dt);
+      if (mimic.step >= count && mimic.next <= 0) {
+        mimic.phase = "recover"; mimic.timer = 1.25; mimic.strike = 0; mimic.dash = 0;
+        enemy.windup = 0; enemy.bossAction = null; enemy.bossShotPattern = null;
+        enemy.echoReactiveParryCooldown = 1.45;
+        game.hint = "잔영-00 · 복제 후 재정렬 · 패링 불가, 지금 반격!";
+        game.hintTimer = 1.25;
+      }
+    }
+    moveEnemyPhysics(enemy, dt);
+    enemy.x = clamp(enemy.x, arena.left, arena.right - enemy.w);
+    constrainBossToArenaVertical(enemy);
+    const centerX = player.x + player.w / 2;
+    const verticalContact = Math.abs(player.y + player.h / 2 - enemy.y - enemy.h / 2) < 82;
+    const slashContact = mimic.strike > 0 && Math.abs(centerX - enemy.x - enemy.w / 2) < 146
+      && Math.sign(centerX - enemy.x - enemy.w / 2 || mimic.direction) === mimic.direction;
+    const rushContact = mimic.dash > 0 && centerX >= Math.min(previousX, enemy.x) - 22
+      && centerX <= Math.max(previousX, enemy.x) + enemy.w + 22;
+    if (mimic.phase === "act" && !mimic.hit && verticalContact && (slashContact || rushContact)) {
+      damagePlayer(1, enemy.x + enemy.w / 2); mimic.hit = true;
+    }
+    // No passive contact damage or reactive parry during the announced recovery.
+    return true;
   }
 
   function isEchoParryActive(enemy) {
@@ -8085,6 +8582,15 @@
     }
 
     if (enemy.type === "drone") {
+      if (enemy.optionalTraversal) {
+        enemy.vx = 0;
+        enemy.x = enemy.originX;
+        enemy.y = enemy.baseY + Math.sin(enemy.anim * 2.2) * 6;
+        enemy.windup = 0;
+        enemy.cooldown = Math.max(enemy.cooldown, 0.8);
+        constrainEnemyToLockdown(enemy);
+        return;
+      }
       const previousDroneX = enemy.x;
       const previousDroneY = enemy.y;
       enemy.y = enemy.baseY + Math.sin(enemy.anim * 2.2) * 18;
@@ -8354,6 +8860,9 @@
     enemy.shieldMuzzleFlash = Math.max(0, (enemy.shieldMuzzleFlash || 0) - dt);
     enemy.crisisPatternCooldown = Math.max(0, (enemy.crisisPatternCooldown || 0) - dt);
 
+    observeMirrorFight(enemy, dt);
+    if (bossKind === "echo" && updateLearnedEchoMimic(enemy, dt)) return;
+
     if ((enemy.pendingRetreatDelay || 0) > 0) {
       enemy.pendingRetreatDelay = Math.max(0, enemy.pendingRetreatDelay - dt);
     }
@@ -8583,7 +9092,7 @@
       enemy.echoAnalysis = analysis;
       enemy.echoReadout = Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0];
       enemy.echoSkillMultiplier = ECHO_SKILL_MULTIPLIER;
-      if (!player.grounded && player.vy < -150 && enemy.grounded && enemy.echoMimicJumpCooldown <= 0) {
+      if (!getMirrorHabitSummary().known && !player.grounded && player.vy < -150 && enemy.grounded && enemy.echoMimicJumpCooldown <= 0) {
         enemy.vy = -690;
         enemy.vx = Math.sign(dx || 1) * 310;
         enemy.echoMimicJumpCooldown = 0.68;
@@ -8949,6 +9458,7 @@
       } else {
         const serial = enemy.echoDecisionSerial || 0;
         enemy.echoDecisionSerial = serial + 1;
+        if (serial % 3 === 0 && beginLearnedEchoMimic(enemy, dx)) return;
         const analysis = enemy.echoAnalysis || { slash: 0, shotgun: 0, air: 0, rush: 0 };
         const adaptiveChoice = enemy.adaptivePhase && serial % 3 === 0
           ? Object.entries(analysis).sort((a, b) => b[1] - a[1])[0][0]
@@ -9188,7 +9698,7 @@
       }
       if (!room.triggered || room.cleared) continue;
 
-      const remaining = enemies.filter((enemy) => enemy.alive && enemy.originX > room.left && enemy.originX < room.right).length;
+      const remaining = enemies.filter((enemy) => enemy.alive && !enemy.optionalTraversal && enemy.originX > room.left && enemy.originX < room.right).length;
       room.remaining = remaining;
       if (remaining === 0) {
         room.cleared = true;
@@ -9597,7 +10107,7 @@
     const narrationStageIndex = getStageIndexAt(player.x);
     const narrationZoneIndex = getZoneIndexAt(player.x);
     const narrationIdle = !game.story && game.storyQueue.length === 0;
-    const storyContextEnabled = game.tutorialCompleted && !game.tutorialActive && !game.adminMode && narrationIdle;
+    const storyContextEnabled = !game.bossReplay && game.tutorialCompleted && !game.tutorialActive && !game.adminMode && narrationIdle;
     let startedCutscene = false;
     if (storyContextEnabled) {
       for (const event of CUTSCENE_EVENTS) {
@@ -10904,7 +11414,8 @@
       const thrustWindup = enemy.bossAction === "revenantThrustWindup";
       const thrusting = enemy.bossAction === "revenantThrustBarrage" || (enemy.thrustFlashTimer || 0) > 0;
       const thrustPulse = clamp((enemy.thrustFlashTimer || 0) / 0.16, 0, 1);
-      const swordAngle = thrusting ? -0.04 + motion * 0.012 : thrustWindup ? 2.65 : swordPattern ? -1.35 + chargeProgress * 1.65 : -0.42 + motion * 0.025;
+      const swordAngle = Number.isFinite(enemy.signatureSwordAngle) ? enemy.signatureSwordAngle
+        : thrusting ? -0.04 + motion * 0.012 : thrustWindup ? 2.65 : swordPattern ? -1.35 + chargeProgress * 1.65 : -0.42 + motion * 0.025;
       limb(14, 30, 28, 43, 9, flash ? "#fff" : "#39444c");
       ctx.save(); ctx.translate(29 + thrustPulse * 24, 43); ctx.rotate(swordAngle);
       ctx.fillStyle = "#171d22"; ctx.fillRect(-4, -5, 21, 10);
@@ -13290,6 +13801,155 @@
     ctx.restore();
   }
 
+  function drawBossSignatureActor(enemy) {
+    const shot = getBossSignatureShot();
+    if (!shot || !enemy?.alive) return;
+    const kind = shot.bossSignature;
+    const t = clamp(game.cutsceneShotElapsed / shot.duration, 0, 1);
+    const ease = value => { const x = clamp(value, 0, 1); return x * x * (3 - 2 * x); };
+    const energy = Math.sin(Math.PI * t);
+    const facing = player.x < enemy.x ? -1 : 1;
+    const floating = ["warden", "oracle", "weaver", "censor"].includes(kind);
+    const offsetX = kind === "breaker" ? -facing * 28 * (1 - ease(t / 0.55)) : 0;
+    const offsetY = floating ? -energy * 9 : 0;
+    const actor = { ...enemy, x: enemy.x + offsetX, y: enemy.y + offsetY,
+      vx: 0, vy: 0, hurt: 0, burnTimer: 0, windup: 0, facing,
+      bossAction: "idle", bossShotPattern: null, anim: enemy.anim + energy * 0.2 };
+    if (kind === "revenant") actor.signatureSwordAngle = t < 0.34
+      ? lerp(-1.35, 0.48, ease(t / 0.34)) : lerp(0.48, -0.42, ease((t - 0.6) / 0.3));
+    const accent = BOSS_DEFINITIONS[kind]?.accent || palette.cyan;
+    const baseX = actor.x + actor.w / 2;
+    const baseY = actor.y + (kind === "breaker" ? actor.h - 83 : 0);
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#050a11";
+    ctx.beginPath(); ctx.ellipse(enemy.x + enemy.w / 2, enemy.y + enemy.h + 3, enemy.w * 0.52, 5, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    if (kind === "echo") {
+      // Render exactly one real Echo silhouette, never the old dialogue double.
+      // A separate pose object avoids borrowing or mutating the player's state.
+      const cutting = t > 0.22 && t < 0.72;
+      const pose = { ...player, vx: 0, vy: 0, grounded: true, wallLeft: false, wallRight: false,
+        runCycle: 0, squash: 0, recoilTimer: 0, attackDuration: 0.4,
+        attackTimer: cutting ? 0.4 * (1 - (t - 0.22) / 0.5) : 0,
+        attackDir: { x: facing, y: 0 }, chargedAttack: false };
+      window.MoonlitOperative.createRenderer(ctx, pose, game)(actor.x, actor.y, facing, 1, false, "echo");
+    } else {
+      ctx.save(); ctx.translate(baseX, baseY); ctx.scale(facing, 1);
+      drawDetailedBossCharacter(actor, getBossArchetype(kind), accent, 0.45 + energy * 0.25, 0, false, kind);
+      ctx.restore();
+    }
+
+    // Deterministic, bounded, render-only effects: no particles, collisions,
+    // projectiles, fullscreen flashes, or camera shake are created here.
+    ctx.save(); ctx.translate(baseX, baseY); ctx.scale(facing, 1);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = energy * 0.75;
+    ctx.strokeStyle = accent; ctx.fillStyle = accent; ctx.lineWidth = 1.5;
+    const ring = (x, y, radius, phase = 0) => {
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, radius), phase, phase + Math.PI * 1.45); ctx.stroke();
+    };
+    if (kind === "breaker") {
+      // Treads advance into position, then the five muzzle locks light in order.
+      for (let lock = 0; lock < 5; lock++) {
+        const light = ease((t - 0.36 - lock * 0.035) / 0.12) * (1 - ease((t - 0.8) / 0.2));
+        ctx.globalAlpha = light * 0.85;
+        ctx.fillRect(76, 40 + lock * 4, 6 + light * 4, 2);
+      }
+      ctx.globalAlpha = energy * (1 - ease(t / 0.65)) * 0.4;
+      for (let grit = 0; grit < 7; grit++) {
+        const drift = ((t * 2.5 + grit / 7) % 1);
+        ctx.fillRect(-40 - drift * 34, 80 - Math.sin(drift * Math.PI) * (4 + grit % 3), 3, 1.5);
+      }
+    } else if (kind === "revenant") {
+      // The actual sword sweeps to the floor; a brief scraping shower follows
+      // its tip rather than a detached sword icon or an offensive projectile.
+      const scrape = clamp((t - 0.34) / 0.24, 0, 1);
+      ctx.globalAlpha = t >= 0.34 && t <= 0.62 ? (1 - scrape) * 0.9 : 0;
+      ctx.strokeStyle = "#ffdfa0";
+      for (let spark = 0; spark < 9; spark++) {
+        const distance = scrape * (23 + spark * 5);
+        const x = 112 - distance;
+        const y = 85 - Math.sin(scrape * Math.PI) * (5 + spark * 2);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 5 - spark % 3, y + 3); ctx.stroke();
+      }
+      ctx.globalAlpha = energy * 0.36;
+      ctx.strokeStyle = accent; ring(-35, 43, 29, -Math.PI * t);
+    } else if (kind === "warden") {
+      for (let panel = 0; panel < 3; panel++) {
+        const x = -42 - energy * (30 + panel * 12), y = 8 + panel * 20 - energy * 12;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(-0.25 - energy * 0.3);
+        ctx.fillStyle = "#83304c"; ctx.strokeStyle = "#e899ae";
+        drawCharacterPlate([-4,-12,5,-10,6,10,-5,13], "#83304c", "#e899ae", 1);
+        ctx.fillStyle = "#ffd3ba"; ctx.fillRect(-2, 10, 3, 5 + energy * 7); ctx.restore();
+      }
+    } else if (kind === "hunter") {
+      const scanY = 6 + ease(t) * 68;
+      ctx.strokeStyle = "#b9fdff";
+      ctx.beginPath(); ctx.moveTo(22, scanY); ctx.lineTo(52, scanY); ctx.stroke();
+      ring(39, 42, 28 + energy * 4, -2 + t * 3);
+    } else if (kind === "furnace") {
+      for (let vent = -1; vent <= 1; vent++) {
+        ctx.fillStyle = vent === 0 ? "#ffd4a0" : "#ff7255";
+        const height = energy * (29 - Math.abs(vent) * 8);
+        ctx.beginPath(); ctx.moveTo(vent * 15 - 3, -5); ctx.lineTo(vent * 15, -5 - height); ctx.lineTo(vent * 15 + 3, -5); ctx.fill();
+      }
+      ring(0, 42, 18 + energy * 4, t * 4);
+    } else if (kind === "oracle") {
+      for (let shard = 0; shard < 6; shard++) {
+        const angle = shard * TAU / 6 + ease(t) * Math.PI;
+        ctx.save(); ctx.translate(Math.cos(angle) * 53, 37 + Math.sin(angle) * 40);
+        ctx.rotate(angle); ctx.strokeStyle = shard % 2 ? "#e1d5ff" : "#ff8bb4";
+        ctx.strokeRect(-3, -8, 6, 16); ctx.restore();
+      }
+    } else if (kind === "weaver") {
+      for (let sigil = -1; sigil <= 1; sigil++) {
+        const x = sigil * 51, y = -16 - (1 - Math.abs(sigil)) * 21;
+        ring(x, y, 11 + energy * 5, sigil + t * 3);
+        for (let ray = 0; ray < 6; ray++) {
+          const angle = ray * TAU / 6;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(angle) * 9, y + Math.sin(angle) * 9); ctx.stroke();
+        }
+      }
+    } else if (kind === "censor") {
+      ring(0, 39, 49 - ease(t) * 12, -t * 3);
+      for (let seal = 0; seal < 5; seal++) {
+        const angle = seal * TAU / 5 - t;
+        ctx.save(); ctx.translate(Math.cos(angle) * (57 - energy * 12), 39 + Math.sin(angle) * (57 - energy * 12));
+        ctx.rotate(angle); ctx.fillRect(-2, -6, 4, 12); ctx.restore();
+      }
+    } else if (kind === "proxy") {
+      const lift = energy * 17;
+      ctx.save(); ctx.translate(39, 24 - lift); ctx.rotate(-energy * 0.65);
+      ctx.strokeStyle = "#e2fff0"; ctx.fillStyle = "#78ffa1";
+      ctx.beginPath(); ctx.moveTo(-3, -9); ctx.lineTo(3, -9); ctx.lineTo(3, -2); ctx.lineTo(8, 9); ctx.lineTo(-8, 9); ctx.lineTo(-3, -2); ctx.closePath(); ctx.stroke();
+      ctx.fillRect(-4, 3, 8, 4); ctx.restore();
+      for (let bubble = 0; bubble < 4; bubble++) ring(35 + bubble * 5, 15 - lift - bubble * 6, 1.5 + bubble * 0.5, t * 3);
+    } else if (kind === "echo") {
+      ctx.strokeStyle = "#bb91ff";
+      ring(0, actor.h * 0.48, 30, -1.8 + t * 2.6);
+      ctx.fillStyle = "#80ffd0"; ctx.fillRect(-12, actor.h * 0.45 - 2, 24 * ease(t / 0.55), 2);
+    }
+    ctx.restore();
+  }
+
+  function drawBossSignatureFrame() {
+    const shot = getBossSignatureShot();
+    if (!shot) return;
+    const t = clamp(game.cutsceneShotElapsed / shot.duration, 0, 1);
+    const frame = Math.min(1, t * 8, (1 - t) * 8);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = `rgba(2,6,13,${frame * 0.6})`;
+    ctx.fillRect(0, 0, W, 23); ctx.fillRect(0, H - 27, W, 27);
+    // A tiny nonverbal time line also works on touch screens; normal tap/SPACE
+    // scene advance remains available, with no new button or text overlay.
+    ctx.globalAlpha = frame * 0.6;
+    ctx.fillStyle = BOSS_DEFINITIONS[shot.bossSignature]?.accent || palette.cyan;
+    ctx.fillRect(W / 2 - 28, H - 15, 56 * (1 - t), 2);
+    ctx.restore();
+  }
+
   function drawWorld() {
     const effectiveShake = game.cutscene || game.story || game.adminMode
       ? 0
@@ -13331,12 +13991,17 @@
     for (const stage of stages) {
       if (stage.gateX > left - 200 && stage.gateX < right) drawGateAt(stage.gateX, game.adminMode || game.defeatedBosses.has(stage.bossKind));
     }
-    const hideCombatEchoDuringDuelCutscene = game.cutscene?.visual === "duel";
+    const signatureEnemy = getBossSignatureEnemy();
+    const hideCombatEchoDuringDuelCutscene = game.cutscene?.visual === "duel" && !getBossSignatureShot();
     for (const enemy of enemies) {
       if (enemy.x + enemy.w <= left || enemy.x >= right) continue;
       // The duel cutscene renders one dedicated ECHO-00 actor in screen space.
       // Hide the dormant combat boss only for that scene so the two actors do not overlap.
       if (hideCombatEchoDuringDuelCutscene && enemy.type === "boss" && enemy.bossKind === "echo") continue;
+      if (enemy === signatureEnemy) {
+        drawBossSignatureActor(enemy);
+        continue;
+      }
       drawEnemy(enemy);
     }
     for (const bullet of bullets) drawBullet(bullet);
@@ -13659,6 +14324,10 @@
 
   function drawCutscene() {
     if (!game.cutscene) return;
+    if (getBossSignatureShot()) {
+      drawBossSignatureFrame();
+      return;
+    }
     const scene = game.cutscene;
     const shot = scene.shots[game.cutsceneShotIndex];
     if (!shot) return;
@@ -13951,6 +14620,9 @@
 
     const progress = clamp(player.x / (WORLD_W - 160), 0, 1);
     const zoneColor = zones[game.zone].color;
+    const spar = game.bossReplay, opponent = game.duelOpponent;
+    const battleTime = spar && opponent ? Math.max(0,game.runTime - opponent.duelBeganAt) : 0;
+    const sparBest = spar && currentDuelBest(spar.kind);
     ctx.save();
     ctx.translate(W - 238, hudTop);
     ctx.fillStyle = "rgba(4, 11, 18, 0.84)";
@@ -13961,20 +14633,20 @@
     ctx.fillRect(0, 0, 3, 27);
     ctx.font = "900 12px 'Malgun Gothic', sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`${game.stage + 1}막`, 15, 12);
+    ctx.fillText(spar ? "재대결" : `${game.stage + 1}막`, 15, 12);
     ctx.textAlign = "right";
     ctx.fillStyle = "#afc1ca";
     ctx.font = "11px monospace";
-    ctx.fillText(`${Math.floor(progress * 100)}% · ${formatTime(game.runTime)}`, 201, 12);
+    ctx.fillText(spar ? duelTime(battleTime) + " · 피격 " + (opponent?.duelHits || 0) : `${Math.floor(progress * 100)}% · ${formatTime(game.runTime)}`, 201, 12);
     ctx.fillStyle = "#263a46";
     ctx.fillRect(15, 35, 186, 4);
     ctx.fillStyle = zoneColor;
-    ctx.fillRect(15, 35, 186 * progress, 4);
+    ctx.fillRect(15, 35, 186 * (spar ? (sparBest ? clamp(battleTime / sparBest.time, 0, 1) : 0) : progress), 4);
     const hudZoneRemaining = getZoneRemaining(game.zone);
     ctx.textAlign = "left";
     ctx.fillStyle = game.adminMode ? palette.amber : hudZoneRemaining > 0 ? "#ffa4ae" : palette.cyan;
     ctx.font = "800 11px 'Malgun Gothic', sans-serif";
-    ctx.fillText(game.adminMode ? "관리자 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 남은 적 ${hudZoneRemaining}` : "구역 확보 · 통로 개방", 15, 51, 186);
+    ctx.fillText(spar ? (sparBest ? duelStats(sparBest) : "첫 기록에 도전 중") : game.adminMode ? "관리자 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 남은 적 ${hudZoneRemaining}` : "구역 확보 · 통로 개방", 15, 51, 186);
     ctx.restore();
 
 
@@ -14797,6 +15469,11 @@
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   window.addEventListener("keydown", (event) => {
+    if (game.mode === "duelMenu" || game.mode === "duelResult") {
+      if (event.code === "Escape") { event.preventDefault(); leaveDuels(!duelSelectionResult); }
+      return; // Let native buttons handle Tab, Enter and Space.
+    }
+    if (event.target?.matches?.("button") && ["Enter","Space"].includes(event.code) && ["menu","paused","won"].includes(game.mode)) return;
     if (event.target?.matches?.("input, textarea, select")) {
       if (event.code === "Escape") {
         event.preventDefault();
@@ -14916,10 +15593,12 @@
     enterMobileFullscreen();
     resetGame(false);
   });
-  continueButton?.addEventListener("click", () => {
-    enterMobileFullscreen();
-    resetGame(true);
-  });
+  continueButton?.addEventListener("click", () => showDuelMenu());
+  duelEl("campaign").addEventListener("click", () => { if (!readCampaignSave()) return; hideDuelPanel(); enterMobileFullscreen(); resetGame(true); });
+  duelEl("retry").addEventListener("click", () => { if (game.bossReplay) beginBossReplay(game.bossReplay.kind); });
+  duelEl("back").addEventListener("click", () => leaveDuels(!duelSelectionResult));
+  duelEl("leave").addEventListener("click", () => leaveDuels(false));
+  duelEl("end-menu").addEventListener("click", () => leaveDuels(false));
   fullscreenButton?.addEventListener("click", toggleMobileFullscreen);
   resumeButton?.addEventListener("click", () => {
     sound.wake();
@@ -14980,6 +15659,8 @@
   }
   prepareTutorialBriefing();
   buildLevel();
+  readDuelBook();
+  importLegacyDuelWins(readCampaignSave());
   levelReady = true;
   document.documentElement.dataset.gameBootstrap = "ready";
   if (!window.__MOONLIT_ECHO_DISABLE_LIVE_SYNC__) startLiveWorldSync();

@@ -391,6 +391,9 @@ if (diagnostics.tutorialSteps !== 7 || !diagnostics.tutorialSkills.includes("def
   throw new Error("projectile deflection tutorial drill is missing");
 }
 document.getElementById("continue-button").click();
+if (document.getElementById("duel-menu").hidden || document.getElementById("duel-campaign").hidden)
+  throw new Error("continue did not offer the existing campaign in the operation archive");
+document.getElementById("duel-campaign").click();
 for (let frame = 0; frame < 12; frame += 1) {
   const callback = animationCallback;
   animationCallback = null;

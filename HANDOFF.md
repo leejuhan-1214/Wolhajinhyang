@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.8.8**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.9.0**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.9.0: 보스 재대결 시 `game.bossReplay`가 설정되며 본편 저장과 습관 학습을 막습니다. 격파 도감과 난이도별 기록은 같은 브라우저의 독립된 `moonlit-echo-duel-records-v1`에 보관됩니다.
 
 3.8.8: 일시적인 `crossChain`은 J 자세나 점수용 `player.combo`와 별개입니다. 발도 피해 확정 시 휘두르기당 한 번만 누적되며 준비된 상태에서 발사한 산탄이 토큰을 공유합니다. 기존 방어 처리 뒤 보너스·적중 연출을 적용합니다. `node qa-cross-combo.cjs`에서 검증합니다.
 
