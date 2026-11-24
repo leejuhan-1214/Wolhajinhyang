@@ -48,7 +48,7 @@ function recordingContext() {
     for(const boundary of clips)world=clipPolygon(world,boundary);
     if(world.length<3)return null;
     if(clips.length)local=world.map(localPoint);
-    const shape = {color:style.fillStyle,kind,local,world,authoredLocal,origin:point(0,0),matrix:matrix.slice()};
+    const shape = {color:style.fillStyle,alpha:style.globalAlpha??1,kind,local,world,authoredLocal,origin:point(0,0),matrix:matrix.slice()};
     filledShapes.push(shape);
     if (style.fillStyle !== '#06101a' && style.fillStyle !== '#0a141e') return shape;
     const left=Math.min(...local.map(p=>p[0])),right=Math.max(...local.map(p=>p[0]));
@@ -126,7 +126,7 @@ module.exports = { recordingContext, renderer };
 if (require.main === module) {
 const player = { w: 28, h: 52, vx: 440, vy: 0, grounded: true, runCycle: 0,
   squash: 0, attackTimer: 0, attackDuration: 0.23, attackDir: { x: 1, y: 0 },
-  recoilTimer: 0, shotAimX: 1, shotAimY: 0, buffTimer: 0, shotgunCharge: 0,
+  recoilTimer: 0, crossShotTimer: 0, shotAimX: 1, shotAimY: 0, buffTimer: 0, shotgunCharge: 0,
   slashComboActive: false, slashComboIndex: 0, slashComboLinked: false,
   slashComboCarry: 0, slashComboRecovery: 0, slashComboRecoveryDuration: 0.16,
   slashComboEntry: null, motionPose: null };
@@ -470,6 +470,42 @@ const echoDuringJ = draw({ vx: 0, attackTimer: 0.1, slashComboActive: true, slas
 assert(tipDistance(echo, echoDuringJ) < 0.001, 'player J combo state must never leak into Echo');
 assert.equal(draw({ slashComboActive: true, slashComboRecovery: 0 }).bladeTips.length, 0,
   'completed recovery must sheath the katana');
+
+// A confirmed slash/shotgun finisher owns the visible hands during recoil,
+// without changing ordinary attacks or inheriting into the Echo opponent.
+const visibleGeometry=record=>JSON.stringify(record.filledShapes);
+for(const facing of[-1,1]) {
+  for(const pose of[{vx:0},{vx:440*facing,runCycle:.37*tau},{vx:0,attackTimer:.1},
+    {vx:0,recoilTimer:.24,shotAimX:facing,shotAimY:0}]) {
+    assert.equal(visibleGeometry(draw({...pose,crossShotTimer:0},facing)),
+      visibleGeometry(draw({...pose,crossShotTimer:undefined},facing)),
+      'an absent or zero finisher timer must preserve the ordinary character geometry');
+  }
+  for(const elapsed of[0,.06,.16,.29]) {
+    const shot={vx:0,recoilTimer:.3-elapsed,crossShotTimer:.3-elapsed,
+      attackTimer:.1,slashComboActive:true,slashComboIndex:2,shotAimX:facing,shotAimY:0};
+    const marked=draw(shot,facing);
+    assert.equal(marked.blades.length,0,'a shotgun finisher must sheath overlapping slash steel');
+    assert.equal(marked.hands.length,2,'the finisher must retain both visible hands on its weapon pose');
+    assert.equal(marked.guards.length,1,'the shotgun finisher must preserve the single seated katana');
+    for(const foot of marked.feet) {
+      assert(Math.abs(foot.heel[1]-player.h)<.1&&Math.abs(foot.toe[1]-player.h)<.1,
+        'a stationary finisher brace must preserve both planted soles');
+    }
+    const echoMarked=draw(shot,facing,'echo');
+    const echoOrdinary=draw({...shot,crossShotTimer:0},facing,'echo');
+    assert.equal(visibleGeometry(echoMarked),visibleGeometry(echoOrdinary),
+      'the player finisher timer must never affect Echo poses or muzzle effects');
+    if(elapsed===0) {
+      const diagonals=marked.filledShapes.filter(shape=>['#a8fff4','#ffe2a6'].includes(shape.color));
+      assert.equal(diagonals.length,2,'a confirmed finisher must show two distinct crossing muzzle streaks');
+      assert(diagonals.every(shape=>shape.alpha>0&&boundsOf(shape.local).left>=57&&boundsOf(shape.local).right<=98),
+        'finisher streaks must be actual visible geometry at the muzzle, not a full-body aura');
+      assert.notEqual(visibleGeometry(marked),visibleGeometry(draw({...shot,crossShotTimer:0},facing)),
+        'a confirmed finisher must visibly differ from ordinary recoil');
+    }
+  }
+}
 
 // Presentation updates are explicit simulation work; drawing remains immutable.
 for (const name of ['updateMotion', 'resetMotion', 'captureLocomotion']) {

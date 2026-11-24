@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.8.7**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.8.8**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.8.8: 일시적인 `crossChain`은 J 자세나 점수용 `player.combo`와 별개입니다. 발도 피해 확정 시 휘두르기당 한 번만 누적되며 준비된 상태에서 발사한 산탄이 토큰을 공유합니다. 기존 방어 처리 뒤 보너스·적중 연출을 적용합니다. `node qa-cross-combo.cjs`에서 검증합니다.
 
 3.8.7: 대기·달리기 다리 자세와 앞발·뒷발 접지를 조정했습니다. `operative-renderer.js`에서 같은 손잡이를 허리와 손에 이어 그리며 칼집과 칼날 길이를 맞춥니다. 공격 잔상도 손목 좌표계에서 렌더링합니다.
 

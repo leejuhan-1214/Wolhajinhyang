@@ -124,9 +124,15 @@
       const { speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob } = locomotion;
       const squashX = 1 + locomotion.squash * 0.18;
       const squashY = 1 - locomotion.squash * 0.24;
-      const attacking = player.attackTimer > 0;
-      const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
       const shooting = player.recoilTimer > 0;
+      // A confirmed cross-shot owns the visible hands until its recoil settles.
+      // This is presentation only: the already-running slash keeps its hit timer.
+      const crossShot = !echoStyle && shooting && (player.crossShotTimer || 0) > 0;
+      const crossProgress = crossShot ? 1 - clamp(player.crossShotTimer / 0.3, 0, 1) : 1;
+      const crossBrace = crossShot ? 1 - poseEase(clamp((crossProgress - 0.12) / 0.88, 0, 1)) : 0;
+      const crossImpulse = crossShot ? (1 - crossProgress) ** 2 : 0;
+      const attacking = player.attackTimer > 0 && !crossShot;
+      const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
       const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
       const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
       const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
@@ -136,7 +142,7 @@
       const locomotionRearAngle = locomotion.rear;
       const locomotionElbow = locomotion.elbow;
       const locomotionRearElbow = locomotion.rearElbow;
-      const comboEnabled = !echoStyle && player.slashComboActive === true;
+      const comboEnabled = !echoStyle && !crossShot && player.slashComboActive === true;
       const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
       const recoveryRatio = comboEnabled && !attacking && !shooting
         ? clamp((player.slashComboRecovery || 0) / (player.slashComboRecoveryDuration || 0.16), 0, 1) : 0;
@@ -194,16 +200,16 @@
           : attackProgress < 0.64
             ? lerp(-0.07, 0.13, poseEase((attackProgress - 0.22) / 0.42))
             : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
-        : -0.08 * shotKick + shotSettle * 0.025;
+        : -0.08 * shotKick + shotSettle * 0.025 + crossBrace * groundBlend * 0.035;
       const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
       const sprintDrive = locomotion.sprintDrive;
       const travelSign = player.vx * facing < 0 ? -1 : 1;
       const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
-      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - sprintDrive * 1.5 * travelSign;
+      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - crossImpulse * 1.2 - sprintDrive * 1.5 * travelSign;
       // Lift the entire pelvis and rib cage together. The previous 20 px hip
       // clearance forced 29 px legs into a permanent right-angle squat.
       const postureLift = lerp(6, 3.5, poseEase(gaitBlend) * groundBlend);
-      const bodyOffsetY = -postureLift - bob + shotKick * 1.2 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
+      const bodyOffsetY = -postureLift - bob + shotKick * 1.2 + crossBrace * groundBlend * 1.7 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
       const bodyScaleX = squashX * (1 + attackImpact * 0.035);
       const bodyScaleY = squashY * (1 - attackImpact * 0.025);
       const bodyLean = baseLean + actionLean;
@@ -380,7 +386,7 @@
         const strideX = contact ? lerp(strideReach, -strideReach, phase / RUN_SUPPORT_FRACTION)
           : lerp(-strideReach, strideReach, poseEase(recovery));
         const footLift = contact ? 0 : Math.sin(recovery * Math.PI) ** 1.1 * (5 + speedRatio * 4);
-        const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
+        const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38 + crossBrace * 0.3) * (1 - runBlend * 0.6);
         let footX = lerp(layer === "back" ? -5 : 6, hipX + strideX * travelSign, gaitBlend);
         footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
         let footY = -4 - footLift * gaitBlend;
@@ -479,13 +485,13 @@
       const shoulderTurn = comboVisible ? comboPose.twist : 0;
       ctx.translate(shoulderTurn, 0);
       const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
-      const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06;
+      const weaponAngle = lerp(0.72, shotAimAngle, shotPoseBlend) - shotSettle * 0.06 - crossImpulse * 0.045;
       const gunScale = 0.62;
       const pumpTravel = Math.sin(clamp((shotProgress - 0.22) / 0.66, 0, 1) * Math.PI) * 6;
       const restHandX = 10 + Math.sin(locomotionArmAngle) * 9 + Math.sin(locomotionArmAngle - locomotionElbow) * 9;
       const restHandY = -38 + Math.cos(locomotionArmAngle) * 9 + Math.cos(locomotionArmAngle - locomotionElbow) * 9;
-      const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (5 - shotKick * 2), shotPoseBlend);
-      const shotHandY = lerp(restHandY, -27 + Math.sin(weaponAngle) * 7, shotPoseBlend);
+      const shotHandX = lerp(restHandX, 10 + Math.cos(weaponAngle) * (5 - shotKick * 2) - crossBrace * 0.8, shotPoseBlend);
+      const shotHandY = lerp(restHandY, -27 + Math.sin(weaponAngle) * 7 - crossBrace * 1.8, shotPoseBlend);
       const rearArm = comboVisible ? comboPose.rear : shooting
         ? Math.PI / 2 + shotAimAngle * 0.72 - 0.24
         : attacking
@@ -750,10 +756,10 @@
         }
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = clamp(0.72 - shotProgress * 0.8, 0, 0.72);
+        ctx.globalAlpha = clamp(0.72 - shotProgress * 0.8, 0, 0.72) * (crossShot ? 0.55 : 1);
         ctx.strokeStyle = "rgba(215, 248, 246, 0.7)";
         ctx.lineWidth = 3;
-        for (let smoke = 0; smoke < 3; smoke += 1) {
+        for (let smoke = 0; smoke < (crossShot ? 2 : 3); smoke += 1) {
           ctx.beginPath();
           ctx.arc(64 + shotProgress * (18 + smoke * 7), (smoke - 1) * 5, 4 + shotProgress * 8, 0, TAU);
           ctx.stroke();
@@ -761,10 +767,21 @@
         ctx.restore();
 
         ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = alpha * clamp(1 - shotProgress / 0.18, 0, 1);
-        ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : palette.white;
-        ctx.beginPath();
-        ctx.moveTo(58, -10); ctx.lineTo(91, 0); ctx.lineTo(58, 10); ctx.closePath(); ctx.fill();
+        if (crossShot) {
+          // Two crisp crossing streaks leave the actual twin muzzle, then fade
+          // before the brace relaxes. No camera shake or oversized aura is added.
+          ctx.globalAlpha = alpha * (1 - poseEase(clamp(crossProgress / 0.42, 0, 1)));
+          for (const diagonal of [-1, 1]) {
+            drawCharacterPlate([58,-5*diagonal,97,11*diagonal,
+              92,11.5*diagonal,58,-2.8*diagonal], diagonal < 0 ? "#a8fff4" : "#ffe2a6", null);
+          }
+          drawCharacterPlate([58,-2,70,0,58,2], "#f4fffd", null);
+        } else {
+          ctx.globalAlpha = alpha * clamp(1 - shotProgress / 0.18, 0, 1);
+          ctx.fillStyle = player.shotgunCharge >= 3 ? bodyAmber : palette.white;
+          ctx.beginPath();
+          ctx.moveTo(58, -10); ctx.lineTo(91, 0); ctx.lineTo(58, 10); ctx.closePath(); ctx.fill();
+        }
         ctx.restore();
       }
       ctx.restore();

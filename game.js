@@ -15,6 +15,8 @@
   const resumeButton = document.getElementById("resume-button");
   const restartButton = document.getElementById("restart-button");
   const resultText = document.getElementById("result-text");
+  const chainHud = document.getElementById("chain-hud");
+  const chainLabel = document.getElementById("chain-label");
   const volumeMasterInput = document.getElementById("volume-master");
   const volumeMusicInput = document.getElementById("volume-music");
   const volumeSfxInput = document.getElementById("volume-sfx");
@@ -96,7 +98,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.8.7";
+  const GAME_VERSION = "3.8.8";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -150,6 +152,8 @@
   const EMPOWERED_SLASH_BONUS = 0.5;
   const CHARGED_SLASH_BONUS = 0.5;
   const SHOTGUN_DAMAGE = 1.15;
+  const CROSS_CHAIN_WINDOW = 1.1;
+  const CROSS_FINISH_BONUS = 1;
   const SHOTGUN_PELLET_LIFE = 0.3;
   const OVERCHARGED_SHOTGUN_DAMAGE = 2.2;
   const OVERCHARGED_SHOTGUN_PELLET_LIFE = 0.4;
@@ -718,6 +722,7 @@
     shells: 2,
     maxShells: 2,
     shotgunCharge: 0,
+    crossShotTimer: 0,
     shotId: 0,
     recoilTimer: 0,
     shotAimX: 1,
@@ -750,6 +755,50 @@
       player.hp = Math.min(player.hp, player.maxHp);
       player.shells = Math.min(player.shells, player.maxShells);
     }
+  }
+
+  // Independent of the J pose cycle: any real blade hit counts, at most once
+  // per swing. Never serialize a partially earned finisher into a checkpoint.
+  const crossChain = { hits: 0, time: 0, lastAttackId: -1, resultTime: 0, epoch: 0, impact: null };
+  function resetCrossChain() {
+    Object.assign(crossChain, { hits: 0, time: 0, resultTime: 0, lastAttackId: -1, impact: null });
+    crossChain.epoch++;
+    player.crossShotTimer = 0;
+  }
+  function crossCombatEnabled() {
+    return game.mode === "playing" && player.hp > 0 && !game.adminMode && !game.cutscene;
+  }
+  function crossFinisherReady() {
+    return crossChain.hits === 3 && crossChain.time > 0 && crossCombatEnabled();
+  }
+  function confirmCrossSlash() {
+    if (!crossCombatEnabled() || player.attackId === crossChain.lastAttackId) return;
+    crossChain.lastAttackId = player.attackId;
+    if (crossChain.hits === 3) return; // Don't refresh an already open window.
+    crossChain.hits++;
+    crossChain.time = CROSS_CHAIN_WINDOW;
+    crossChain.resultTime = 0;
+  }
+  function advanceCrossChain(dt) {
+    crossChain.time = Math.max(0, crossChain.time - dt);
+    if (!crossChain.time) crossChain.hits = 0;
+    crossChain.resultTime = Math.max(0, crossChain.resultTime - dt);
+    player.crossShotTimer = Math.max(0, player.crossShotTimer - dt);
+    if (crossChain.impact && (crossChain.impact.life -= dt) <= 0) crossChain.impact = null;
+  }
+  let previousChainHud = "";
+  function syncCrossHud() {
+    if (!chainHud || !chainLabel) return;
+    const visible = crossCombatEnabled() && !game.tutorialOpen && !Number.isInteger(characterArchivePage);
+    const state = !visible ? "" : crossChain.resultTime > 0 ? "finish" : crossChain.hits === 3 ? "ready" : crossChain.hits ? "building" : "";
+    const count = state === "finish" ? 3 : crossChain.hits;
+    const key = state + ":" + count;
+    if (previousChainHud === key) return;
+    previousChainHud = key;
+    chainHud.hidden = !state;
+    chainHud.dataset.state = state;
+    chainHud.dataset.count = String(count);
+    chainLabel.textContent = state === "finish" ? "월하일섬" : state === "ready" ? "샷건 연계!" : state ? `발도 ${count}/3` : "";
   }
 
   function resetSlashCombo() {
@@ -4026,6 +4075,7 @@
     const requestedAt = performance.now();
     if (requestedAt - lastResetAt < 700) return;
     lastResetAt = requestedAt;
+    resetCrossChain();
     resetSlashCombo();
     // Presentation history must not blend across a new world or a restored save.
     window.MoonlitOperative?.resetMotion?.(player);
@@ -4794,6 +4844,7 @@
     if (!adminModeUnlocked || game.mode !== "playing" || (!game.adminMode && !game.adminCadetMode)) return false;
     const enteringCadetMode = game.adminMode;
     if (enteringCadetMode && !difficultySettings[difficultyKey]) return toggleAdminDifficultyPanel();
+    resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
     const preservedPosition = {
@@ -4876,6 +4927,7 @@
     if (!Number.isInteger(checkpointIndex) || checkpointIndex < 0 || checkpointIndex >= zones.length) return false;
     const checkpoint = checkpoints[checkpointIndex];
     if (!checkpoint) return false;
+    resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
     const stageIndex = zones[checkpointIndex].stageIndex;
@@ -5073,6 +5125,7 @@
 
   function startCutscene(event) {
     if (!event || game.cutsceneSeen.has(event.id)) return;
+    resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
     player.queuedAction = null;
@@ -5244,6 +5297,11 @@
     }
     player.queuedAction = null;
     markTutorialSignal("shotgun");
+    const crossFinish = crossFinisherReady()
+      ? { epoch: crossChain.epoch, announced: false, targets: new Set() } : null;
+    crossChain.hits = 0;
+    crossChain.time = 0;
+    player.crossShotTimer = crossFinish ? 0.3 : 0;
     if (player.attackTimer <= 0) resetSlashCombo();
     else player.slashComboWindow = Math.min(player.slashComboWindow, player.attackTimer + player.slashComboRecoveryDuration);
     const aim = aimOverride || getPointerAim();
@@ -5295,7 +5353,8 @@
         enemy: false,
         kind: "shotgun",
         gravity: 0,
-        color: overcharged ? palette.amber : palette.cyan,
+        color: crossFinish ? "#fff1c9" : overcharged ? palette.amber : palette.cyan,
+        crossFinish,
         damage: overcharged ? OVERCHARGED_SHOTGUN_DAMAGE : SHOTGUN_DAMAGE,
         shotId: player.shotId,
         piercing: overcharged,
@@ -5328,6 +5387,9 @@
     }
     player.queuedAction = null;
     markTutorialSignal("slash");
+    // A new cut takes visual priority over a previous finisher's recoil;
+    // the already-fired pellets carry their own independent damage token.
+    player.crossShotTimer = 0;
     if (comboAttack) {
       const linked = player.slashComboActive && player.slashComboWindow > 0;
       player.slashComboCarry = linked ? clamp(player.slashComboRecovery / player.slashComboRecoveryDuration, 0, 1) : 0;
@@ -5626,6 +5688,7 @@
       spawnParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, formation.accent, 8, 210, 0.3, 160);
     }
     enemy.hp -= dealtDamage;
+    if (source === "slash" && dealtDamage > 0) confirmCrossSlash();
     if (source === "slash" && game.stage >= ACT_FOUR_INDEX && enemy.hp > 0) igniteEnemyWithFlameSword(enemy);
     enemy.hurt = 0.18;
     applyEnemyHitStun(enemy, enemy.type === "boss" ? 0.13 : 0.24);
@@ -5658,6 +5721,7 @@
 
   function damageEnemyWithShotgun(enemy, bullet) {
     if (!enemy.alive) return false;
+    if (bullet.crossFinish?.targets.has(enemy)) return true;
     if (enemy.echoParriedShotId === bullet.shotId) {
       bullet.cancelled = true;
       return true;
@@ -5726,10 +5790,23 @@
       sound.tone(220, 0.1, "sine", 0.03, 1.6);
       return true;
     }
-    let shotgunDamage = bullet.damage + (player.rewardPower || 0) * 0.18;
+    // Resolve only after the existing parry, reflection, shield and barrier
+    // paths. Sibling pellets share a token; a second volley may overlap these.
+    const finish = bullet.kind === "shotgun" && !bullet.enemy && !bullet.cancelled &&
+      bullet.crossFinish?.epoch === crossChain.epoch && crossCombatEnabled() ? bullet.crossFinish : null;
+    if (finish) finish.targets.add(enemy);
+    let shotgunDamage = bullet.damage + (finish ? CROSS_FINISH_BONUS : 0) + (player.rewardPower || 0) * 0.18;
     const formation = getEnemyFormation(enemy);
     if (formation?.id === "bulwark" && enemy.type !== "shield") shotgunDamage *= 0.75;
     enemy.hp -= shotgunDamage;
+    if (finish && !finish.announced && shotgunDamage > 0) {
+      finish.announced = true;
+      crossChain.resultTime = 0.72;
+      const x = enemy.x + enemy.w / 2, y = enemy.y + enemy.h * 0.45;
+      crossChain.impact = { x, y, facing: Math.sign(bullet.vx) || 1, life: 0.22 };
+      spawnParticles(x, y, "#ffe5a1", 10, 240, 0.25, 140);
+      sound.tone(760, 0.09, "sine", 0.04, 1.42);
+    }
     enemy.hurt = 0.22;
     applyEnemyHitStun(enemy, enemy.type === "boss" ? 0.11 : 0.2);
     registerBossRetreatHit(enemy);
@@ -5856,6 +5933,7 @@
 
   function damagePlayer(amount = 1, sourceX = player.x) {
     if (game.adminMode || player.invincible > 0 || game.mode !== "playing") return;
+    resetCrossChain();
     resetSlashCombo();
     const difficulty = difficultySettings[game.difficulty];
     const appliedDamage = difficulty.damage >= 99 ? player.hp : amount * difficulty.damage;
@@ -5878,6 +5956,7 @@
   }
 
   function respawn() {
+    resetCrossChain();
     resetSlashCombo();
     window.MoonlitOperative?.resetMotion?.(player);
     player.queuedAction = null;
@@ -7504,6 +7583,7 @@
   }
 
   function updatePlayer(dt) {
+    advanceCrossChain(dt);
     const wasGrounded = player.grounded;
     const movementStartX = player.x;
     const previousRunCycle = player.runCycle;
@@ -13261,6 +13341,18 @@
     }
     for (const bullet of bullets) drawBullet(bullet);
     drawPlayer();
+    if (crossChain.impact && !game.cutscene) {
+      const {x,y,facing,life} = crossChain.impact;
+      const t = 1 - life / 0.22;
+      ctx.save();
+      ctx.translate(x, y); ctx.scale(facing, 1);
+      ctx.globalAlpha = 1 - t; ctx.fillStyle = "#fff0bd";
+      const span = 18 + 16 * t;
+      ctx.beginPath(); ctx.moveTo(-span, span*0.55);
+      ctx.lineTo(1,-2.5); ctx.lineTo(span,-span*0.55);
+      ctx.lineTo(-1,2.5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
     for (const particle of particles) drawParticle(particle);
     ctx.restore();
   }
@@ -14171,7 +14263,7 @@
       wallLeft: player.wallLeft, wallRight: player.wallRight,
       runCycle: player.runCycle, squash: player.squash,
       motionPose: player.motionPose, slashComboEntry: player.slashComboEntry,
-      slashComboActive: player.slashComboActive,
+      slashComboActive: player.slashComboActive, crossShotTimer: player.crossShotTimer,
       attackTimer: player.attackTimer, attackDuration: player.attackDuration,
       attackDir: player.attackDir, chargedAttack: player.chargedAttack,
       recoilTimer: player.recoilTimer, shotAimX: player.shotAimX, shotAimY: player.shotAimY,
@@ -14185,7 +14277,7 @@
       runCycle: 0.8,
       motionPose: null,
       slashComboEntry: null,
-      slashComboActive: false,
+      slashComboActive: false, crossShotTimer: 0,
       squash: pose === "shotgun" ? 0.12 : 0,
       attackTimer: pose === "slash" ? 0.11 : 0,
       attackDuration: 0.23,
@@ -14241,6 +14333,7 @@
   }
 
   function render() {
+    syncCrossHud();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
     if (Number.isInteger(characterArchivePage)) {
@@ -14393,6 +14486,7 @@
     ) return;
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
+    if (crossFinisherReady()) { startShotgun(aimAtWorldPoint(worldX, worldY)); return; }
     const slashTarget = findTouchSlashTarget(worldX, worldY);
     if (slashTarget) {
       startAttack(slashTarget.aim);

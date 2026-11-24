@@ -61,6 +61,63 @@ canvas {
   touch-action: none;
 }
 
+/* Hit-confirmed slash chain: a small readout, not another combat message box.
+   JS sets hidden, data-state, data-count and #chain-label only. */
+.chain-hud {
+  --chain-color: #a2fff0;
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 26px;
+  max-width: 42%;
+  transform: translateX(-50%);
+  padding: 3px 5px;
+  color: var(--chain-color);
+  font: 800 clamp(10px, 1.5vmin, 13px)/1.3 "Malgun Gothic", sans-serif;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #07141b, 0 0 5px #07141b, 0 0 10px #07141b;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 120ms ease;
+}
+.chain-hud[hidden] { display: none !important; }
+.chain-hud[data-state="ready"] { --chain-color: #ffdb8e; }
+.chain-hud[data-state="finish"] { --chain-color: #fff4d7; letter-spacing: .1em; }
+.chain-pips { display: flex; align-items: center; gap: 3px; }
+.chain-pips i {
+  width: 5px;
+  height: 13px;
+  border: 1px solid rgba(211, 240, 241, .5);
+  transform: skew(-18deg);
+  background: rgba(31, 62, 70, .65);
+  box-shadow: 0 1px 3px rgba(3, 12, 18, .9);
+}
+.chain-hud[data-count="1"] .chain-pips i:first-child,
+.chain-hud[data-count="2"] .chain-pips i:nth-child(-n+2),
+.chain-hud[data-count="3"] .chain-pips i,
+.chain-hud[data-state="finish"] .chain-pips i {
+  border-color: var(--chain-color);
+  background: var(--chain-color);
+}
+.chain-hud[data-state="ready"] .chain-pips i,
+.chain-hud[data-state="finish"] .chain-pips i { box-shadow: 0 0 7px rgba(255, 205, 112, .4); }
+.touch-capable .chain-hud { bottom: calc(14px + env(safe-area-inset-bottom)); }
+#chain-hud:not([hidden]) ~ .touch-controls .touch-attack-hint { visibility: hidden; }
+@media (orientation: portrait) and (max-width: 700px), (pointer: coarse) and (orientation: portrait) {
+  .touch-capable .chain-hud {
+    top: calc(50% - 28.125vw - 38px);
+    bottom: auto;
+    max-width: 80%;
+  }
+}
+
 .overlay {
   position: absolute;
   inset: 0;
@@ -132,6 +189,13 @@ canvas {
 .touch-capable .pause-controls { display: none; }
 .pause-controls kbd { font-size: 9px; }
 
+#pause-screen .pause-combo-guide,
+#pause-screen .pause-touch-controls { margin: 10px 0 0; font-size: 11px; line-height: 1.6; }
+.pause-combo-guide strong { margin-left: 6px; color: #ffdb8e; font-weight: 800; }
+.pause-touch-controls { display: none; }
+.touch-capable .pause-combo-guide { display: none; }
+.touch-capable .pause-touch-controls { display: block; }
+
 .tutorial-mobile-note {
   display: none;
   margin-top: 12px;
@@ -141,6 +205,7 @@ canvas {
 }
 
 .touch-capable .tutorial-mobile-note { display: block; }
+.tutorial-chain-note strong { color: #ffdb8e; margin-right: 5px; }
 
 .volume-panel {
   display: grid;
@@ -1597,6 +1662,7 @@ button:disabled {
   }
 
   button,
+  .chain-hud,
   .touch-controls button {
     transition: none;
   }
