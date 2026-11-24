@@ -347,6 +347,66 @@ for (let frame = 0; frame < 120; frame++) {
 
 const durations = [0.22, 0.24, 0.28];
 const tipDistance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const transformPoint=(matrix,[x,y])=>[matrix[0]*x+matrix[2]*y+matrix[4],matrix[1]*x+matrix[3]*y+matrix[5]];
+function distanceOutsidePolygon(point,polygon) {
+  let inside=false,nearest=Infinity;
+  for(let index=0;index<polygon.length;index++) {
+    const a=polygon[index],b=polygon[(index+1)%polygon.length];
+    if((a[1]>point[1])!==(b[1]>point[1])&&point[0]<(b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0])inside=!inside;
+    const dx=b[0]-a[0],dy=b[1]-a[1];
+    const fraction=Math.max(0,Math.min(1,((point[0]-a[0])*dx+(point[1]-a[1])*dy)/(dx*dx+dy*dy)));
+    nearest=Math.min(nearest,Math.hypot(point[0]-a[0]-fraction*dx,point[1]-a[1]-fraction*dy));
+  }
+  return inside?0:nearest;
+}
+
+// Check the visible steel and its actual lacquer sheath in the same seated
+// frame. A command that is fully clipped away must never count as a drawn blade.
+for(const facing of[-1,1]) {
+  const drawn=draw({vx:0,attackTimer:.1},facing);
+  assert.equal(drawn.blades.length,1,'a fully drawn katana must expose exactly one steel blade');
+  assert.equal(drawn.guards.length,1,'a fully drawn katana must have one physical guard');
+  const blade=drawn.blades[0],guard=drawn.guards[0];
+  const sheath=drawn.filledShapes.find(shape=>shape.color==='#132631');
+  const length=boundsOf(blade.local).right-guard.x,sheathLength=boundsOf(sheath.local).right;
+  assert(length>=33&&length<=37,'the cutting edge must stay proportionate to the character');
+  assert(sheathLength>=length+.8&&sheathLength<=length+3,'the sheath must cover the steel with a short protective tip');
+  for(const point of blade.local) {
+    const seated=[point[0]-guard.x,point[1]-guard.y];
+    // The real scabbard outline is .75px wide; allow its visible half-stroke.
+    assert(distanceOutsidePolygon(seated,sheath.local)<=.4,'the sheathed steel must fit inside the lacquer and its visible rim');
+  }
+  assert(tipDistance(guard.grip,drawn.hands[1])<.001,'the drawn handle must remain centered in the actual front glove');
+  for(const speed of[0,90,440])for(const phase of[0,.125,.375,.625]) {
+    const seated=draw({vx:speed*facing,runCycle:phase*tau},facing);
+    const body=seated.filledShapes.find(shape=>shape.color==='#111d2c');
+    const scabbard=seated.filledShapes.find(shape=>shape.color==='#132631');
+    assert.equal(seated.blades.length,0,'locomotion must keep all steel inside the sheath');
+    assert.equal(seated.guards.length,1,'the seated handle must not duplicate during locomotion');
+    assert(tipDistance(scabbard.origin,transformPoint(body.matrix,[0,-23]))<.001,'the sheath mouth must stay fixed at the hip');
+    assert(tipDistance(seated.guards[0].center,scabbard.origin)<.001,'a seated guard must close the sheath mouth');
+    assert(Math.max(...scabbard.world.map(point=>point[1]))<player.h-7,'the compact sheath must stay clear of the floor');
+  }
+  let partialDraws=0;
+  for(let frame=0;frame<=100;frame++) {
+    const progress=frame/100;
+    for(const state of[
+      {attackTimer:.23*(1-progress)},
+      {slashComboActive:true,slashComboRecovery:.16*(1-progress)},
+    ]) {
+      const pose=draw({vx:0,...state},facing);
+      assert.equal(pose.guards.length,1,'drawing and recovery must retain a single guard');
+      assert.equal(pose.filledShapes.filter(shape=>shape.color==='#30252b').length,1,'drawing and recovery must retain a single handle');
+      assert.equal(pose.hands.length,2,'the sword draw must retain both actual gloves');
+      assert(pose.blades.length<=1,'steel must never be duplicated by clipping or recovery');
+      if(pose.blades.length) {
+        assert(tipDistance(pose.guards[0].grip,pose.hands[1])<.001,'exposed steel must be held by the front wrist throughout draw and recovery');
+        if(boundsOf(pose.blades[0].local).right<39.9)partialDraws++;
+      }
+    }
+  }
+  assert(partialDraws>8,'the blade must visibly extract and return, not pop between hidden and full length');
+}
 let comboCases = 0;
 for (const index of [0, 1, 2]) for (const facing of [-1, 1]) {
   for (const grounded of [false, true]) for (const aimY of [-1, 0, 1]) {
@@ -456,5 +516,5 @@ draw({ motionPose: motionOverride, grounded: false, vy: -700 });
 const echoWithMotion = draw({ vx: 0, attackTimer: 0.1, motionPose: motionOverride,
   slashComboEntry: { arm: -1.5, elbow: -1, rear: 1.2, rearElbow: -1 } }, 1, 'echo').bladeTips[0];
 assert(tipDistance(echo, echoWithMotion) < 0.001, 'player transition state must not affect Echo rendering');
-console.log(`Operative renderer: ${cases + 122} base poses + ${comboCases} combo poses/handoffs, grounded stance and immutable gameplay passed.`);
+console.log(`Operative renderer: ${cases + 122} base poses + ${comboCases} combo poses/handoffs, sword/sheath fit, ${smallestIdleKnee.toFixed(1)} degree idle knees, grounded stance and immutable gameplay passed.`);
 }
