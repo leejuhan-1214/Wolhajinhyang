@@ -96,7 +96,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.8.6";
+  const GAME_VERSION = "3.8.7";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -10112,7 +10112,6 @@
 
   function drawPlayer() {
     const empoweredSlash = player.buffTimer > 0;
-    const flameSword = game.stage >= ACT_FOUR_INDEX;
     if (Math.abs(player.vx) > 250) {
       ctx.save();
       ctx.strokeStyle = empoweredSlash ? "rgba(255, 205, 112, 0.28)" : "rgba(101, 245, 234, 0.16)";
@@ -10132,82 +10131,9 @@
     }
 
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
-    if (!blink) drawPlayerBody(player.x, player.y, player.facing);
-
-    if (isAttackActive() && player.slashComboActive) {
-      const progress = 1 - player.attackTimer / player.attackDuration;
-      const index = player.slashComboIndex;
-      const starts = [0.18, 0.15, 0.23];
-      const sweep = clamp((progress - starts[index]) / (0.8 - starts[index]), 0, 1);
-      const reverse = index === 1;
-      const tipAngle = reverse ? lerp(0.8, -1.25, sweep) : lerp(index === 2 ? -1.55 : -0.95, 0.65, sweep);
-      const tailAngle = tipAngle + (reverse ? 0.64 : -0.64);
-      ctx.save();
-      ctx.translate(player.x + player.w / 2, player.y + player.h * 0.46);
-      ctx.rotate(Math.atan2(player.attackDir.y, player.attackDir.x));
-      ctx.scale(1, player.facing);
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = Math.sin(sweep * Math.PI) * 0.8;
-      for (const [radius, width, color] of [[76, 8, flameSword ? "#ff813a" : "#65f5ea"], [72, 2, "#ffffff"]]) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = width;
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, tailAngle, tipAngle, reverse);
-        ctx.stroke();
-      }
-      ctx.restore();
-    } else if (isAttackActive()) {
-      const centerX = player.x + player.w / 2;
-      const centerY = player.y + player.h / 2;
-      const angle = Math.atan2(player.attackDir.y, player.attackDir.x);
-      const progress = 1 - player.attackTimer / player.attackDuration;
-      const slashScale = player.chargedAttack ? 1.18 : player.slashChain === 3 ? 1.1 : 1;
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(angle);
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = Math.sin(clamp(progress, 0, 1) * Math.PI);
-      const impactPulse = Math.sin(clamp((progress - 0.12) / 0.74, 0, 1) * Math.PI);
-      ctx.strokeStyle = flameSword ? "rgba(255,132,48,0.72)" : "rgba(101,245,234,0.62)";
-      ctx.lineWidth = 2;
-      for (let streak = 0; streak < 4; streak += 1) {
-        const offset = (streak - 1.5) * 11;
-        ctx.beginPath();
-        ctx.moveTo(-48 - streak * 13, offset - impactPulse * 5);
-        ctx.lineTo(14 + impactPulse * (38 + streak * 7), offset * 0.42);
-        ctx.stroke();
-      }
-      ctx.fillStyle = flameSword ? "rgba(255,196,78,0.48)" : "rgba(255,255,255,0.38)";
-      ctx.beginPath();
-      ctx.moveTo(18 + impactPulse * 28, 0);
-      ctx.lineTo(1, -11 * impactPulse);
-      ctx.lineTo(-10, 0);
-      ctx.lineTo(1, 11 * impactPulse);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, 0, (84 + progress * 17) * slashScale, -2.35 + progress * 0.42, 0.92 + progress * 0.5);
-      ctx.stroke();
-      ctx.strokeStyle = flameSword ? "rgba(255, 112, 48, 0.5)" : empoweredSlash ? "rgba(255, 205, 112, 0.42)" : "rgba(101, 245, 234, 0.34)";
-      ctx.lineWidth = player.chargedAttack ? 16 : 10;
-      ctx.beginPath();
-      ctx.arc(0, 0, (90 + progress * 18) * slashScale, -2.31 + progress * 0.4, 0.88 + progress * 0.48);
-      ctx.stroke();
-      ctx.strokeStyle = flameSword ? "rgba(255, 196, 78, 0.78)" : empoweredSlash ? "rgba(255, 205, 112, 0.72)" : "rgba(255, 73, 108, 0.5)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(0, 0, 112 * slashScale, -2.12 + progress * 0.32, 0.63 + progress * 0.4);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(255,255,255,0.75)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(21, -70 + progress * 18);
-      ctx.quadraticCurveTo(76, -34, 112, 20 + progress * 14);
-      ctx.stroke();
-      ctx.restore();
-    }
+    // The blade draws its own short trail in the wrist frame; effects must
+    // not orbit the player's center independently of the actual weapon.
+    if (!blink) drawPlayerBody(player.x, player.y, player.facing, 1, false, "player", isAttackActive());
 
     if (player.burstTimer > 0) {
       const progress = 1 - player.burstTimer / 0.38;

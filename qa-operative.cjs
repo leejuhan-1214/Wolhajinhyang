@@ -9,10 +9,10 @@ const gameplayCadence = Number(fs.readFileSync(`${__dirname}/game.js`, 'utf8').m
 assert.equal(gameplayCadence, renderer.strideRadiansPerPixel, 'gameplay travel and rendered support stride must agree');
 const tau = Math.PI * 2;
 function recordingContext() {
-  let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {};
+  let matrix = [1, 0, 0, 1, 0, 0], stack = [], style = {}, clips = [];
   const feet = [], bladeTips = [], bladeHands = [], headCenters = [], waistCenters = [], hands = [];
-  const handSizes = [], filledShapes = [], joints = [];
-  let path = [], pathArcs = [];
+  const handSizes = [], filledShapes = [], joints = [], blades = [], guards = [];
+  let path = [], pathArcs = [], pathEllipses = [], pathCurves = [];
   const multiply = ([a, b, c, d, e, f]) => {
     const m = matrix;
     matrix = [m[0] * a + m[2] * b, m[1] * a + m[3] * b,
@@ -20,11 +20,37 @@ function recordingContext() {
       m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
   };
   const point = (x, y) => [matrix[0] * x + matrix[2] * y + matrix[4], matrix[1] * x + matrix[3] * y + matrix[5]];
+  const localPoint = ([x,y]) => {
+    const [a,b,c,d,e,f]=matrix,det=a*d-b*c;
+    return[(d*(x-e)-c*(y-f))/det,(a*(y-f)-b*(x-e))/det];
+  };
+  const clipPolygon = (points,boundary) => {
+    const winding=Math.sign(boundary.reduce((sum,a,index)=>{
+      const b=boundary[(index+1)%boundary.length];return sum+a[0]*b[1]-a[1]*b[0];
+    },0))||1;
+    for(let edge=0;edge<boundary.length&&points.length;edge++) {
+      const a=boundary[edge],b=boundary[(edge+1)%boundary.length];
+      const distance=p=>winding*((b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0]));
+      const output=[];
+      for(let index=0;index<points.length;index++) {
+        const from=points[index],to=points[(index+1)%points.length],df=distance(from),dt=distance(to);
+        const insideFrom=df>=-1e-9,insideTo=dt>=-1e-9;
+        if(insideFrom)output.push(from);
+        if(insideFrom!==insideTo){const t=df/(df-dt);output.push([from[0]+(to[0]-from[0])*t,from[1]+(to[1]-from[1])*t]);}
+      }
+      points=output;
+    }
+    return points;
+  };
   const recordShape = (local, kind = 'polygon') => {
-    const world = local.map(([x,y])=>point(x,y));
-    const shape = {color:style.fillStyle,kind,local,world};
+    const authoredLocal=local;
+    let world = local.map(([x,y])=>point(x,y));
+    for(const boundary of clips)world=clipPolygon(world,boundary);
+    if(world.length<3)return null;
+    if(clips.length)local=world.map(localPoint);
+    const shape = {color:style.fillStyle,kind,local,world,authoredLocal,origin:point(0,0),matrix:matrix.slice()};
     filledShapes.push(shape);
-    if (style.fillStyle !== '#06101a' && style.fillStyle !== '#0a141e') return;
+    if (style.fillStyle !== '#06101a' && style.fillStyle !== '#0a141e') return shape;
     const left=Math.min(...local.map(p=>p[0])),right=Math.max(...local.map(p=>p[0]));
     const top=Math.min(...local.map(p=>p[1])),bottom=Math.max(...local.map(p=>p[1]));
     if (style.fillStyle === '#06101a') {
@@ -38,28 +64,54 @@ function recordingContext() {
       hands.push(kind==='polygon'?point(0,0):point((left+right)/2,(top+bottom)/2));
       handSizes.push({width:right-left,height:bottom-top,shape});
     }
+    return shape;
   };
   const operations = {
-    beginPath() { path=[];pathArcs=[]; },
+    beginPath() { path=[];pathArcs=[];pathEllipses=[];pathCurves=[]; },
     moveTo(x,y) { path.push({local:[x,y],world:point(x,y)}); },
     lineTo(x,y) { path.push({local:[x,y],world:point(x,y)}); },
     arc(x,y,radius) { pathArcs.push({center:point(x,y),radius}); },
-    save() { stack.push([matrix.slice(), { ...style }]); },
-    restore() { assert(stack.length, 'canvas restore underflow'); [matrix, style] = stack.pop(); },
+    save() { stack.push([matrix.slice(), { ...style }, clips.slice()]); },
+    restore() { assert(stack.length, 'canvas restore underflow'); [matrix, style, clips] = stack.pop(); },
     translate(x, y) { multiply([1, 0, 0, 1, x, y]); },
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
     rotate(angle) { const c = Math.cos(angle), s = Math.sin(angle); multiply([c, s, -s, c, 0, 0]); },
     fillRect(x, y, w, h) {
       recordShape([[x,y],[x+w,y],[x+w,y+h],[x,y+h]],'rect');
     },
+    rect(x,y,w,h) { for(const local of[[x,y],[x+w,y],[x+w,y+h],[x,y+h]])path.push({local,world:point(...local)}); },
+    clip() { assert(path.length>=3,'clip must use an actual visible boundary');clips.push(path.map(p=>p.world)); },
     fill() {
       if (style.fillStyle === '#172833') headCenters.push(point(0, -50));
       if (style.fillStyle === '#111d2c') waistCenters.push(point(0, -16.5));
-      if(path.length>=3)recordShape(path.map(p=>p.local));
+      if(path.length>=3) {
+        const shape=recordShape(path.map(p=>p.local),pathCurves.length?'curve':'polygon');
+        const steelColors=['#c7d3d1','#b8f2ed','#e8dcff','#ffad42','#ffaa55','#ffcd70','#ead6ff'];
+        const authoredXs=path.map(p=>p.local[0]);
+        if(shape&&steelColors.includes(shape.color)&&Math.min(...authoredXs)>=4&&Math.max(...authoredXs)-Math.min(...authoredXs)>20) {
+          const xs=shape.local.map(p=>p[0]);
+          const tipIndex=xs.indexOf(Math.max(...xs));
+          blades.push(shape);bladeTips.push(shape.world[tipIndex]);bladeHands.push(shape.origin);
+        }
+      }
+      // Only a genuinely filled guard counts; a path command alone is not visible geometry.
+      for(const ellipse of pathEllipses) {
+        if(Math.abs(ellipse.x-4.5)<1e-8&&Math.abs(ellipse.y)<1e-8&&Math.abs(ellipse.rx-1.25)<1e-8&&Math.abs(ellipse.ry-3.05)<1e-8) {
+          guards.push({...ellipse,color:style.fillStyle,center:point(ellipse.x,ellipse.y),grip:point(0,0),matrix:matrix.slice()});
+        }
+      }
       if(style.fillStyle==='#07101a')joints.push(...pathArcs.filter(arc=>arc.radius>=1&&arc.radius<=5));
     },
-    quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
-    ellipse(x, y, rx, ry) { if (x === 12 && y === 0 && rx === 3 && ry === 7) bladeHands.push(point(0, 0)); },
+    quadraticCurveTo(cx, cy, x, y) {
+      const start=path.at(-1)?.local||[0,0];
+      pathCurves.push({start,control:[cx,cy],end:[x,y]});
+      for(let step=1;step<=16;step++) {
+        const t=step/16,u=1-t;
+        const local=[u*u*start[0]+2*u*t*cx+t*t*x,u*u*start[1]+2*u*t*cy+t*t*y];
+        path.push({local,world:point(...local)});
+      }
+    },
+    ellipse(x, y, rx, ry) { pathEllipses.push({x,y,rx,ry}); },
   };
   const context = new Proxy({}, {
     get(_, name) { return style[name] ?? ((...args) => {
@@ -68,7 +120,7 @@ function recordingContext() {
     }); },
     set(_, name, value) { style[name] = value; return true; },
   });
-  return { context, feet, bladeTips, bladeHands, headCenters, waistCenters, hands, handSizes, filledShapes, joints, balanced: () => stack.length === 0 };
+  return { context, feet, bladeTips, bladeHands, blades, guards, headCenters, waistCenters, hands, handSizes, filledShapes, joints, balanced: () => stack.length === 0 };
 }
 module.exports = { recordingContext, renderer };
 if (require.main === module) {
@@ -146,7 +198,7 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
   // Compare the shared tail section, not the final pixel of an asymmetric hem.
   const hems=horizontalSpans(coat.local,coatBounds.top+(coatBounds.bottom-coatBounds.top)*0.8);
   assert(hems.length>=2&&hems[1][0]-hems[0][1]>=3,'split coat tails must keep a visible central leg gap');
-  for(const [color,maxWidth]of[['#152737',3.8],['#3a5363',4.6],['#203443',3.8],['#526c7a',4.5]]) {
+  for(const [color,maxWidth]of[['#152737',4.0],['#3a5363',4.8],['#203443',3.8],['#526c7a',4.5]]) {
     const segments=model.filledShapes.filter(shape=>shape.color===color);
     assert.equal(segments.length,2,'every limb must draw separate upper and lower segments');
     const widths=segments.map(segment=>{const b=boundsOf(segment.local);return b.right-b.left;});
@@ -209,8 +261,8 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
     const scabbard=model.filledShapes.find(shape=>shape.color==='#132631');
     assert(scabbard?.kind==='polygon'&&scabbard.local.length>=8,'the sheathed blade must retain its sculpted lacquer scabbard');
     const scabbardBounds=boundsOf(scabbard.local);
-    assert((scabbardBounds.right-scabbardBounds.left)/(scabbardBounds.bottom-scabbardBounds.top)>8,
-      'the scabbard must remain long enough to read as a katana sheath');
+    assert(scabbardBounds.right-scabbardBounds.left>=36&&scabbardBounds.right-scabbardBounds.left<=40,
+      'the sheath must cover the shorter blade without retaining the oversized old silhouette');
   }
 }
 
@@ -238,7 +290,7 @@ assert(worstSlip.amount < 1.1,
 const contactsPerSecond = 440 * renderer.strideRadiansPerPixel / Math.PI;
 assert(contactsPerSecond > 5 && contactsPerSecond < 7, 'full-speed cadence must not spin the legs like a wheel');
 const supportTravel = tau * renderer.runSupportFraction / renderer.strideRadiansPerPixel;
-assert(supportTravel > 30 && supportTravel < 35, 'support distance must fit the mechanical leg reach');
+assert(supportTravel > 24 && supportTravel < 27, 'the shorter support distance must fit the upright mechanical leg reach');
 const flight = draw({ runCycle: 0.38 * tau });
 assert(flight.feet.every(foot => foot.heel[1] < player.h - 1), 'a running stride must contain a small flight phase');
 
@@ -270,10 +322,27 @@ for (const facing of [-1, 1]) {
     'both arms must counter-swing with bent elbows');
 }
 
-// Both soles remain supported during idle breathing, without a crouching bounce.
+// Measure the actual leg frames and boot origins, not an angle constant that
+// could leave the visibly rendered knee bent in a permanent crouch.
+let smallestIdleKnee = 180;
 for (let frame = 0; frame < 120; frame++) {
   game.time = frame / 30;
-  for (const foot of draw({ vx: 0 }).feet) assert(Math.abs(foot.heel[1] - player.h) < 0.1);
+  for(const facing of[-1,1]) {
+    const idle=draw({vx:0},facing);
+    for(const foot of idle.feet)assert(Math.abs(foot.heel[1]-player.h)<0.1);
+    for(const [index,color]of['#152737','#3a5363'].entries()) {
+      const parts=idle.filledShapes.filter(shape=>shape.color===color);
+      const hip=parts[0].origin,knee=parts[1].origin,ankle=idle.feet[index].ankle;
+      const upper=[hip[0]-knee[0],hip[1]-knee[1]],lower=[ankle[0]-knee[0],ankle[1]-knee[1]];
+      const cosine=(upper[0]*lower[0]+upper[1]*lower[1])/(Math.hypot(...upper)*Math.hypot(...lower));
+      const angle=Math.acos(Math.max(-1,Math.min(1,cosine)))*180/Math.PI;
+      smallestIdleKnee=Math.min(smallestIdleKnee,angle);
+      // A relaxed stance may flex up to 37 degrees through the breathing cycle.
+      assert(angle>=143,`idle knee must be nearly straight, not deeply squatting: ${angle.toFixed(2)} degrees`);
+      assert(hip[1]<knee[1]&&knee[1]<ankle[1],'idle thighs and shins must descend naturally toward the planted soles');
+    }
+    assert(Math.abs(idle.feet[0].ankle[0]-idle.feet[1].ankle[0])<15,'idle feet must retain a compact staggered stance');
+  }
 }
 
 const durations = [0.22, 0.24, 0.28];
@@ -286,8 +355,10 @@ for (const index of [0, 1, 2]) for (const facing of [-1, 1]) {
         slashComboActive: true, slashComboIndex: index, slashComboLinked: index > 0, slashComboCarry: 1,
         attackDuration: durations[index], attackTimer: durations[index] * (1 - frame / 60),
         attackDir: { x: facing, y: aimY } }, facing);
-      assert.equal(result.bladeTips.length, 1, 'each active J strike draws exactly one katana');
-      if (grounded && aimY === 0) assert(result.bladeTips[0][1] <= player.h + 1,
+      assert.equal(result.guards.length,1,'each active J strike must show one hilt, seated or held');
+      assert(result.bladeTips.length<=1,'a drawing or recovering strike must never duplicate the steel');
+      if(frame===0&&index===0)assert.equal(result.bladeTips.length,0,'the first draw begins with the blade fully sheathed');
+      if (grounded && aimY === 0 && result.bladeTips.length) assert(result.bladeTips[0][1] <= player.h + 1,
         'a forward grounded combo must not drive its sword tip through the floor');
       comboCases++;
     }
@@ -302,7 +373,8 @@ for (const index of [0, 1, 2]) for (const facing of [-1, 1]) {
         slashComboActive: true, slashComboIndex: nextIndex, slashComboLinked: true, slashComboCarry: carry,
         attackDuration: durations[nextIndex], attackTimer: durations[nextIndex],
         attackDir: { x: facing, y: aimY } }, facing);
-      assert(tipDistance(previous.bladeTips[0], next.bladeTips[0]) < 0.001,
+      assert.equal(previous.bladeTips.length,next.bladeTips.length,'linked cuts must preserve whether the steel is drawn');
+      assert(tipDistance(previous.bladeTips[0]||previous.guards[0].center, next.bladeTips[0]||next.guards[0].center) < 0.001,
         `J chain ${index + 1} -> ${nextIndex + 1} must not snap the blade (carry ${carry})`);
       for (let foot = 0; foot < previous.feet.length; foot++) {
         assert(tipDistance(previous.feet[foot].ankle, next.feet[foot].ankle) < 0.001,
@@ -320,7 +392,8 @@ for (const facing of [-1, 1]) for (const index of [0, 1, 2]) for (const phase of
   const nextIndex = (index + 1) % 3;
   const next = draw({ ...common, slashComboIndex: nextIndex, slashComboLinked: true, slashComboCarry: 0.6,
     attackDuration: durations[nextIndex], attackTimer: durations[nextIndex] }, facing);
-  assert(tipDistance(previous.bladeTips[0], next.bladeTips[0]) < 0.001,
+  assert.equal(previous.bladeTips.length,next.bladeTips.length,'sprinting chains must preserve sword readiness');
+  assert(tipDistance(previous.bladeTips[0]||previous.guards[0].center, next.bladeTips[0]||next.guards[0].center) < 0.001,
     'sprinting torso and elbow poses must remain continuous when chaining J');
   comboCases += 2;
 }

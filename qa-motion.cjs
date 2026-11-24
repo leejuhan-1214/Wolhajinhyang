@@ -277,7 +277,7 @@ function captureActorPose() {
   const local=(point)=>[point[0]-origin[0],point[1]-origin[1]];
   return {head:local(record.headCenters[0]),waist:local(record.waistCenters[0]),
     feet:record.feet.map(foot=>local(foot.ankle)),rear:local(record.hands[0]),
-    front:local(record.bladeHands[0]||record.hands[1])};
+    front:local(record.hands[1])};
 }
 const poseDistance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
 function prepareRunningTransition(facing,phase,dt) {

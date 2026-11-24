@@ -10,7 +10,7 @@
   const lerp = (a, b, t) => a + (b - a) * t;
   const PALETTE = Object.freeze({ cyan: '#65f5ea', red: '#ff496c', amber: '#ffcd70', white: '#f2ffff' });
   const STRIDE_RADIANS_PER_PIXEL = 0.045;
-  const RUN_SUPPORT_FRACTION = 0.24;
+  const RUN_SUPPORT_FRACTION = 0.18;
   const poseEase = (value) => value * value * (3 - value * 2);
   const RUN_STRIDE = [0.78, 0.62, 0.36, 0.05, -0.3, -0.62, -0.8, -0.6, -0.32, 0.02, 0.38, 0.66];
   const RUN_BOB = [0, 0.55, 1.45, 2.15, 1.8, 0.85, 0.05, 0.5, 1.35, 2.05, 1.7, 0.72];
@@ -49,7 +49,7 @@
       speedRatio, groundBlend, wallBlend, runBlend, runPosePhase, stride,
       gaitBlend: clamp(Math.abs(player.vx) / 45, 0, 1),
       vy: motion?.vy ?? player.vy, squash: motion?.squash ?? player.squash,
-      bob: lerp(Math.sin(game.time * 2.1) * 0.35, sampleLoop(RUN_BOB, runPosePhase) * 0.8, runBlend),
+      bob: lerp(Math.sin(game.time * 2.1) * 0.35, sampleLoop(RUN_BOB, runPosePhase) * 0.45, runBlend),
       arm: lerp(-0.48, lerp(-0.15, -stride * 0.9 - 0.08, speedRun), groundBlend),
       rear: lerp(0.28, stride * 0.82 - 0.02, runBlend),
       elbow: lerp(0.38, -1.05, runBlend), rearElbow: lerp(-0.42, -1.05, runBlend),
@@ -100,7 +100,7 @@
       }
     }
 
-    function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player") {
+    function drawPlayerBody(x, y, facing, alpha = 1, ghost = false, style = "player", swingFX = false) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(Math.round(x + player.w / 2), Math.round(y + player.h));
@@ -111,7 +111,7 @@
       const bodyCyan = echoStyle ? "#a879ff" : palette.cyan;
       const bodyRed = echoStyle ? "#63ffc6" : palette.red;
       const bodyAmber = echoStyle ? "#ead6ff" : palette.amber;
-      const bodyBlade = echoStyle ? "#e8dcff" : flameSword ? "#ffad42" : "#b8f2ed";
+      const bodyBlade = echoStyle ? "#e8dcff" : "#c7d3d1";
       // 처음 디자인의 검은 전투복 색을 복원한다. 잔영은 몸체 색 대신
       // 발광 색으로 구분되므로 원래의 어두운 실루엣을 함께 유지한다.
       const uniformBack = "#152737";
@@ -200,7 +200,10 @@
       const travelSign = player.vx * facing < 0 ? -1 : 1;
       const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
       const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - sprintDrive * 1.5 * travelSign;
-      const bodyOffsetY = -bob + shotKick * 1.2 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
+      // Lift the entire pelvis and rib cage together. The previous 20 px hip
+      // clearance forced 29 px legs into a permanent right-angle squat.
+      const postureLift = lerp(6, 3.5, poseEase(gaitBlend) * groundBlend);
+      const bodyOffsetY = -postureLift - bob + shotKick * 1.2 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
       const bodyScaleX = squashX * (1 + attackImpact * 0.035);
       const bodyScaleY = squashY * (1 - attackImpact * 0.025);
       const bodyLean = baseLean + actionLean;
@@ -292,7 +295,7 @@
         const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
         const nearLayer = color === uniformFront || color === uniformFrontArm;
         drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)", foot ? "thigh" : "bicep");
-        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(3, width - 1), color, "rgba(151, 207, 216, 0.18)", foot ? "calf" : "forearm");
+        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(3, width - (foot ? 0.4 : 1)), color, "rgba(151, 207, 216, 0.18)", foot ? "calf" : "forearm");
         ctx.fillStyle = "#07101a";
         ctx.beginPath();
         ctx.arc(kneeX, kneeY, width * 0.56, 0, TAU);
@@ -303,7 +306,7 @@
         const bearing = width * 0.56;
         drawCharacterPlate([-bearing * 0.7, -bearing * 0.45, 0, -bearing * 0.7,
           bearing * 0.75, -bearing * 0.3, bearing * 0.7, bearing * 0.4,
-          0, bearing * 0.65, -bearing * 0.75, bearing * 0.3], nearLayer ? "#8aabb5" : "#516c7a", null);
+          0, bearing * 0.65, -bearing * 0.75, bearing * 0.3], foot ? (nearLayer ? "#6d8794" : "#496474") : (nearLayer ? "#8aabb5" : "#516c7a"), null);
         ctx.fillStyle = "#182b38";
         ctx.beginPath(); ctx.arc(0, 0, bearing * 0.4, 0, TAU); ctx.fill();
         ctx.strokeStyle = nearLayer ? "#c2d6d8" : "#6e8b98";
@@ -376,16 +379,18 @@
         const strideReach = Math.PI * RUN_SUPPORT_FRACTION / STRIDE_RADIANS_PER_PIXEL;
         const strideX = contact ? lerp(strideReach, -strideReach, phase / RUN_SUPPORT_FRACTION)
           : lerp(-strideReach, strideReach, poseEase(recovery));
-        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) ** 0.85 * (5 + speedRatio * 12);
+        const footLift = contact ? 0 : Math.sin(recovery * Math.PI) ** 1.1 * (5 + speedRatio * 4);
         const actionStance = Math.max(comboVisible ? comboPose.stance : attackImpact * 0.65, shotPoseBlend * 0.38) * (1 - runBlend * 0.6);
-        let footX = lerp(layer === "back" ? -5 : 6, strideX * travelSign, gaitBlend);
+        let footX = lerp(layer === "back" ? -5 : 6, hipX + strideX * travelSign, gaitBlend);
         footX = lerp(footX, layer === "back" ? -11 : 13, actionStance);
         let footY = -4 - footLift * gaitBlend;
-        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.32 * runBlend;
+        const toeRoll = contact ? 0 : Math.sin(recovery * TAU) * 0.22 * runBlend;
         const toeAngle = lerp(clamp(-locomotion.vy / 700, -0.35, 0.35), -bodyLean + toeRoll, groundBlend);
         const airborne = legPose(layer);
-        const airX = hipX + Math.sin(airborne.upper) * 14.5 + Math.sin(airborne.upper - airborne.knee) * 14.5;
-        const airY = hipY + Math.cos(airborne.upper) * 14.5 + Math.cos(airborne.upper - airborne.knee) * 14.5;
+        const upperLength = 13.5;
+        const lowerLength = 13.5;
+        const airX = hipX + Math.sin(airborne.upper) * upperLength + Math.sin(airborne.upper - airborne.knee) * lowerLength;
+        const airY = hipY + Math.cos(airborne.upper) * upperLength + Math.cos(airborne.upper - airborne.knee) * lowerLength;
         const airWorldX = bodyOffsetX + bodyScaleX * (airX * Math.cos(bodyLean) - airY * Math.sin(bodyLean));
         const airWorldY = bodyOffsetY + bodyScaleY * (airX * Math.sin(bodyLean) + airY * Math.cos(bodyLean));
         footX = lerp(airWorldX, footX, groundBlend);
@@ -405,8 +410,6 @@
         const dy = endY - hipY;
         // Fixed bone lengths cover the entire support stride without stretching
         // or lifting the planted heel when the foot passes behind the pelvis.
-        const upperLength = 14.5;
-        const lowerLength = 14.5;
         const reach = clamp(Math.hypot(dx, dy), 1, upperLength + lowerLength - 0.1);
         const axis = Math.atan2(dx, dy);
         const upperAngle = axis + Math.acos(clamp((upperLength ** 2 + reach ** 2 - lowerLength ** 2) / (2 * upperLength * reach), -1, 1));
@@ -451,11 +454,11 @@
         ctx.restore();
       }
 
-      drawPlantedLeg("back", 3.8, uniformBack);
-      drawPlantedLeg("front", 4.6, uniformFront);
+      drawPlantedLeg("back", 4.0, uniformBack);
+      drawPlantedLeg("front", 4.8, uniformFront);
 
       // Shorten the oversized torso rather than hiding the upper legs inside it.
-      // Total character height remains 60 px; the hip now reads above the knee.
+      // The small whole-body lift leaves room for a relaxed, unlocked knee.
       pitchUpperBody();
       ctx.translate(0, -10);
       ctx.scale(1, 0.84);
@@ -467,36 +470,10 @@
       ctx.fillStyle = bodyCyan;
       ctx.fillRect(-12,-38,1,3);
 
-      // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
-      ctx.save();
-      ctx.translate(-7, -23);
-      ctx.rotate(2.66);
-      // Long lacquer scabbard follows the blade's gentle curve; a brass chape
-      // and tied oxblood cord make it readable even when the blade is stowed.
-      drawCharacterPlate([0,-3, 17,-2.8, 39,-2.1, 54,-1.1, 62,0.3,
-        64,2.1, 61,3.4, 42,2.5, 17,2.6, 0,3.2], "#132631", "#080f16", 1.2);
-      drawCharacterPlate([9,-1.9, 28,-1.6, 49,-0.9, 57,0.3, 39,-0.1, 10,-0.3], "#52717a", null);
-      drawCharacterPlate([0,-3.2, 3,-3.4, 3,3.4, 0,3.4], "#c49b62", null);
-      drawCharacterPlate([5,-3, 14,-2.8, 14,2.9, 5,3.1], "#612b37", null);
-      for (let knot=5; knot<13; knot+=3) {
-        drawCharacterPlate([knot,-2.9,knot+1.4,-2.9,knot+3,2.9,knot+1.8,2.9], "#bc5962", null);
-      }
-      drawCharacterPlate([58,-0.7,62,0.1,64,1.8,61,3.2,58,3], "#ba935f", null);
-      if (!bladeVisible) {
-        ctx.fillStyle = "#12151d";
-        ctx.fillRect(-15, -3, 16, 7);
-        ctx.strokeStyle = bodyRed;
-        ctx.lineWidth = 1;
-        for (let wrap = -13; wrap < -1; wrap += 4) {
-          ctx.beginPath();
-          ctx.moveTo(wrap, -3);
-          ctx.lineTo(wrap + 3, 4);
-          ctx.stroke();
-        }
-        ctx.fillStyle = "#b58b43";
-        ctx.fillRect(-1, -5, 3, 11);
-      }
-      ctx.restore();
+      // A 37-unit curved sheath seats a 35.5-unit blade at the sword belt.
+      const sayaAngle = 2.80, mouthX = 0, mouthY = -23;
+      const seatX = mouthX - 4.5 * Math.cos(sayaAngle);
+      const seatY = mouthY - 4.5 * Math.sin(sayaAngle);
 
       // A small opposed shoulder turn keeps the upper body involved in each cut.
       const shoulderTurn = comboVisible ? comboPose.twist : 0;
@@ -618,78 +595,96 @@
         bladeAngle += player.attackDir.y * 0.9;
       }
 
+      // Carry the recovery pose across chained cuts. First reach for the
+      // seated grip, then clear the sheath; reverse that handoff to stow.
+      const ease01 = (n) => poseEase(clamp(n, 0, 1));
+      const priorReady = comboEnabled && player.slashComboLinked
+        ? clamp((player.slashComboCarry || 0) / 0.58, 0, 1) : 0;
+      const swordReady = attacking
+        ? lerp(priorReady, 1, clamp(attackProgress / 0.43, 0, 1)) *
+          (comboEnabled ? 1 : ease01((1 - attackProgress) / 0.24))
+        : clamp(recoveryRatio / 0.58, 0, 1);
+      const pull = ease01((swordReady - 0.43) / 0.57);
+      const onBelt = pull <= 0;
+      const reachGrip = ease01(swordReady / 0.43) * (1 - pull);
+      const shoulderX = 10 + shoulderTurn * 0.5;
+      let elbow = comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow;
+      if (reachGrip > 0) {
+        const dx = seatX - shoulderTurn - shoulderX, dy = seatY + 38;
+        const bend = Math.acos(clamp(Math.hypot(dx, dy) / 18, 0, 1));
+        armAngle = lerp(armAngle, Math.atan2(dx, dy) - bend, reachGrip);
+        elbow = lerp(elbow, -2 * bend, reachGrip);
+      }
+      function drawHilt() {
+        drawCharacterPlate([-4.6,-1.2,3.9,-1.45,4.3,-1,4.3,1.35,-4.4,1.45,-5,0.7], "#30252b", "#101820", 0.65);
+        for (let x=-3.5; x<2; x+=2.3) {
+          drawCharacterPlate([x,-1.1,x+1,-1.15,x+1.9,1.08,x+1,1.15], "#885059", null);
+        }
+        ctx.fillStyle = "#a48c65";
+        ctx.beginPath(); ctx.ellipse(4.5,0,1.25,3.05,0,0,TAU); ctx.fill();
+      }
+      // The hip frog and mouth overlap; tip remains well above the floor.
+      ctx.save();
+      ctx.translate(mouthX - shoulderTurn, mouthY);
+      ctx.rotate(sayaAngle);
+      drawCharacterPlate([0,-2,12,-2.1,24,-2.5,33,-3.3,36.5,-3.8,
+        37,-2.8,36,-1.1,26,-0.1,11,1.45,0,1.85], "#132631", "#0a1018", 0.75);
+      drawCharacterPlate([1,-1.75,13,-1.8,28,-2.6,33,-3,24,-1.85,3,-0.9], "#4b6065", null);
+      drawCharacterPlate([0,-2,1.8,-2.1,1.8,1.75,0,1.9], "#a48c65", null);
+      drawCharacterPlate([4,-2.2,8,-2.2,8,1.6,4,1.75], "#724750", null);
+      drawCharacterPlate([34,-3.45,36.5,-3.8,37,-2.8,36,-1.1,34,-0.9], "#79756a", null);
+      if (onBelt) { ctx.translate(-4.5,0); drawHilt(); }
+      ctx.restore();
       const frontHand = shooting && !bladeVisible
         ? drawArmTo(10, -38, shotHandX, shotHandY, 9, 4.5, uniformFrontArm)
-        : drawJointedLimb(10 + shoulderTurn * 0.5, -38, 9, 9, 4.5, armAngle,
-          comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow, uniformFrontArm, false, !bladeVisible);
-      if (bladeVisible) {
+        : drawJointedLimb(shoulderX, -38, 9, 9, 4.5, armAngle, elbow, uniformFrontArm, false, onBelt);
+      if (!onBelt) {
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);
-        ctx.rotate(bladeAngle);
-        ctx.scale(0.86, 0.86);
-
-        // 붉은 끈으로 감은 손잡이와 원형 코등이.
-        ctx.fillStyle = "#10141d";
-        ctx.fillRect(-7, -4, 18, 8);
-        ctx.strokeStyle = empowered ? bodyAmber : bodyRed;
-        ctx.lineWidth = 1;
-        for (let wrap = -5; wrap < 10; wrap += 4) {
-          ctx.beginPath();
-          ctx.moveTo(wrap, -4);
-          ctx.lineTo(wrap + 3, 4);
-          ctx.stroke();
+        ctx.rotate(lerp(sayaAngle - TAU, bladeAngle, pull));
+        drawHilt();
+        if (swingFX && pull > 0.97 && attackProgress < 0.68) {
+          // Trail ends on the cutting tip and reverses with the rising cut.
+          const dir = comboVisible && comboIndex === 1 ? 1 : -1;
+          ctx.save();
+          ctx.globalAlpha *= 0.42 * Math.sin(Math.PI * clamp((attackProgress - 0.18) / 0.50, 0, 1));
+          ctx.fillStyle = flameSword ? "#ffad57" : empowered ? bodyAmber : "#8dc6c8";
+          ctx.beginPath(); ctx.moveTo(40,-2.7);
+          ctx.quadraticCurveTo(40,dir*10,33,dir*19);
+          ctx.quadraticCurveTo(36,dir*9,35.5,-2.1);
+          ctx.closePath(); ctx.fill(); ctx.restore();
         }
-        ctx.fillStyle = "#b58b43";
-        ctx.beginPath();
-        ctx.ellipse(12, 0, 3, 7, 0, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = "#1b2833";
-        ctx.beginPath();
-        ctx.ellipse(12, 0, 1.4, 5, 0, 0, TAU);
-        ctx.fill();
-
-        // 더 길고 완만하게 휜 외날과 등줄.
-        const bladeGlow = flameSword ? "#ffad42" : empowered ? bodyAmber : bodyBlade;
-        if (flameSword) {
-          ctx.shadowColor = "#ff5a2e";
-          ctx.shadowBlur = 12;
+        ctx.save();
+        if (pull < 1) {
+          ctx.beginPath(); ctx.rect(4.75,-14,35.5*pull,26); ctx.clip();
         }
-        ctx.fillStyle = bladeGlow;
+        // Narrow steel spine, shallow curvature and a distinct diagonal point.
+        ctx.fillStyle = flameSword ? "#ffaa55" : empowered ? bodyAmber : bodyBlade;
         ctx.beginPath();
-        ctx.moveTo(14, -2.4);
-        ctx.quadraticCurveTo(49, -6.5, 78, -15);
-        ctx.quadraticCurveTo(64, -4.5, 14, 2.2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.moveTo(5.1,-1.20);
+        ctx.quadraticCurveTo(25.5,-1.15,40,-2.7);
+        ctx.quadraticCurveTo(37.4,-0.65,34.5,-0.2);
+        ctx.quadraticCurveTo(20.4,1.45,5.1,1.2);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = flameSword ? "#ffe1a3" : "#f0f4ec"; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(5.3,1);
+        ctx.quadraticCurveTo(23.2,1.12,34.5,-0.4);
+        ctx.lineTo(39.7,-2.55); ctx.stroke();
+        ctx.strokeStyle = flameSword ? "#dc602c" : "#677e85"; ctx.lineWidth = 0.65;
+        ctx.beginPath(); ctx.moveTo(6,-0.85);
+        ctx.quadraticCurveTo(26.2,-0.82,37.8,-2.12); ctx.stroke();
         if (flameSword) {
-          ctx.globalCompositeOperation = "lighter";
-          ctx.fillStyle = "rgba(255, 81, 38, 0.72)";
-          for (let flame = 0; flame < 5; flame += 1) {
-            const flameX = 25 + flame * 10;
-            const flameHeight = 6 + Math.sin(game.time * 19 + flame * 1.7) * 3;
-            ctx.beginPath();
-            ctx.moveTo(flameX - 4, -3);
-            ctx.lineTo(flameX, -8 - flameHeight);
-            ctx.lineTo(flameX + 5, -4);
-            ctx.closePath();
-            ctx.fill();
+          for (let i=0;i<3;i++) {
+            const x=10+i*8, flicker=Math.sin(game.time*18+i*1.7);
+            drawCharacterPlate([x-2,-1,x+1,-3.8-flicker,x+3,-1.1], "#f27b37", null);
           }
-          ctx.globalCompositeOperation = "source-over";
         }
-        ctx.strokeStyle = palette.white;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(16, -1.4);
-        ctx.quadraticCurveTo(52, -5.3, 76, -14);
-        ctx.stroke();
-        ctx.strokeStyle = "#31586a";
-        ctx.beginPath();
-        ctx.moveTo(15, 1.7);
-        ctx.quadraticCurveTo(54, -0.8, 71, -8);
-        ctx.stroke();
         ctx.restore();
-      } else if (shooting) {
+        // Fingers cross the grip, leaving both ends of the handle visible.
+        drawCharacterPlate([-2.5,-1.8,-1.8,-2.5,0.8,-2.3,2.1,-1.3,1.8,1.4,0.4,2,-2.2,1.4], "#0a141e", null);
+        drawCharacterPlate([-1.9,-1.45,0.2,-1.8,1.4,-1.1,0.8,-0.3,-1.9,-0.5], "#65808a", null);
+        ctx.restore();
+      } else if (shooting && !attacking) {
         ctx.save();
         ctx.translate(frontHand.x, frontHand.y);
         ctx.rotate(weaponAngle);
