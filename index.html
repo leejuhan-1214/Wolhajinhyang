@@ -13,7 +13,7 @@
     <title>월하잔향: 백야 작전 — 5막 캠페인</title>
     <link rel="preload" as="image" href="title-screen-v3.6.26.png" fetchpriority="high" />
     <style>html[data-game-bootstrap="loading"] #start-screen { visibility: hidden; }</style>
-    <link rel="stylesheet" href="styles.css?v=3.9.0" />
+    <link rel="stylesheet" href="styles.css?v=3.10.0" />
   </head>
   <body>
     <main class="game-shell" aria-label="월하잔향 게임">
@@ -32,7 +32,7 @@
 
       <section id="start-screen" class="overlay visible" aria-labelledby="start-title">
         <h1 id="start-title" class="visually-hidden">월하잔향</h1>
-        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.9.0</div>
+        <div id="version-badge" class="version-badge" aria-label="현재 게임 버전">VERSION 3.10.0</div>
         <div class="start-menu">
           <header class="start-briefing">
             <p class="start-kicker">MOONLIT ECHO / CAMPAIGN</p>
@@ -89,6 +89,12 @@
           <p id="duel-description"></p>
           <button id="duel-campaign" type="button">본편 이어하기</button>
           <h3 id="duel-list-title">보스 재대결</h3>
+          <div id="duel-ghost-options" class="duel-ghost-options"><button id="duel-ghost-option" type="button" aria-pressed="true">내 기록 잔상: 켜짐</button>
+            <span>이 브라우저에서 기록한 가장 빠른 승리를 재생합니다. 업데이트 후 한 번 이기면 잔상이 생깁니다.</span>
+            <details class="duel-brief"><summary>쇠붙이의 약점 · 부위 파괴 힌트</summary>
+              <p><strong>쇄우</strong>가 빔을 충전할 때 포신 옆으로 나온 냉각핀을 샷건으로 맞히세요. 몸통 사격만으로는 빔이 멈추지 않습니다.</p>
+              <p><strong>적린</strong>이 산탄을 반사하면 뒤로 돌아 방패 고정쇠를 베세요. 다음 돌진이 끝날 때까지 방패가 내려갑니다. 방패가 내려가도 산탄은 마지막 체력 1을 깎지 못합니다.</p>
+            </details></div>
           <div id="duel-list" class="duel-list"></div>
           <button id="duel-retry" type="button" hidden>같은 보스 다시 도전</button>
           <button id="duel-back" type="button">제목으로</button>
@@ -105,7 +111,10 @@
           <label for="volume-sfx"><span>효과음</span><input id="volume-sfx" type="range" min="0" max="100" step="1" value="100"><output id="volume-sfx-value" for="volume-sfx">100%</output></label>
         </section>
         <button id="resume-button" type="button">계속하기</button>
-        <button id="duel-leave" type="button" hidden>재대결 나가기</button>
+        <div class="duel-practice-controls">
+          <button id="duel-leave" type="button" hidden>재대결 나가기</button>
+          <button id="duel-ghost-pause" type="button" aria-pressed="true" hidden>내 기록 잔상: 켜짐</button>
+        </div>
         <div class="pause-controls" aria-label="주요 조작">
           <span><kbd>SPACE</kbd> / <kbd>K</kbd> 이중 점프</span>
           <span><kbd>J</kbd> / <kbd>좌클릭</kbd> 발도</span>
@@ -242,6 +251,6 @@
 
       <div id="rotate-notice">화면을 가로로 돌리면 더 편하게 플레이할 수 있습니다.</div>
     </main>
-    <script src="bootstrap.js?v=3.9.0"></script>
+    <script src="bootstrap.js?v=3.10.0"></script>
   </body>
 </html>

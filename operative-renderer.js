@@ -85,6 +85,190 @@
     for (const key of Object.keys(from)) result[key] = lerp(from[key], to[key] ?? from[key], blend);
     return result;
   };
+  // One pure pose source drives both pixels and contact geometry.
+  function sampleBodyPose(player, game, facing, echoStyle = false) {
+    const locomotion = sampleLocomotion(player, game, !echoStyle);
+    const { speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob } = locomotion;
+    const squashX = 1 + locomotion.squash * 0.18;
+    const squashY = 1 - locomotion.squash * 0.24;
+    const shooting = player.recoilTimer > 0;
+    // A confirmed cross-shot owns the visible hands until its recoil settles.
+    // This is presentation only: the already-running slash keeps its hit timer.
+    const crossShot = !echoStyle && shooting && (player.crossShotTimer || 0) > 0;
+    const crossProgress = crossShot ? 1 - clamp(player.crossShotTimer / 0.3, 0, 1) : 1;
+    const crossBrace = crossShot ? 1 - poseEase(clamp((crossProgress - 0.12) / 0.88, 0, 1)) : 0;
+    const crossImpulse = crossShot ? (1 - crossProgress) ** 2 : 0;
+    const attacking = player.attackTimer > 0 && !crossShot;
+    const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
+    const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
+    const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
+    const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
+    const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
+    // Arms oppose the same-side leg, with bent elbows instead of marching arms.
+    const locomotionArmAngle = locomotion.arm;
+    const locomotionRearAngle = locomotion.rear;
+    const locomotionElbow = locomotion.elbow;
+    const locomotionRearElbow = locomotion.rearElbow;
+    const comboEnabled = !echoStyle && !crossShot && player.slashComboActive === true;
+    const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
+    const recoveryRatio = comboEnabled && !attacking && !shooting
+      ? clamp((player.slashComboRecovery || 0) / (player.slashComboRecoveryDuration || 0.16), 0, 1) : 0;
+    const comboVisible = comboEnabled && (attacking || recoveryRatio > 0);
+    const bladeVisible = attacking || recoveryRatio > 0.03;
+    const comboCarry = player.slashComboLinked ? poseEase(clamp(player.slashComboCarry || 0, 0, 1)) : 0;
+    const neutralPose = { arm: locomotionArmAngle, elbow: locomotionElbow, blade: -1.1,
+      lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, rearElbow: locomotionRearElbow, twist: 0 };
+    let comboPose = neutralPose;
+    if (comboVisible) {
+      if (attacking) {
+        const previousFinish = COMBO_POSES[(comboIndex + 2) % 3][2];
+        // Latch the incoming arm swing once; running feet keep their own phase.
+        const entryPose = player.slashComboEntry ? { ...neutralPose, ...player.slashComboEntry } : neutralPose;
+        let from = mixPose(entryPose, previousFinish, comboCarry);
+        let fromTime = 0;
+        for (const authoredKey of COMBO_POSES[comboIndex]) {
+          let key = authoredKey;
+          if (authoredKey === COMBO_POSES[comboIndex][0] && player.slashComboEntry && comboCarry < 0.001) {
+            // The short opening windup must not reverse a bent sprinting arm
+            // in two frames. Enter the cut from a nearby guard instead.
+            key = { ...authoredKey };
+            for (const joint of ["arm", "elbow", "rear", "rearElbow"]) {
+              key[joint] = clamp(key[joint], from[joint] - 0.55, from[joint] + 0.55);
+            }
+          }
+          if (attackProgress <= key.at) {
+            comboPose = mixPose(from, key, poseEase(clamp((attackProgress - fromTime) / (key.at - fromTime), 0, 1)));
+            break;
+          }
+          from = key;
+          fromTime = key.at;
+        }
+      } else {
+        comboPose = mixPose(neutralPose, COMBO_POSES[comboIndex][2], poseEase(recoveryRatio));
+      }
+    }
+    const comboAim = Math.atan2(player.attackDir?.y || 0, Math.max(0.01, Math.abs(player.attackDir?.x ?? 1)));
+    const comboAimWeight = attacking
+      ? lerp(comboCarry, 1, poseEase(clamp(attackProgress / 0.18, 0, 1)))
+      : poseEase(recoveryRatio);
+    const attackLunge = comboVisible ? comboPose.lunge * 4 : attacking
+      ? attackProgress < 0.22
+        ? -poseEase(attackProgress / 0.22) * 4.5
+        : attackProgress < 0.64
+          ? lerp(-4.5, 14, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
+      : 0;
+    const attackImpact = comboVisible ? comboPose.stance : attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
+    // Keep the pelvis over its support foot; hinge the chest forward separately.
+    const baseLean = clamp(player.vx * facing / 5100, -0.085, 0.085);
+    const actionLean = comboVisible ? comboPose.lean : attacking
+      ? attackProgress < 0.22
+        ? lerp(0, -0.07, poseEase(attackProgress / 0.22))
+        : attackProgress < 0.64
+          ? lerp(-0.07, 0.13, poseEase((attackProgress - 0.22) / 0.42))
+          : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
+      : -0.08 * shotKick + shotSettle * 0.025 + crossBrace * groundBlend * 0.035;
+    const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
+    const sprintDrive = locomotion.sprintDrive;
+    const travelSign = player.vx * facing < 0 ? -1 : 1;
+    const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
+    const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - crossImpulse * 1.2 - sprintDrive * 1.5 * travelSign;
+    // Lift the entire pelvis and rib cage together. The previous 20 px hip
+    // clearance forced 29 px legs into a permanent right-angle squat.
+    const postureLift = lerp(6, 3.5, poseEase(gaitBlend) * groundBlend);
+    const bodyOffsetY = -postureLift - bob + shotKick * 1.2 + crossBrace * groundBlend * 1.7 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
+    const bodyScaleX = squashX * (1 + attackImpact * 0.035);
+    const bodyScaleY = squashY * (1 - attackImpact * 0.025);
+    const bodyLean = baseLean + actionLean;
+    return { locomotion, speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob, squashX, squashY, shooting, crossShot, crossProgress, crossBrace, crossImpulse, attacking, attackProgress, shotProgress, shotKick, shotPoseBlend, shotSettle, locomotionArmAngle, locomotionRearAngle, locomotionElbow, locomotionRearElbow, comboEnabled, comboIndex, recoveryRatio, comboVisible, bladeVisible, comboCarry, neutralPose, comboPose, comboAim, comboAimWeight, attackLunge, attackImpact, baseLean, actionLean, empowered, sprintDrive, travelSign, torsoPitch, bodyOffsetX, postureLift, bodyOffsetY, bodyScaleX, bodyScaleY, bodyLean };
+  }
+  function sampleSwordJoints(player, pose, facing) {
+    const { locomotion, speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob, squashX, squashY, shooting, crossShot, crossProgress, crossBrace, crossImpulse, attacking, attackProgress, shotProgress, shotKick, shotPoseBlend, shotSettle, locomotionArmAngle, locomotionRearAngle, locomotionElbow, locomotionRearElbow, comboEnabled, comboIndex, recoveryRatio, comboVisible, bladeVisible, comboCarry, neutralPose, comboPose, comboAim, comboAimWeight, attackLunge, attackImpact, baseLean, actionLean, empowered, sprintDrive, travelSign, torsoPitch, bodyOffsetX, postureLift, bodyOffsetY, bodyScaleX, bodyScaleY, bodyLean } = pose;
+    const sayaAngle = 2.80, mouthX = 0, mouthY = -23;
+    const seatX = mouthX - 4.5 * Math.cos(sayaAngle);
+    const seatY = mouthY - 4.5 * Math.sin(sayaAngle);
+    const shoulderTurn = comboVisible ? comboPose.twist : 0;
+    const shotAimAngle = Math.atan2(player.shotAimY || 0, Math.max(0.01, Math.abs(player.shotAimX || facing)));
+    let armAngle = locomotionArmAngle;
+    let bladeAngle = -1.1;
+    if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
+    if (comboVisible) {
+      armAngle = comboPose.arm + comboAim * 0.5 * comboAimWeight;
+      bladeAngle = comboPose.blade + comboAim * comboAimWeight;
+    } else if (attacking) {
+      if (attackProgress < 0.2) {
+        const t = poseEase(attackProgress / 0.2);
+        armAngle = lerp(-0.42, -1.18, t);
+        bladeAngle = lerp(-1.05, -2.05, t);
+      } else if (attackProgress < 0.62) {
+        const t = poseEase((attackProgress - 0.2) / 0.42);
+        armAngle = lerp(-1.18, 1.3, t);
+        bladeAngle = lerp(-2.05, 0.92, t);
+      } else {
+        const t = poseEase((attackProgress - 0.62) / 0.38);
+        armAngle = lerp(1.3, locomotionArmAngle, t);
+        bladeAngle = lerp(0.92, -0.16, t);
+      }
+      armAngle += player.attackDir.y * 0.72;
+      bladeAngle += player.attackDir.y * 0.9;
+    }
+
+    // Carry the recovery pose across chained cuts. First reach for the
+    // seated grip, then clear the sheath; reverse that handoff to stow.
+    const ease01 = (n) => poseEase(clamp(n, 0, 1));
+    const priorReady = comboEnabled && player.slashComboLinked
+      ? clamp((player.slashComboCarry || 0) / 0.58, 0, 1) : 0;
+    const swordReady = attacking
+      ? lerp(priorReady, 1, clamp(attackProgress / 0.43, 0, 1)) *
+        (comboEnabled ? 1 : ease01((1 - attackProgress) / 0.24))
+      : clamp(recoveryRatio / 0.58, 0, 1);
+    const pull = ease01((swordReady - 0.43) / 0.57);
+    const onBelt = pull <= 0;
+    const reachGrip = ease01(swordReady / 0.43) * (1 - pull);
+    const shoulderX = 10 + shoulderTurn * 0.5;
+    let elbow = comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow;
+    if (reachGrip > 0) {
+      const dx = seatX - shoulderTurn - shoulderX, dy = seatY + 38;
+      const bend = Math.acos(clamp(Math.hypot(dx, dy) / 18, 0, 1));
+      armAngle = lerp(armAngle, Math.atan2(dx, dy) - bend, reachGrip);
+      elbow = lerp(elbow, -2 * bend, reachGrip);
+    }
+    return { armAngle, bladeAngle, swordReady, pull, onBelt, reachGrip, shoulderX, elbow, shoulderTurn, sayaAngle };
+  }
+  // The collision spine lies inside the same curved, clipped steel rendered
+  // below. A short capsule around it covers the blade's actual thickness.
+  function sampleBlade(player, game, facing = player.facing || 1) {
+    const pose = sampleBodyPose(player, game, facing);
+    const sword = sampleSwordJoints(player, pose, facing);
+    if (!pose.attacking || sword.onBelt || sword.pull < 0.01) return null;
+    const handX = sword.shoulderX + Math.sin(sword.armAngle) * 9 + Math.sin(sword.armAngle - sword.elbow) * 9;
+    const handY = -38 + Math.cos(sword.armAngle) * 9 + Math.cos(sword.armAngle - sword.elbow) * 9;
+    const angle = lerp(sword.sayaAngle - TAU, sword.bladeAngle, sword.pull);
+    const rotate = (p, a) => ({ x: p.x * Math.cos(a) - p.y * Math.sin(a), y: p.x * Math.sin(a) + p.y * Math.cos(a) });
+    const world = (x, y) => {
+      let p = rotate({ x, y }, angle);
+      p.x += handX + sword.shoulderTurn;
+      p.y = (p.y + handY) * 0.84 - 10;
+      p = rotate({ x: p.x, y: p.y + 24 }, pose.torsoPitch);
+      p.y -= 24;
+      p = rotate(p, pose.bodyLean);
+      return { x: Math.round(player.x + player.w / 2) + facing * (p.x * pose.bodyScaleX + pose.bodyOffsetX),
+        y: Math.round(player.y + player.h) + p.y * pose.bodyScaleY + pose.bodyOffsetY };
+    };
+    const tipX = Math.min(44.26, 4.75 + 39.76 * sword.pull);
+    if (tipX <= 5.172) return null;
+    // Locate the exposed point on the very same quadratic spine, even while
+    // drawing from the sheath. This prevents a full invisible blade at startup.
+    let low = 0, high = 1;
+    for (let i = 0; i < 20; i++) {
+      const t = (low + high) / 2, u = 1 - t;
+      if (u * u * 5.172 + 2 * u * t * 28.02 + t * t * 44.26 < tipX) low = t;
+      else high = t;
+    }
+    const t = (low + high) / 2, u = 1 - t;
+    const tipY = u * u * -1.2 + 2 * u * t * -1.15 + t * t * -2.7;
+    return { base: world(5.172, 0), tip: world(tipX, tipY), pull: sword.pull };
+  }
   function createRenderer(ctx, player, game, palette = PALETTE) {
     function drawCharacterPlate(points, fill, edge = "#07111b", width = 1) {
       ctx.beginPath();
@@ -120,99 +304,8 @@
       const uniformRearArm = "#203443";
       const uniformFrontArm = "#526c7a";
 
-      const locomotion = sampleLocomotion(player, game, !echoStyle);
-      const { speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob } = locomotion;
-      const squashX = 1 + locomotion.squash * 0.18;
-      const squashY = 1 - locomotion.squash * 0.24;
-      const shooting = player.recoilTimer > 0;
-      // A confirmed cross-shot owns the visible hands until its recoil settles.
-      // This is presentation only: the already-running slash keeps its hit timer.
-      const crossShot = !echoStyle && shooting && (player.crossShotTimer || 0) > 0;
-      const crossProgress = crossShot ? 1 - clamp(player.crossShotTimer / 0.3, 0, 1) : 1;
-      const crossBrace = crossShot ? 1 - poseEase(clamp((crossProgress - 0.12) / 0.88, 0, 1)) : 0;
-      const crossImpulse = crossShot ? (1 - crossProgress) ** 2 : 0;
-      const attacking = player.attackTimer > 0 && !crossShot;
-      const attackProgress = attacking ? 1 - player.attackTimer / player.attackDuration : 0;
-      const shotProgress = shooting ? 1 - player.recoilTimer / 0.3 : 1;
-      const shotKick = shooting ? (1 - clamp(shotProgress, 0, 1)) ** 2 : 0;
-      const shotPoseBlend = shooting ? 1 - poseEase(clamp((shotProgress - 0.34) / 0.66, 0, 1)) : 0;
-      const shotSettle = shooting ? Math.sin(shotProgress * Math.PI * 2) * Math.exp(-shotProgress * 5) : 0;
-      // Arms oppose the same-side leg, with bent elbows instead of marching arms.
-      const locomotionArmAngle = locomotion.arm;
-      const locomotionRearAngle = locomotion.rear;
-      const locomotionElbow = locomotion.elbow;
-      const locomotionRearElbow = locomotion.rearElbow;
-      const comboEnabled = !echoStyle && !crossShot && player.slashComboActive === true;
-      const comboIndex = clamp(Math.trunc(player.slashComboIndex || 0), 0, 2);
-      const recoveryRatio = comboEnabled && !attacking && !shooting
-        ? clamp((player.slashComboRecovery || 0) / (player.slashComboRecoveryDuration || 0.16), 0, 1) : 0;
-      const comboVisible = comboEnabled && (attacking || recoveryRatio > 0);
-      const bladeVisible = attacking || recoveryRatio > 0.03;
-      const comboCarry = player.slashComboLinked ? poseEase(clamp(player.slashComboCarry || 0, 0, 1)) : 0;
-      const neutralPose = { arm: locomotionArmAngle, elbow: locomotionElbow, blade: -1.1,
-        lunge: 0, lean: 0, drop: 0, stance: 0, rear: locomotionRearAngle, rearElbow: locomotionRearElbow, twist: 0 };
-      let comboPose = neutralPose;
-      if (comboVisible) {
-        if (attacking) {
-          const previousFinish = COMBO_POSES[(comboIndex + 2) % 3][2];
-          // Latch the incoming arm swing once; running feet keep their own phase.
-          const entryPose = player.slashComboEntry ? { ...neutralPose, ...player.slashComboEntry } : neutralPose;
-          let from = mixPose(entryPose, previousFinish, comboCarry);
-          let fromTime = 0;
-          for (const authoredKey of COMBO_POSES[comboIndex]) {
-            let key = authoredKey;
-            if (authoredKey === COMBO_POSES[comboIndex][0] && player.slashComboEntry && comboCarry < 0.001) {
-              // The short opening windup must not reverse a bent sprinting arm
-              // in two frames. Enter the cut from a nearby guard instead.
-              key = { ...authoredKey };
-              for (const joint of ["arm", "elbow", "rear", "rearElbow"]) {
-                key[joint] = clamp(key[joint], from[joint] - 0.55, from[joint] + 0.55);
-              }
-            }
-            if (attackProgress <= key.at) {
-              comboPose = mixPose(from, key, poseEase(clamp((attackProgress - fromTime) / (key.at - fromTime), 0, 1)));
-              break;
-            }
-            from = key;
-            fromTime = key.at;
-          }
-        } else {
-          comboPose = mixPose(neutralPose, COMBO_POSES[comboIndex][2], poseEase(recoveryRatio));
-        }
-      }
-      const comboAim = Math.atan2(player.attackDir?.y || 0, Math.max(0.01, Math.abs(player.attackDir?.x ?? 1)));
-      const comboAimWeight = attacking
-        ? lerp(comboCarry, 1, poseEase(clamp(attackProgress / 0.18, 0, 1)))
-        : poseEase(recoveryRatio);
-      const attackLunge = comboVisible ? comboPose.lunge * 4 : attacking
-        ? attackProgress < 0.22
-          ? -poseEase(attackProgress / 0.22) * 4.5
-          : attackProgress < 0.64
-            ? lerp(-4.5, 14, poseEase((attackProgress - 0.22) / 0.42))
-            : lerp(14, 0, poseEase((attackProgress - 0.64) / 0.36))
-        : 0;
-      const attackImpact = comboVisible ? comboPose.stance : attacking ? Math.sin(clamp((attackProgress - 0.16) / 0.72, 0, 1) * Math.PI) : 0;
-      // Keep the pelvis over its support foot; hinge the chest forward separately.
-      const baseLean = clamp(player.vx * facing / 5100, -0.085, 0.085);
-      const actionLean = comboVisible ? comboPose.lean : attacking
-        ? attackProgress < 0.22
-          ? lerp(0, -0.07, poseEase(attackProgress / 0.22))
-          : attackProgress < 0.64
-            ? lerp(-0.07, 0.13, poseEase((attackProgress - 0.22) / 0.42))
-            : lerp(0.13, 0, poseEase((attackProgress - 0.64) / 0.36))
-        : -0.08 * shotKick + shotSettle * 0.025 + crossBrace * groundBlend * 0.035;
-      const empowered = player.buffTimer > 0 || (attacking && player.chargedAttack);
-      const sprintDrive = locomotion.sprintDrive;
-      const travelSign = player.vx * facing < 0 ? -1 : 1;
-      const torsoPitch = 0.28 * sprintDrive * travelSign * (1 - clamp(Math.max(attackImpact * 1.4, shotPoseBlend), 0, 1));
-      const bodyOffsetX = attackLunge * 0.25 - shotKick * 2.5 - crossImpulse * 1.2 - sprintDrive * 1.5 * travelSign;
-      // Lift the entire pelvis and rib cage together. The previous 20 px hip
-      // clearance forced 29 px legs into a permanent right-angle squat.
-      const postureLift = lerp(6, 3.5, poseEase(gaitBlend) * groundBlend);
-      const bodyOffsetY = -postureLift - bob + shotKick * 1.2 + crossBrace * groundBlend * 1.7 + sprintDrive * 0.8 + (comboVisible ? comboPose.drop : attackImpact * 1.1);
-      const bodyScaleX = squashX * (1 + attackImpact * 0.035);
-      const bodyScaleY = squashY * (1 - attackImpact * 0.025);
-      const bodyLean = baseLean + actionLean;
+      const bodyPose = sampleBodyPose(player, game, facing, echoStyle);
+      const { locomotion, speedRatio, groundBlend, wallBlend, runBlend, gaitBlend, runPosePhase, bob, squashX, squashY, shooting, crossShot, crossProgress, crossBrace, crossImpulse, attacking, attackProgress, shotProgress, shotKick, shotPoseBlend, shotSettle, locomotionArmAngle, locomotionRearAngle, locomotionElbow, locomotionRearElbow, comboEnabled, comboIndex, recoveryRatio, comboVisible, bladeVisible, comboCarry, neutralPose, comboPose, comboAim, comboAimWeight, attackLunge, attackImpact, baseLean, actionLean, empowered, sprintDrive, travelSign, torsoPitch, bodyOffsetX, postureLift, bodyOffsetY, bodyScaleX, bodyScaleY, bodyLean } = bodyPose;
 
       ctx.translate(bodyOffsetX, bodyOffsetY);
       ctx.scale(bodyScaleX, bodyScaleY);
@@ -476,7 +569,7 @@
       ctx.fillStyle = bodyCyan;
       ctx.fillRect(-12,-38,1,3);
 
-      // A 37-unit curved sheath seats a 35.5-unit blade at the sword belt.
+      // The steel and its fitted sheath are both 12% longer; the grip is not.
       const sayaAngle = 2.80, mouthX = 0, mouthY = -23;
       const seatX = mouthX - 4.5 * Math.cos(sayaAngle);
       const seatY = mouthY - 4.5 * Math.sin(sayaAngle);
@@ -577,50 +670,7 @@
       drawCharacterPlate([-10,-46,-7,-48,-5,-46,-3,-43,-5,-44,-8,-44], "#425761", null);
       ctx.restore();
 
-      let armAngle = locomotionArmAngle;
-      let bladeAngle = -1.1;
-      if (shooting) armAngle = Math.PI / 2 + shotAimAngle * 0.82;
-      if (comboVisible) {
-        armAngle = comboPose.arm + comboAim * 0.5 * comboAimWeight;
-        bladeAngle = comboPose.blade + comboAim * comboAimWeight;
-      } else if (attacking) {
-        if (attackProgress < 0.2) {
-          const t = poseEase(attackProgress / 0.2);
-          armAngle = lerp(-0.42, -1.18, t);
-          bladeAngle = lerp(-1.05, -2.05, t);
-        } else if (attackProgress < 0.62) {
-          const t = poseEase((attackProgress - 0.2) / 0.42);
-          armAngle = lerp(-1.18, 1.3, t);
-          bladeAngle = lerp(-2.05, 0.92, t);
-        } else {
-          const t = poseEase((attackProgress - 0.62) / 0.38);
-          armAngle = lerp(1.3, locomotionArmAngle, t);
-          bladeAngle = lerp(0.92, -0.16, t);
-        }
-        armAngle += player.attackDir.y * 0.72;
-        bladeAngle += player.attackDir.y * 0.9;
-      }
-
-      // Carry the recovery pose across chained cuts. First reach for the
-      // seated grip, then clear the sheath; reverse that handoff to stow.
-      const ease01 = (n) => poseEase(clamp(n, 0, 1));
-      const priorReady = comboEnabled && player.slashComboLinked
-        ? clamp((player.slashComboCarry || 0) / 0.58, 0, 1) : 0;
-      const swordReady = attacking
-        ? lerp(priorReady, 1, clamp(attackProgress / 0.43, 0, 1)) *
-          (comboEnabled ? 1 : ease01((1 - attackProgress) / 0.24))
-        : clamp(recoveryRatio / 0.58, 0, 1);
-      const pull = ease01((swordReady - 0.43) / 0.57);
-      const onBelt = pull <= 0;
-      const reachGrip = ease01(swordReady / 0.43) * (1 - pull);
-      const shoulderX = 10 + shoulderTurn * 0.5;
-      let elbow = comboVisible ? comboPose.elbow : attacking ? 0.12 : locomotionElbow;
-      if (reachGrip > 0) {
-        const dx = seatX - shoulderTurn - shoulderX, dy = seatY + 38;
-        const bend = Math.acos(clamp(Math.hypot(dx, dy) / 18, 0, 1));
-        armAngle = lerp(armAngle, Math.atan2(dx, dy) - bend, reachGrip);
-        elbow = lerp(elbow, -2 * bend, reachGrip);
-      }
+      const { armAngle, bladeAngle, swordReady, pull, onBelt, reachGrip, shoulderX, elbow } = sampleSwordJoints(player, bodyPose, facing);
       function drawHilt() {
         drawCharacterPlate([-4.6,-1.2,3.9,-1.45,4.3,-1,4.3,1.35,-4.4,1.45,-5,0.7], "#30252b", "#101820", 0.65);
         for (let x=-3.5; x<2; x+=2.3) {
@@ -633,12 +683,12 @@
       ctx.save();
       ctx.translate(mouthX - shoulderTurn, mouthY);
       ctx.rotate(sayaAngle);
-      drawCharacterPlate([0,-2,12,-2.1,24,-2.5,33,-3.3,36.5,-3.8,
-        37,-2.8,36,-1.1,26,-0.1,11,1.45,0,1.85], "#132631", "#0a1018", 0.75);
-      drawCharacterPlate([1,-1.75,13,-1.8,28,-2.6,33,-3,24,-1.85,3,-0.9], "#4b6065", null);
+      drawCharacterPlate([0,-2,13.44,-2.1,26.88,-2.5,36.96,-3.3,40.88,-3.8,
+        41.44,-2.8,40.32,-1.1,29.12,-0.1,12.32,1.45,0,1.85], "#132631", "#0a1018", 0.75);
+      drawCharacterPlate([1.12,-1.75,14.56,-1.8,31.36,-2.6,36.96,-3,26.88,-1.85,3.36,-0.9], "#4b6065", null);
       drawCharacterPlate([0,-2,1.8,-2.1,1.8,1.75,0,1.9], "#a48c65", null);
       drawCharacterPlate([4,-2.2,8,-2.2,8,1.6,4,1.75], "#724750", null);
-      drawCharacterPlate([34,-3.45,36.5,-3.8,37,-2.8,36,-1.1,34,-0.9], "#79756a", null);
+      drawCharacterPlate([38.08,-3.45,40.88,-3.8,41.44,-2.8,40.32,-1.1,38.08,-0.9], "#79756a", null);
       if (onBelt) { ctx.translate(-4.5,0); drawHilt(); }
       ctx.restore();
       const frontHand = shooting && !bladeVisible
@@ -655,30 +705,30 @@
           ctx.save();
           ctx.globalAlpha *= 0.42 * Math.sin(Math.PI * clamp((attackProgress - 0.18) / 0.50, 0, 1));
           ctx.fillStyle = flameSword ? "#ffad57" : empowered ? bodyAmber : "#8dc6c8";
-          ctx.beginPath(); ctx.moveTo(40,-2.7);
-          ctx.quadraticCurveTo(40,dir*10,33,dir*19);
-          ctx.quadraticCurveTo(36,dir*9,35.5,-2.1);
+          ctx.beginPath(); ctx.moveTo(44.26,-2.7);
+          ctx.quadraticCurveTo(44.26,dir*10,36.42,dir*19);
+          ctx.quadraticCurveTo(39.78,dir*9,39.22,-2.1);
           ctx.closePath(); ctx.fill(); ctx.restore();
         }
         ctx.save();
         if (pull < 1) {
-          ctx.beginPath(); ctx.rect(4.75,-14,35.5*pull,26); ctx.clip();
+          ctx.beginPath(); ctx.rect(4.75,-14,39.76*pull,26); ctx.clip();
         }
         // Narrow steel spine, shallow curvature and a distinct diagonal point.
         ctx.fillStyle = flameSword ? "#ffaa55" : empowered ? bodyAmber : bodyBlade;
         ctx.beginPath();
-        ctx.moveTo(5.1,-1.20);
-        ctx.quadraticCurveTo(25.5,-1.15,40,-2.7);
-        ctx.quadraticCurveTo(37.4,-0.65,34.5,-0.2);
-        ctx.quadraticCurveTo(20.4,1.45,5.1,1.2);
+        ctx.moveTo(5.172,-1.20);
+        ctx.quadraticCurveTo(28.02,-1.15,44.26,-2.7);
+        ctx.quadraticCurveTo(41.348,-0.65,38.1,-0.2);
+        ctx.quadraticCurveTo(22.308,1.45,5.172,1.2);
         ctx.closePath(); ctx.fill();
         ctx.strokeStyle = flameSword ? "#ffe1a3" : "#f0f4ec"; ctx.lineWidth = 0.7;
-        ctx.beginPath(); ctx.moveTo(5.3,1);
-        ctx.quadraticCurveTo(23.2,1.12,34.5,-0.4);
-        ctx.lineTo(39.7,-2.55); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(5.396,1);
+        ctx.quadraticCurveTo(25.444,1.12,38.1,-0.4);
+        ctx.lineTo(43.924,-2.55); ctx.stroke();
         ctx.strokeStyle = flameSword ? "#dc602c" : "#677e85"; ctx.lineWidth = 0.65;
-        ctx.beginPath(); ctx.moveTo(6,-0.85);
-        ctx.quadraticCurveTo(26.2,-0.82,37.8,-2.12); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6.18,-0.85);
+        ctx.quadraticCurveTo(28.804,-0.82,41.796,-2.12); ctx.stroke();
         if (flameSword) {
           for (let i=0;i<3;i++) {
             const x=10+i*8, flicker=Math.sin(game.time*18+i*1.7);
@@ -789,6 +839,6 @@
 
     return drawPlayerBody;
   }
-  return Object.freeze({ createRenderer, captureLocomotion, updateMotion, resetMotion,
+  return Object.freeze({ createRenderer, captureLocomotion, updateMotion, resetMotion, sampleBlade,
     strideRadiansPerPixel: STRIDE_RADIANS_PER_PIXEL, runSupportFraction: RUN_SUPPORT_FRACTION });
 });

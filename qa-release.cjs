@@ -10,7 +10,7 @@ assert(html.includes(`styles.css?v=${version}`));
 assert(html.includes(`bootstrap.js?v=${version}`));
 assert(html.includes(`VERSION ${version}`));
 assert(read("game.js").includes(`const GAME_VERSION = "${version}";`));
-for (const name of ["bootstrap.js", "story-data.js", "operative-renderer.js", "game.js"]) new vm.Script(read(name), { filename: name });
+for (const name of ["bootstrap.js", "story-data.js", "operative-renderer.js", "duel-ghost.js", "environment-renderer.js", "game.js"]) new vm.Script(read(name), { filename: name });
 for (const page of [html, read("pvp.html")]) {
   for (const asset of [...page.matchAll(/(?:src|href)="([^"?#]+)(?:[?#][^"]*)?"/g)].map(match => match[1])) {
     if (!/^(https?:|#)/.test(asset)) assert(fs.existsSync(asset), `Missing release asset: ${asset}`);

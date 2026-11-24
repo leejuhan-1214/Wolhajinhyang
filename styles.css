@@ -218,6 +218,17 @@ canvas {
 #duel-menu button:focus-visible { outline: 2px solid #ffda87; outline-offset: -3px; }
 #duel-menu button:disabled { opacity: .56; cursor: default; }
 #duel-leave { margin-top: 5px; }
+#duel-ghost-pause[hidden] { display: none !important; }
+.duel-ghost-options { display:flex; align-items:center; flex-wrap:wrap; gap:5px 10px; margin-bottom:8px; }
+.duel-ghost-options span { font-size:11px; line-height:1.4; color:#adc5ca; }
+.duel-brief { flex-basis:100%; color:#c1d5db; font-size:12px; }
+.duel-brief summary { width:fit-content; cursor:pointer; padding:5px 0; }
+#duel-menu .duel-brief p { margin:3px 0 7px; line-height:1.5; font-size:12px; }
+#duel-ghost-option[aria-pressed="true"], #duel-ghost-pause[aria-pressed="true"] { color:#abf0ff; border-color:#6bbac7; }
+#duel-ghost-pause { min-height:32px; padding:4px 10px; font-size:12px; }
+.duel-practice-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; }
+.duel-practice-controls:not(:has(button:not([hidden]))) { display:none; }
+.duel-practice-controls #duel-leave { margin:0; }
 .tutorial-chain-note strong { color: #ffdb8e; margin-right: 5px; }
 
 .volume-panel {

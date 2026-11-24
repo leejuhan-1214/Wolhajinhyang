@@ -261,8 +261,8 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
     const scabbard=model.filledShapes.find(shape=>shape.color==='#132631');
     assert(scabbard?.kind==='polygon'&&scabbard.local.length>=8,'the sheathed blade must retain its sculpted lacquer scabbard');
     const scabbardBounds=boundsOf(scabbard.local);
-    assert(scabbardBounds.right-scabbardBounds.left>=36&&scabbardBounds.right-scabbardBounds.left<=40,
-      'the sheath must cover the shorter blade without retaining the oversized old silhouette');
+    assert(scabbardBounds.right-scabbardBounds.left>=41.4&&scabbardBounds.right-scabbardBounds.left<=41.5,
+      'the fitted sheath must match the modest 12% extension without scaling the grip');
   }
 }
 
@@ -369,7 +369,7 @@ for(const facing of[-1,1]) {
   const blade=drawn.blades[0],guard=drawn.guards[0];
   const sheath=drawn.filledShapes.find(shape=>shape.color==='#132631');
   const length=boundsOf(blade.local).right-guard.x,sheathLength=boundsOf(sheath.local).right;
-  assert(length>=33&&length<=37,'the cutting edge must stay proportionate to the character');
+  assert(length>=39.7&&length<=39.8,'the cutting edge must extend the original 35.5px by a modest 12%');
   assert(sheathLength>=length+.8&&sheathLength<=length+3,'the sheath must cover the steel with a short protective tip');
   for(const point of blade.local) {
     const seated=[point[0]-guard.x,point[1]-guard.y];

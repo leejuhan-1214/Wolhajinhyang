@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.9.0**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.10.0**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.10.0: `duel-ghost.js`는 보스·난이도별 동선과 자세만 양자화하여 기록하고 재대결에서만 표시합니다. 본편 슬롯, 수치 기록, 적 AI와 별개입니다. 최대 1,536표본까지 담으며 긴 전투는 간격을 늘립니다. `environment-renderer.js`는 충돌면을 변경하지 않고 각 막의 지형·보스방을 그립니다. 두 스크립트 모두 bootstrap이 게임 시작 전에 로드합니다.
 
 3.9.0: 보스 재대결 시 `game.bossReplay`가 설정되며 본편 저장과 습관 학습을 막습니다. 격파 도감과 난이도별 기록은 같은 브라우저의 독립된 `moonlit-echo-duel-records-v1`에 보관됩니다.
 

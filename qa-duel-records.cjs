@@ -3,7 +3,7 @@ const assert=require("node:assert/strict"), fs=require("node:fs"), vm=require("n
 const read=f=>fs.readFileSync(f,"utf8");
 new Function("require",read("qa-smoke.cjs").split("const runtimeSource =")[0])(require);
 global.setTimeout=()=>0;
-for (const f of ["story-data.js","operative-renderer.js"]) vm.runInThisContext(read(f),{filename:f});
+for (const f of ["story-data.js","operative-renderer.js","duel-ghost.js"]) vm.runInThisContext(read(f),{filename:f});
 const hook=`window.duelQA={game,player,enemies,stages,duelBook,SAVE_KEY,DUEL_RECORD_KEY,update,saveCampaign,damagePlayer,killEnemy,
   readCampaignSave,readDuelBook,importLegacyDuelWins,beginBossReplay,showDuelMenu,advanceCutscene,holdBossUntilIntroEnds,togglePause,respawn,
   start(){lastResetAt=-Infinity;resetGame(false)}, setDifficulty(d){selectedDifficulty=d},getZoneIndexAt};`;
@@ -34,7 +34,10 @@ function deployed() {
 go(); let boss=deployed(); q.togglePause(); const paused=q.game.runTime; q.update(.2); assert.equal(q.game.runTime,paused); q.togglePause();
 q.player.invincible=0; q.damagePlayer(2); q.damagePlayer(1); assert.equal(boss.duelHits,1);
 q.game.runTime=boss.duelBeganAt+7; q.killEnemy(boss); assert.equal(q.game.mode,"duelResult"); assert(el("duel-description").textContent.includes("피격 1회")); assert.deepEqual(q.duelBook.best["cadet:breaker"],{time:7,hits:1}); assert.equal(slot(),preserved);
-click("duel-retry"); boss=deployed(); q.game.runTime=boss.duelBeganAt+12; q.killEnemy(boss);
+click("duel-retry"); boss=deployed(); assert.equal(window.MoonlitDuelGhost.referenceTime,7);
+assert(window.MoonlitDuelGhost.frameAt(.1)); q.togglePause(); click("duel-ghost-pause");
+assert(!window.MoonlitDuelGhost.enabled); assert(!window.MoonlitDuelGhost.frameAt(.1)); click("duel-ghost-pause"); q.togglePause();
+q.game.runTime=boss.duelBeganAt+12; q.killEnemy(boss);
 assert.deepEqual(q.duelBook.best["cadet:breaker"],{time:7,hits:0},"independent bests"); assert.equal(slot(),preserved);
 click("duel-retry"); deployed(); q.player.hp=1; q.player.invincible=0; q.damagePlayer(1); assert.equal(q.game.mode,"duelResult"); assert.equal(slot(),preserved);
 click("duel-back"); assert.equal(q.game.mode,"duelMenu"); q.setDifficulty("darkhorse"); q.showDuelMenu();
