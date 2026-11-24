@@ -99,7 +99,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.10.0";
+  const GAME_VERSION = "3.10.1";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -2878,7 +2878,8 @@
         drone.id = `${routeId}:drone:${index + 1}`;
         drone.optionalTraversal = true;
         drone.aerialRouteId = routeId;
-        drone.cooldown = 1;
+        drone.routeShotOffset = index * 0.55;
+        drone.cooldown = 1 + drone.routeShotOffset;
         droneIds.push(drone.id);
       });
       zone.baseTargetEnemyCount += droneIds.length;
@@ -5897,9 +5898,20 @@
     return segments;
   }
   function buildAttackBox(direction, charged, slashChain) {
-    return slashBounds(prospectiveSlashSegments(direction, slashChain));
+    // Enemy body damage deliberately retains the forgiving 3.9.0 reach.
+    // Precision parts and projectile cutting still use the visible steel below.
+    const vertical = Math.abs(direction.y) > 0.25;
+    const reach = charged ? 82 : slashChain === 3 ? 76 : 68;
+    const centerX = player.x + player.w / 2 + direction.x * reach;
+    const centerY = player.y + player.h / 2 + direction.y * reach;
+    return {
+      x: centerX - (vertical ? (charged ? 70 : 55) : (charged ? 108 : slashChain === 3 ? 92 : 84)),
+      y: centerY - (vertical ? (charged ? 105 : 82) : (charged ? 72 : 52)),
+      w: vertical ? (charged ? 140 : 110) : charged ? 216 : slashChain === 3 ? 184 : 168,
+      h: vertical ? (charged ? 210 : 164) : charged ? 144 : 104,
+    };
   }
-  function attackBox() { return slashBounds(currentSlashSegments()); }
+  function attackBox() { return buildAttackBox(player.attackDir, player.chargedAttack, player.slashChain); }
   function bulletIntersectsSlashBlade(bullet) {
     if (!bullet?.enemy || ["mutant-debris", "warden-beam", "rain-controller", "rain-core-burst"].includes(bullet.kind)) return false;
     return slashIntersectsRect(bullet);
@@ -8458,9 +8470,10 @@
     if (isAttackActive()) {
       refreshSlashContact(slashStartPose);
       const hitbox = attackBox();
+      const physicalHitbox = slashBounds(currentSlashSegments());
       for (const enemy of enemies) {
         if (enemy.alive && enemy.bossKind === "hunter") tryHitHunterClasp(enemy);
-        if (enemy.alive && overlaps(hitbox, enemy) && slashIntersectsRect(enemy)) damageEnemy(enemy);
+        if (enemy.alive && overlaps(hitbox, enemy)) damageEnemy(enemy);
       }
       // 칼날에 직접 닿은 투사체를 제거한다. 대역-13의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
       for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
@@ -8477,7 +8490,7 @@
         if (!player.grounded) player.airJumpAvailable = true;
       }
       for (const node of boostNodes) {
-        if (node.hitAttackId === player.attackId || !overlaps(hitbox, node) || !slashIntersectsRect(node)) continue;
+        if (node.hitAttackId === player.attackId || !overlaps(physicalHitbox, node) || !slashIntersectsRect(node)) continue;
         if (game.adminMode && player.adminEraseAttackId === player.attackId) {
           eraseAdminPlacedObject(node, boostNodes);
           continue;
@@ -8493,7 +8506,7 @@
       if (game.adminMode && player.adminEraseAttackId === player.attackId) {
         for (let pickupIndex = pickups.length - 1; pickupIndex >= 0; pickupIndex -= 1) {
           const pickup = pickups[pickupIndex];
-          if (overlaps(hitbox, pickup) && slashIntersectsRect(pickup)) eraseAdminPlacedObject(pickup, pickups);
+          if (overlaps(physicalHitbox, pickup) && slashIntersectsRect(pickup)) eraseAdminPlacedObject(pickup, pickups);
         }
       }
     }
@@ -8698,6 +8711,58 @@
     return getNearbyPlatforms(probe, 24).some((platform) => !platform.hidden && overlaps(probe, platform));
   }
 
+  function canTraversalDroneTarget(enemy, target) {
+    if (game.mode !== "playing" || game.adminMode || game.cutscene || player.hp <= 0
+      || normalizeEnemyHomeZone(enemy) !== getCurrentPlayerZoneIndex()) return false;
+    const source = { x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h * 0.38 };
+    // These remain optional aerial jump anchors: the lower route is outside
+    // their targeting band, and intervening terrain also blocks acquisition.
+    if (Math.hypot(target.x - source.x, target.y - source.y) > 500
+      || Math.abs(target.y - source.y) > 150) return false;
+    const sight = { base: source, tip: target };
+    const bounds = { x: Math.min(source.x, target.x), y: Math.min(source.y, target.y),
+      w: Math.abs(target.x - source.x), h: Math.abs(target.y - source.y) };
+    return !getNearbyPlatforms(bounds, 8).some(platform =>
+      !platform.hidden && slashSegmentHitsRect(sight, platform, 5));
+  }
+
+  function updateTraversalDroneShot(enemy, dt) {
+    const target = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
+    const offset = enemy.routeShotOffset || 0;
+    if (!canTraversalDroneTarget(enemy, target)) {
+      enemy.windup = 0;
+      enemy.targetX = null;
+      enemy.targetY = null;
+      enemy.cooldown = Math.max(enemy.cooldown, 0.8 + offset);
+      return;
+    }
+    if (enemy.windup > 0) {
+      enemy.windup = Math.max(0, enemy.windup - dt);
+      if (enemy.windup === 0) {
+        const lockedTarget = { x: enemy.targetX, y: enemy.targetY };
+        // Aim locks at the amber-eye cue, never homes onto a moving jumper.
+        // Recheck both the live lane and the locked ray before releasing.
+        if (Number.isFinite(lockedTarget.x) && Number.isFinite(lockedTarget.y)
+          && canTraversalDroneTarget(enemy, lockedTarget)) {
+          fireBullet(enemy, 300, 0, "standard", lockedTarget);
+          Object.assign(bullets[bullets.length - 1], {
+            ownerId: enemy.id, ownerZone: normalizeEnemyHomeZone(enemy), life: 2.1,
+          });
+        }
+        enemy.targetX = null;
+        enemy.targetY = null;
+        enemy.cooldown = (game.difficulty === "chick" ? 4.5 : 3.6) + offset;
+      }
+      return;
+    }
+    if (enemy.cooldown <= 0) {
+      enemy.windup = game.difficulty === "chick" ? 1.1 : 0.95;
+      enemy.targetX = target.x;
+      enemy.targetY = target.y;
+      sound.tone(640, 0.09, "sine", 0.012, 1.25);
+    }
+  }
+
   function updateEnemy(enemy, dt) {
     if (!enemy.alive) return;
     enemy.anim += dt;
@@ -8772,9 +8837,8 @@
         enemy.vx = 0;
         enemy.x = enemy.originX;
         enemy.y = enemy.baseY + Math.sin(enemy.anim * 2.2) * 6;
-        enemy.windup = 0;
-        enemy.cooldown = Math.max(enemy.cooldown, 0.8);
         constrainEnemyToLockdown(enemy);
+        updateTraversalDroneShot(enemy, dt);
         return;
       }
       const previousDroneX = enemy.x;
@@ -15319,8 +15383,8 @@
       const enemyCenterX = enemy.x + enemy.w / 2;
       const enemyCenterY = enemy.y + enemy.h / 2;
       const aim = aimAtWorldPoint(enemyCenterX, enemyCenterY);
-      const prospectiveSegments = prospectiveSlashSegments(aim, nextSlashChain);
-      if (!prospectiveSegments.some(segment => slashSegmentHitsRect(segment, enemy))) continue;
+      const prospectiveSlashBox = buildAttackBox(aim, charged, nextSlashChain);
+      if (!overlaps(prospectiveSlashBox, enemy)) continue;
 
       const tapDistance = Math.hypot(enemyCenterX - worldX, enemyCenterY - worldY);
       if (tapDistance < closestDistance) {

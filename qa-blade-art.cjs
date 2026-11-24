@@ -1,4 +1,5 @@
-// Actual canvas steel and gameplay contact must share one immutable pose source.
+// Visible steel, projectile cutting and named precision parts share one pose.
+// Forgiving enemy-body/mobile reach is tested separately in qa-wide-slash.cjs.
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const {recordingContext,renderer}=require('./qa-operative.cjs');
 let activeRecord=recordingContext();
@@ -40,7 +41,7 @@ for(const facing of[-1,1])for(const grounded of[false,true])for(const vertical o
       }
     }
     assert(!q.slashIntersectsRect({x:300+q.player.w/2+facing*140-2,y:q.player.y+18,w:4,h:4}),
-      'an old 140px aim box must not damage something beyond the physical blade');
+      'precision blade contact must not extend to the separate wide enemy-body hit box');
     poses++;
   }
   assert(connected>8,'every grounded/airborne directional attack must have a useful physical contact window');
@@ -56,11 +57,11 @@ assert(q.slashIntersectsRect({x:middleBlade.tip.x-.2,y:middleBlade.tip.y-.2,w:.4
 for(const kind of['mutant-debris','warden-beam','rain-controller','rain-core-burst']){
   assert(!q.bulletIntersectsSlashBlade({x:middleBlade.tip.x-2,y:middleBlade.tip.y-2,w:4,h:4,enemy:true,kind}),`${kind} remains uncleavable`);
 }
-// Mobile chooses from the same swept physical strike, never the former long box.
+// The physical preview remains compact even though enemy-body reach is wider.
 fixture();
 const preview=q.prospectiveSlashSegments({x:1,y:0},1);
 assert(preview.some(segment=>q.slashSegmentHitsRect(segment,{x:355,y:595,w:28,h:55})), 'normal standing spacing must remain usable');
-assert(!preview.some(segment=>q.slashSegmentHitsRect(segment,{x:440,y:595,w:28,h:55})), 'mobile must not auto-select an unreachable sword attack');
+assert(!preview.some(segment=>q.slashSegmentHitsRect(segment,{x:440,y:595,w:28,h:55})), 'a precision part at the wide body-hit range must not count as touched steel');
 // Read the real drawn receivers, not a data flag claiming different weapons.
 let infantryPoses=0;
 const silhouetteWidths={};
@@ -84,5 +85,5 @@ for(const type of['gunner','machinegun','runner'])for(const facing of[-1,1])for(
   infantryPoses++;
 }
 assert(silhouetteWidths.machinegun>silhouetteWidths.gunner*1.25,'heavy support gun and compact carbine must differ in silhouette, not just color');
-console.log(`Blade/art QA: ${poses} authored poses, ${contacts} actual tip contacts, worst tip error ${worstTipError.toFixed(5)}px; sweep, mobile, immune hazards and ${infantryPoses} infantry poses passed.`);
+console.log(`Blade/art QA: ${poses} authored poses, ${contacts} actual tip contacts, worst tip error ${worstTipError.toFixed(5)}px; precision sweep, immune hazards and ${infantryPoses} infantry poses passed.`);
 module.exports={q,fixture,target,recordingContext,setRecord(record){activeRecord=record;}};

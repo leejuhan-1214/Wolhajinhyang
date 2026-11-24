@@ -1,13 +1,13 @@
 {
   "name": "moonlit-echo",
-  "version": "3.10.0",
+  "version": "3.10.1",
   "private": true,
   "description": "샷건 반동과 발도술을 결합한 오리지널 2D 횡스크롤 액션 게임",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
     "check": "node --check bootstrap.js && node --check story-data.js && node --check game.js && node --check operative-renderer.js && node --check duel-ghost.js && node --check environment-renderer.js",
-    "test": "node qa-motion.cjs && node qa-checkpoints.cjs && node qa-bootstrap.cjs && node qa-release.cjs && node qa-operative.cjs && node qa-boss-balance.cjs && node qa-cross-combo.cjs && node qa-mirror.cjs && node qa-air-route.cjs && node qa-intro.cjs && node qa-duel-records.cjs && node qa-ghost.cjs && node qa-environment.cjs && node qa-blade-art.cjs && node qa-weakpoints.cjs && node qa-common-art.cjs"
+    "test": "node qa-motion.cjs && node qa-checkpoints.cjs && node qa-bootstrap.cjs && node qa-release.cjs && node qa-operative.cjs && node qa-boss-balance.cjs && node qa-cross-combo.cjs && node qa-mirror.cjs && node qa-air-route.cjs && node qa-intro.cjs && node qa-duel-records.cjs && node qa-ghost.cjs && node qa-environment.cjs && node qa-blade-art.cjs && node qa-weakpoints.cjs && node qa-common-art.cjs && node qa-wide-slash.cjs && node qa-hostile-ai.cjs && node qa-route-combat.cjs"
   },
   "engines": {
     "node": ">=20"
