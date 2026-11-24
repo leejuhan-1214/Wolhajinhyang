@@ -117,9 +117,6 @@
       const uniformBack = "#152737";
       const uniformFront = "#3a5363";
       const uniformTorso = "#111d2c";
-      const uniformPanel = "#29475a";
-      const uniformShoulder = "#3d6072";
-      const uniformJoint = "#172431";
       const uniformRearArm = "#203443";
       const uniformFrontArm = "#526c7a";
 
@@ -213,32 +210,77 @@
       ctx.rotate(bodyLean);
 
       if (ghost) {
-        drawCharacterPlate([-8, -57, 7, -56, 9, -45, 5, -42, 10, -38,
-          12, -8, 6, -10, 7, 0, 0, 0, -4, -15, -10, 0, -15, -3,
-          -11, -35, -9, -42], bodyCyan, null);
+        // A single silhouette per afterimage, with the same swept crest and
+        // diagonal shoulder. No full-cost armour pass for fading trails.
+        drawCharacterPlate([-13,-59,-7,-57,-2,-60,4,-58,10,-52,8,-49,
+          5,-43,9,-41,11,-37,8,-30,12,-17,7,-20,9,-4,7,0,2,0,
+          -3,-16,-8,-2,-13,-1,-11,-6,-8,-20,-14,-14,-12,-33,-12,-40,
+          -6,-44,-10,-47,-10,-54], bodyCyan, null);
         ctx.restore();
         return;
       }
 
-      function drawPixelSegment(x1, y1, x2, y2, width, color, highlight) {
+      function drawPixelSegment(x1, y1, x2, y2, width, color, highlight, part = "thigh") {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const length = Math.hypot(dx, dy);
+        const half = width / 2;
+        const nearLayer = color === uniformFront || color === uniformFrontArm;
+        const metalEdge = nearLayer ? "#9ab5bd" : "#597786";
+        const metalInset = nearLayer ? "#567383" : "#304959";
         ctx.save();
         ctx.translate(x1, y1);
         // Canvas rotates +Y toward -X; negate the angle to connect the real joints.
         ctx.rotate(-Math.atan2(dx, dy));
-        ctx.fillStyle = "#07101a";
-        ctx.fillRect(-width / 2 - 0.6, -0.5, width + 1.2, length + 1);
-        drawCharacterPlate([-width / 2 + 1, 0, width / 2 - 1, 0,
-          width / 2, 1, width / 2, length - 1, width / 2 - 1, length,
-          -width / 2 + 1, length, -width / 2, length - 1, -width / 2, 1], color, null);
+        // A narrow actuator remains visible at each end of the armor shell.
+        const neck = Math.max(1.1, width * 0.36);
+        drawCharacterPlate([-neck / 2, -0.25, neck / 2, -0.25,
+          neck / 2, length + 0.25, -neck / 2, length + 0.25], "#07101a", null);
+        ctx.fillStyle = nearLayer ? "#526e7c" : "#253d4e";
+        ctx.fillRect(-neck / 2, 0.2, 0.6, 1.2);
+        ctx.fillRect(-neck / 2, length - 1.3, 0.6, 1.2);
+        let shell;
+        if (part === "thigh") {
+          shell = [-half * 0.65, 0.8, half * 0.55, 0.8, half, 2.4,
+            half * 0.86, length * 0.42, half * 0.55, length * 0.64,
+            half * 0.42, length - 1.05, -half * 0.42, length - 1.05,
+            -half * 0.72, length * 0.65, -half, length * 0.37, -half, 2];
+        } else if (part === "calf") {
+          shell = [-half * 0.52, 0.85, half * 0.6, 0.85, half, length * 0.25,
+            half * 0.9, length * 0.54, half * 0.45, length - 1.1,
+            -half * 0.55, length - 1.1, -half * 0.72, length * 0.7,
+            -half, length * 0.42, -half * 0.85, length * 0.2];
+        } else if (part === "bicep") {
+          shell = [-half * 0.55, 0.7, half * 0.42, 0.7, half, 2,
+            half * 0.85, length * 0.48, half * 0.45, length - 1,
+            -half * 0.5, length - 1, -half, length * 0.6, -half * 0.9, 2.2];
+        } else {
+          shell = [-half * 0.4, 0.8, half * 0.38, 0.8, half * 0.7, length * 0.3,
+            half, length * 0.52, half * 0.9, length - 0.85,
+            -half * 0.75, length - 0.85, -half, length * 0.7, -half * 0.68, length * 0.35];
+        }
+        drawCharacterPlate(shell, color, "#030a11", 0.65);
+        if (part === "thigh") {
+          drawCharacterPlate([half * 0.12, length * 0.42, half * 0.61, length * 0.5,
+            half * 0.36, length - 1.8, -half * 0.15, length - 1.8], metalInset, null);
+        } else if (part === "calf") {
+          drawCharacterPlate([-0.45, 2, 0.5, 2.6, half * 0.36, length * 0.72,
+            -0.35, length - 2], metalInset, null);
+        } else if (part === "bicep") {
+          drawCharacterPlate([-half * 0.62, 1.4, half * 0.36, 1.4,
+            half * 0.63, 2.6, -half * 0.46, 3.1], metalInset, null);
+        } else {
+          drawCharacterPlate([-0.2, length * 0.4, half * 0.55, length * 0.5,
+            half * 0.45, length - 1.4, -0.4, length - 1.4], nearLayer ? "#29414f" : "#101f2d", null);
+        }
+        ctx.strokeStyle = metalEdge;
+        ctx.lineWidth = nearLayer ? 0.65 : 0.45;
+        ctx.beginPath();
+        ctx.moveTo(-half * 0.55, part === "forearm" ? length * 0.4 : 1.6);
+        ctx.lineTo(-half * 0.72, part === "forearm" ? length - 1.65 : length * 0.43);
+        ctx.stroke();
         ctx.fillStyle = highlight;
-        ctx.fillRect(-width / 2 + 0.6, 1, 1, Math.max(2, length - 2));
-        ctx.fillStyle = "rgba(5, 10, 17, 0.48)";
-        ctx.fillRect(width / 2 - 1.4, 2, 1.2, Math.max(2, length - 3));
-        ctx.fillStyle = "#6a818b";
-        ctx.fillRect(-0.5, 1.5, 1, 1);
+        ctx.fillRect(-0.35, part === "forearm" ? length - 1.8 : 1.5, 0.7, 0.7);
         ctx.restore();
       }
 
@@ -248,35 +290,64 @@
         const lowerAngle = upperAngle - kneeBend;
         const endX = kneeX + Math.sin(lowerAngle) * lowerLength;
         const endY = kneeY + Math.cos(lowerAngle) * lowerLength;
-        drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)");
-        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(3, width - 1), color, "rgba(151, 207, 216, 0.18)");
+        const nearLayer = color === uniformFront || color === uniformFrontArm;
+        drawPixelSegment(px, py, kneeX, kneeY, width, color, "rgba(151, 207, 216, 0.24)", foot ? "thigh" : "bicep");
+        drawPixelSegment(kneeX, kneeY, endX, endY, Math.max(3, width - 1), color, "rgba(151, 207, 216, 0.18)", foot ? "calf" : "forearm");
         ctx.fillStyle = "#07101a";
         ctx.beginPath();
         ctx.arc(kneeX, kneeY, width * 0.56, 0, TAU);
         ctx.fill();
-        ctx.fillStyle = "#8aabb5";
-        ctx.fillRect(kneeX - width * 0.4, kneeY - width * 0.3, width * 0.8, width * 0.6);
+        ctx.save();
+        ctx.translate(kneeX, kneeY);
+        ctx.rotate(-(upperAngle + lowerAngle) * 0.5);
+        const bearing = width * 0.56;
+        drawCharacterPlate([-bearing * 0.7, -bearing * 0.45, 0, -bearing * 0.7,
+          bearing * 0.75, -bearing * 0.3, bearing * 0.7, bearing * 0.4,
+          0, bearing * 0.65, -bearing * 0.75, bearing * 0.3], nearLayer ? "#8aabb5" : "#516c7a", null);
+        ctx.fillStyle = "#182b38";
+        ctx.beginPath(); ctx.arc(0, 0, bearing * 0.4, 0, TAU); ctx.fill();
+        ctx.strokeStyle = nearLayer ? "#c2d6d8" : "#6e8b98";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(0, 0, bearing * 0.78, -Math.PI * 0.9, -Math.PI * 0.15); ctx.stroke();
         ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-        ctx.fillRect(kneeX - 0.7, kneeY - 0.7, 1.4, 1.4);
+        ctx.fillRect(-0.5, -0.5, 1, 1);
+        ctx.restore();
         if (foot) {
           const toeLift = footAngle ?? (player.grounded ? -bodyLean : clamp(-player.vy / 700, -0.35, 0.35));
           ctx.save();
           ctx.translate(endX, endY);
           ctx.rotate(toeLift);
-          ctx.fillStyle = "#06101a";
-          ctx.fillRect(-2.5, -2, 9, 6);
-          ctx.fillStyle = "#263c4b";
-          ctx.fillRect(-1, -1, 6, 3);
-          ctx.fillStyle = "#657d88";
-          ctx.fillRect(-1, 2, 7, 1);
+          drawCharacterPlate([-2.5, -1.3, -1.6, -2, 0.8, -2, 1.5, -0.7,
+            3.7, -0.4, 4.2, 0.2, 5.5, 0.2, 6.5, 1.1, 6.5, 4, -2.5, 4], "#06101a", null);
+          drawCharacterPlate([-1.3, -1, 0.7, -1, 1.4, 0.3, 3.6, 0.8,
+            3.6, 2.4, -1.5, 2.4], nearLayer ? "#3b5664" : "#1c3443", null);
+          drawCharacterPlate([3.5, 0.7, 5.6, 1, 6, 2.4, 3.5, 2.4], nearLayer ? "#698590" : "#3d596a", null);
+          ctx.fillStyle = "#0b1721";
+          ctx.fillRect(-2.5, 2.8, 9, 1.2);
+          ctx.fillStyle = "#02080f";
+          ctx.fillRect(-1.5, 3.1, 1, 0.9);
+          ctx.fillRect(3.9, 3.1, 0.8, 0.9);
+          ctx.fillStyle = nearLayer ? "#91a9b0" : "#526e7c";
+          ctx.fillRect(0, 2.8, 5.5, 0.5);
           ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-          ctx.fillRect(5, 0, 1.5, 1);
+          ctx.fillRect(5, 1.2, 0.9, 0.7);
           ctx.restore();
         } else if (hand) {
-          ctx.fillStyle = "#0a141e";
-          ctx.fillRect(Math.round(endX - 2.5), Math.round(endY - 2), 5, 5);
-          ctx.fillStyle = "#8ca1aa";
-          ctx.fillRect(Math.round(endX + 0.5), Math.round(endY - 1), 1.5, 2);
+          ctx.save();
+          ctx.translate(endX, endY);
+          ctx.rotate(-lowerAngle);
+          drawCharacterPlate([-1.4, -2, 0.9, -2, 1.4, -1.3, 2.5, -0.8,
+            2.5, 0.7, 1.8, 1.1, 1.8, 2.2, 0.4, 3, -1.8, 2.5,
+            -2.5, 1, -2.5, -0.8], "#0a141e", null);
+          drawCharacterPlate([-1.2, -1.1, 0.6, -1.1, 1.4, -0.3, 1.2, 1.4,
+            -0.5, 2.1, -1.6, 1.2], nearLayer ? "#3d5868" : "#223b4b", null);
+          ctx.fillStyle = nearLayer ? "#a7bec4" : "#647f8d";
+          ctx.fillRect(0, -0.8, 0.7, 1);
+          ctx.fillRect(0.95, -0.5, 0.65, 0.85);
+          ctx.fillStyle = "#06121c";
+          ctx.fillRect(-1.2, -1.8, 2.3, 0.65);
+          ctx.fillRect(0.5, 0.6, 1.2, 0.5);
+          ctx.restore();
         }
         return { x: endX, y: endY, angle: lowerAngle };
       }
@@ -370,23 +441,13 @@
       if (!echoStyle) {
         ctx.save();
         pitchUpperBody();
-        // Narrow, rigid split panels stop above the knees. The open center
-        // exposes both thighs rather than turning the coat into a second body.
-        drawCharacterPlate([-10, -46, 8, -46, 10, -32, 11, -16,
-          7, -17, 2, -29, -3, -28, -9, -14,
-          -14, -17, -12, -32], "#b5c7cb");
-        drawCharacterPlate([-9, -43, -5, -37, -6, -29, -10, -17,
-          -12, -18, -10, -32], "#edf3ed", null);
-        drawCharacterPlate([6, -42, 8, -37, 9, -18,
-          7, -20, 4, -30], "#f6f8ef", null);
-        ctx.strokeStyle = "#ff496c";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(9, -32);
-        ctx.lineTo(10, -18);
-        ctx.moveTo(-12, -18);
-        ctx.lineTo(-9, -16);
-        ctx.stroke();
+        // Officer's field mantle: an ivory rear vent and a much shorter folded
+        // front vent, cut on the bias. They stay fixed to the upper body.
+        drawCharacterPlate([-11,-45, -6,-48, 6,-45, 9,-40, 8,-32, 11,-19,
+          7,-17, 3,-24, 1,-29, -3,-29, -7,-21, -12,-14, -15,-16, -12,-29], "#b5c7cb");
+        drawCharacterPlate([-11,-41, -6,-39, -7,-30, -11,-21, -14,-17, -12,-30], "#f5f2de", null);
+        drawCharacterPlate([-13,-19, -10,-21, -7,-27, -9,-21, -13,-16], "#ac8256", null);
+        drawCharacterPlate([5,-37, 7,-34, 10,-20, 8,-19, 5,-25], "#d8d9c9", null);
         ctx.restore();
       }
 
@@ -399,32 +460,28 @@
       ctx.translate(0, -10);
       ctx.scale(1, 0.84);
 
-      // 등에 고정된 전술 신호 장치와 작은 안테나.
-      ctx.fillStyle = "#0a131f";
-      ctx.fillRect(-13, -42, 4, 18);
-      ctx.fillStyle = "#3c5868";
-      ctx.fillRect(-12, -38, 2, 10);
+      // Low-profile receiver: a hooked aerial nests against the back shell.
+      drawCharacterPlate([-12,-43,-8,-42,-8,-28,-11,-25,-14,-32], "#172d38");
+      drawCharacterPlate([-13,-40,-10,-39,-10,-32,-12,-31], "#58727a", null);
+      drawCharacterPlate([-12,-41,-14,-44,-16,-49,-14,-48,-11,-44], "#788b89", null);
       ctx.fillStyle = bodyCyan;
-      ctx.globalAlpha = alpha * (0.4 + Math.sin(game.time * 5) * 0.18);
-      ctx.fillRect(-12, -41, 1.5, 3);
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = "#526d79";
-      ctx.beginPath();
-      ctx.moveTo(-11, -42);
-      ctx.lineTo(-14, -51);
-      ctx.stroke();
+      ctx.fillRect(-12,-38,1,3);
 
       // 허리의 칼집. 천 소재 없이 단단한 검사 실루엣을 만든다.
       ctx.save();
       ctx.translate(-7, -23);
       ctx.rotate(2.66);
-      ctx.fillStyle = "#070d16";
-      ctx.fillRect(0, -3, 58, 6);
-      ctx.fillStyle = "#334d5b";
-      ctx.fillRect(4, -2, 47, 2);
-      ctx.fillStyle = bodyRed;
-      ctx.fillRect(5, -4, 3, 9);
-      ctx.fillRect(50, -3, 2, 6);
+      // Long lacquer scabbard follows the blade's gentle curve; a brass chape
+      // and tied oxblood cord make it readable even when the blade is stowed.
+      drawCharacterPlate([0,-3, 17,-2.8, 39,-2.1, 54,-1.1, 62,0.3,
+        64,2.1, 61,3.4, 42,2.5, 17,2.6, 0,3.2], "#132631", "#080f16", 1.2);
+      drawCharacterPlate([9,-1.9, 28,-1.6, 49,-0.9, 57,0.3, 39,-0.1, 10,-0.3], "#52717a", null);
+      drawCharacterPlate([0,-3.2, 3,-3.4, 3,3.4, 0,3.4], "#c49b62", null);
+      drawCharacterPlate([5,-3, 14,-2.8, 14,2.9, 5,3.1], "#612b37", null);
+      for (let knot=5; knot<13; knot+=3) {
+        drawCharacterPlate([knot,-2.9,knot+1.4,-2.9,knot+3,2.9,knot+1.8,2.9], "#bc5962", null);
+      }
+      drawCharacterPlate([58,-0.7,62,0.1,64,1.8,61,3.2,58,3], "#ba935f", null);
       if (!bladeVisible) {
         ctx.fillStyle = "#12151d";
         ctx.fillRect(-15, -3, 16, 7);
@@ -439,13 +496,6 @@
         ctx.fillStyle = "#b58b43";
         ctx.fillRect(-1, -5, 3, 11);
       }
-      ctx.fillStyle = "#151f29";
-      ctx.beginPath();
-      ctx.moveTo(58, -3);
-      ctx.lineTo(63, 0);
-      ctx.lineTo(58, 3);
-      ctx.closePath();
-      ctx.fill();
       ctx.restore();
 
       // A small opposed shoulder turn keeps the upper body involved in each cut.
@@ -467,87 +517,37 @@
       // The far arm belongs behind the chest; only the shotgun support hand
       // reaches across the front. This makes the two arm swings readable.
       if (!shooting || bladeVisible) drawRearArm();
-      ctx.fillStyle = uniformTorso;
-      ctx.beginPath();
-      ctx.moveTo(-8, -43);
-      ctx.lineTo(8, -43);
-      ctx.lineTo(10.5, -36);
-      ctx.lineTo(6.5, -18);
-      ctx.lineTo(-6.5, -18);
-      ctx.lineTo(-10.5, -36);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = uniformPanel;
-      ctx.fillRect(-7, -37, 2.5, 11);
-      // One clean breastplate above a narrow waist: avoid layered belly plates.
-      drawCharacterPlate([-3, -39, 6, -37, 6, -30, 2, -27, -4, -30], "#203645", "#0a1721");
-      ctx.strokeStyle = "#516c79";
-      ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(-2, -38); ctx.lineTo(5, -36); ctx.stroke();
-      ctx.fillStyle = "#09141d";
-      ctx.fillRect(-4, -44, 9, 3);
-      ctx.fillStyle = "#587380";
-      ctx.fillRect(-3, -44, 7, 1);
-      ctx.fillStyle = uniformShoulder;
-      ctx.beginPath();
-      ctx.moveTo(-11, -40);
-      ctx.lineTo(-7, -43);
-      ctx.lineTo(-4, -39);
-      ctx.lineTo(-7, -35);
-      ctx.lineTo(-11, -36);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = uniformJoint;
-      ctx.fillRect(-7, -23, 14, 5);
-      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-      ctx.fillRect(-8, -24, 16, 2);
-      ctx.fillStyle = "#7d929b";
-      ctx.fillRect(-5, -21, 2, 2);
-      ctx.fillRect(3, -21, 2, 2);
-      ctx.fillStyle = bodyCyan;
-      ctx.fillRect(-2, -22, 4, 1);
-      ctx.fillStyle = bodyRed;
-      ctx.fillRect(7, -35, 1.5, 7);
-      ctx.fillStyle = empowered ? bodyAmber : bodyCyan;
-      ctx.beginPath();
-      ctx.arc(2, -31, 1.6, 0, TAU);
-      ctx.fill();
-
-      // A few large seams survive at gameplay scale; no noisy chest grid.
-      ctx.strokeStyle = "rgba(151, 196, 205, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(-7, -36);
-      ctx.lineTo(-5, -28);
-      ctx.moveTo(6, -29);
-      ctx.lineTo(5, -26);
-      ctx.stroke();
-      ctx.fillStyle = "#0b141f";
-      ctx.fillRect(-10, -23, 4, 5);
-      ctx.fillRect(6, -23, 4, 5);
-      ctx.fillStyle = "#4c6774";
-      ctx.fillRect(-9, -22, 2, 1);
-      ctx.fillRect(7, -22, 2, 1);
-      ctx.fillStyle = "#c2d1d3";
-      ctx.fillRect(-1, -25, 3, 4);
-      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-      ctx.fillRect(0, -24, 1, 2);
-      ctx.fillStyle = "#6e8790";
-      ctx.fillRect(-5, -19, 2, 1);
-      ctx.fillRect(3, -19, 2, 1);
-
+      // Armoured courier of the lunar guard. The rib cage is a swept wedge;
+      // a narrow exposed spine separates the breastplate from the hip harness.
+      drawCharacterPlate([-7,-43, 2,-44, 8,-41, 10,-36, 8,-31, 5,-28,
+        4,-24, 6,-19, 2,-18, -5,-19, -6,-25, -8,-29, -10,-34,
+        -10,-38], uniformTorso, "#080f16");
+      drawCharacterPlate([-8,-39,-3,-42,6,-39,8,-36,6,-32,0,-29,-6,-31,-8,-35], "#253946", null);
+      drawCharacterPlate([-6,-39,1,-40,6,-37,3,-37,-2,-38,-7,-36], "#465f69", null);
+      drawCharacterPlate([-3,-30, 4,-32, 4,-30, 0,-27, -4,-27], "#0a1620", null);
+      drawCharacterPlate([-4,-26, 3,-28, 4,-26, -3,-24], "#54636a", null);
+      drawCharacterPlate([-3,-24, 4,-26, 4,-24, -2,-22], "#30444e", null);
+      // A fitted diagonal sword harness crosses the ribs into a brass frog.
+      drawCharacterPlate([5,-41,8,-40,-5,-23,-8,-23], "#4a3035", "#15191f", 0.65);
+      drawCharacterPlate([5,-40,6,-40,-5,-25,-6,-25], "#976c55", null);
+      drawCharacterPlate([-8,-24, -2,-23, 7,-25, 8,-22, 3,-20, -6,-21, -9,-22], "#222e34");
+      drawCharacterPlate([-8,-24,-4,-24,-3,-21,-6,-20,-9,-21], "#c5a26b", null);
+      drawCharacterPlate([-7,-23,-5,-23,-5,-22,-7,-22], "#5c3a34", null);
+      drawCharacterPlate([-5,-21,3,-20,7,-22,6,-19,1,-17,-4,-18], "#354953", null);
       if (!echoStyle) {
-        drawCharacterPlate([-10, -43, -7, -45, -3, -39, -5, -33, -8, -37], "#f0f5ee", "#778f99");
-        drawCharacterPlate([5, -43, 8, -42, 10, -37, 8, -33, 6, -37], "#dce8e4", "#778f99");
-        ctx.fillStyle = "#314755";
-        ctx.fillRect(-8, -40, 3, 1);
-        ctx.fillStyle = bodyRed;
-        ctx.fillRect(8, -37, 1, 3);
-        // Crescent insignia reads as a single light shape at gameplay scale.
-        ctx.fillStyle = bodyAmber;
-        ctx.beginPath(); ctx.arc(-7, -36, 1.5, 0, TAU); ctx.fill();
-        ctx.fillStyle = "#f0f5ee";
-        ctx.beginPath(); ctx.arc(-6.3, -36.7, 1.2, 0, TAU); ctx.fill();
+        // One asymmetrical half-mantle instead of two boxy shoulder pads.
+        // Its diagonal ivory edge points to the sword hand and leaves the
+        // action-side elbow entirely outside the coat.
+        drawCharacterPlate([-11,-42,-8,-47,-7,-47,-4,-43,2,-42,7,-44,
+          9,-41,5,-38,-1,-36,-5,-33,-9,-32,-12,-34], "#e8e9d8", "#34464c", 0.9);
+        drawCharacterPlate([-11,-41,-8,-45,-5,-42,1,-41,-3,-39,-8,-38,-11,-35], "#fcf5db", null);
+        drawCharacterPlate([-10,-33,-6,-37,-1,-38,6,-41,3,-38,-1,-36,-5,-33,-9,-32], "#879a99", null);
+        drawCharacterPlate([-9,-32,-5,-34,0,-36,-2,-34,-7,-31], "#b79765", null);
+        // Crescent brooch: warm outer hook and a cut-in made of garment shadow.
+        drawCharacterPlate([-4,-40,-2,-41,0,-40,-2,-40,-3,-38,-2,-37,0,-37,-2,-36,-4,-37], "#a67740", null);
+      } else {
+        drawCharacterPlate([-8,-41,0,-43,7,-40,1,-38,-6,-36], "#283c4e");
+        drawCharacterPlate([-4,-37,0,-38,3,-37,0,-36], bodyCyan, null);
       }
 
       function drawRearArm() {
@@ -574,28 +574,24 @@
       ctx.translate(0, -43);
       ctx.rotate(-bodyLean * 0.45 - torsoPitch * 0.75 - shotSettle * 0.04);
       ctx.translate(0, 43);
-      // Faceted mechanical mask, swept crown and a continuous red optic.
-      drawCharacterPlate([-12, -53, -8, -59, 5, -58, 12, -53,
-        10, -44, 3, -40, -8, -43], "#172833", "#617d86");
-      drawCharacterPlate([-8, -56, 3, -56, 9, -53, -5, -52], "#506d78", null);
-      drawCharacterPlate([-10, -49, -5, -47, 4, -47, 8, -44,
-        2, -42, -7, -44], "#e2ebe4", null);
-      drawCharacterPlate([-5, -52, 12, -52, 11, -47, -3, -48], "#050c13", null);
-      ctx.fillStyle = empowered ? bodyAmber : bodyRed;
-      ctx.fillRect(-2, -51, 12, 2);
-      ctx.fillStyle = "#fff1dc";
-      ctx.fillRect(7, -51, 3, 1);
-      ctx.fillStyle = "#0b1722";
-      ctx.fillRect(-15, -53, 6, 9);
-      ctx.fillStyle = bodyCyan;
-      ctx.fillRect(-14, -51, 2, 4);
-      ctx.fillStyle = "#607f89";
-      ctx.fillRect(-13, -57, 2, 5);
-      ctx.fillStyle = "#324853";
-      ctx.fillRect(-4, -44, 8, 2);
-      ctx.fillStyle = "#93a9ac";
-      ctx.fillRect(-2, -44, 1, 2);
-      ctx.fillRect(1, -44, 1, 2);
+      // Night-heron mask: swept nape vane, pitched brow, recessed single optic
+      // and an articulated beak-like chin. No human skin or opaque faceplate.
+      drawCharacterPlate([-8,-58,-3,-60,3,-59,8,-56,10,-53,11,-51,
+        8,-49,7,-45,3,-41,0,-40,-5,-43,-8,-46,-11,-47,
+        -12,-51,-11,-55], "#172833", "#758c8d", 0.8);
+      drawCharacterPlate([-16,-60,-9,-58,-3,-59,4,-57,9,-53,4,-54,
+        -3,-55,-8,-54,-12,-55], "#344954", "#131c25", 0.8);
+      drawCharacterPlate([-14,-59,-9,-57,-2,-58,4,-56,0,-56,-7,-56,-10,-56], "#8b9c9b", null);
+      drawCharacterPlate([-8,-52,-3,-54,4,-53,12,-51,9,-48,3,-49,-2,-48,-7,-49], "#060e17", null);
+      drawCharacterPlate([-6,-50,-2,-52,4,-52,11,-50.6,6,-50,2,-50.6,-2,-50,-5,-49], empowered ? bodyAmber : bodyRed, null);
+      drawCharacterPlate([5,-51.4,9,-50.8,6,-50.7], "#fff0df", null);
+      drawCharacterPlate([-6,-47,-4,-49,1,-47,7,-48,5,-44,2,-42,-2,-43], "#708386", null);
+      drawCharacterPlate([-1,-46,5,-47,4,-44,2,-42,1,-43], "#d6dbcf", null);
+      drawCharacterPlate([-4,-46,-2,-45,0,-43,-2,-43.5], "#172a35", null);
+      drawCharacterPlate([-12,-52,-9,-54,-6,-52,-6,-48,-9,-45,-12,-47], "#253843", "#0a141e", 0.85);
+      drawCharacterPlate([-12,-51,-9,-52,-8,-50,-10,-48,-12,-49], "#7a8987", null);
+      drawCharacterPlate([-10.5,-50,-9,-50.8,-9,-49,-10.5,-48.4], bodyCyan, null);
+      drawCharacterPlate([-10,-46,-7,-48,-5,-46,-3,-43,-5,-44,-8,-44], "#425761", null);
       ctx.restore();
 
       let armAngle = locomotionArmAngle;

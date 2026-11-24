@@ -20,6 +20,25 @@ function recordingContext() {
       m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
   };
   const point = (x, y) => [matrix[0] * x + matrix[2] * y + matrix[4], matrix[1] * x + matrix[3] * y + matrix[5]];
+  const recordShape = (local, kind = 'polygon') => {
+    const world = local.map(([x,y])=>point(x,y));
+    const shape = {color:style.fillStyle,kind,local,world};
+    filledShapes.push(shape);
+    if (style.fillStyle !== '#06101a' && style.fillStyle !== '#0a141e') return;
+    const left=Math.min(...local.map(p=>p[0])),right=Math.max(...local.map(p=>p[0]));
+    const top=Math.min(...local.map(p=>p[1])),bottom=Math.max(...local.map(p=>p[1]));
+    if (style.fillStyle === '#06101a') {
+      // Measure the visible sole edge, not a legacy rectangular boot placeholder.
+      const sole=local.filter(p=>Math.abs(p[1]-bottom)<1e-8);
+      const heel=sole.reduce((a,b)=>a[0]<b[0]?a:b),toe=sole.reduce((a,b)=>a[0]>b[0]?a:b);
+      feet.push({ankle:point(0,0),heel:point(...heel),toe:point(...toe),width:right-left,height:bottom-top,shape});
+    } else {
+      // Faceted gloves are drawn in the true wrist frame; their asymmetric thumb
+      // must not move the kinematic wrist probe away from that frame's origin.
+      hands.push(kind==='polygon'?point(0,0):point((left+right)/2,(top+bottom)/2));
+      handSizes.push({width:right-left,height:bottom-top,shape});
+    }
+  };
   const operations = {
     beginPath() { path=[];pathArcs=[]; },
     moveTo(x,y) { path.push({local:[x,y],world:point(x,y)}); },
@@ -31,15 +50,12 @@ function recordingContext() {
     scale(x, y) { multiply([x, 0, 0, y, 0, 0]); },
     rotate(angle) { const c = Math.cos(angle), s = Math.sin(angle); multiply([c, s, -s, c, 0, 0]); },
     fillRect(x, y, w, h) {
-      if (style.fillStyle === '#06101a') feet.push({ ankle: point(0, 0), heel: point(x, y + h), toe: point(x + w, y + h), width:w, height:h });
-      if (style.fillStyle === '#0a141e') {
-        hands.push(point(x + w / 2, y + h / 2));handSizes.push({width:w,height:h});
-      }
+      recordShape([[x,y],[x+w,y],[x+w,y+h],[x,y+h]],'rect');
     },
     fill() {
       if (style.fillStyle === '#172833') headCenters.push(point(0, -50));
       if (style.fillStyle === '#111d2c') waistCenters.push(point(0, -16.5));
-      if(path.length>=3)filledShapes.push({color:style.fillStyle,local:path.map(p=>p.local),world:path.map(p=>p.world)});
+      if(path.length>=3)recordShape(path.map(p=>p.local));
       if(style.fillStyle==='#07101a')joints.push(...pathArcs.filter(arc=>arc.radius>=1&&arc.radius<=5));
     },
     quadraticCurveTo(cx, cy, x, y) { if (x === 78 && y === -15) bladeTips.push(point(x, y)); },
@@ -103,6 +119,17 @@ function horizontalSpans(points,y) {
   const spans=[];for(let index=0;index+1<intersections.length;index+=2)spans.push([intersections[index],intersections[index+1]]);
   return spans;
 }
+function widthAt(shape,fraction) {
+  const b=boundsOf(shape.local),y=b.top+(b.bottom-b.top)*fraction;
+  return horizontalSpans(shape.local,y).reduce((sum,[left,right])=>sum+right-left,0);
+}
+function isConcave(points) {
+  const turns=points.map((a,index)=>{
+    const b=points[(index+1)%points.length],c=points[(index+2)%points.length];
+    return(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]);
+  });
+  return turns.some(turn=>turn>0.01)&&turns.some(turn=>turn<-.01);
+}
 for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
   const model=draw({vx:phase===0?0:440*facing,runCycle:phase*tau},facing);
   const torso=model.filledShapes.find(shape=>shape.color==='#111d2c');
@@ -110,6 +137,8 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
   const torsoBounds=boundsOf(torso.local),torsoWidth=torsoBounds.right-torsoBounds.left;
   assert(torsoWidth>=18&&torsoWidth<=21.2,'torso must retain the slimmer 21px silhouette');
   assert(torsoWidth/(torsoBounds.bottom-torsoBounds.top)<0.85,'torso must read as taller than it is wide');
+  assert(torso.kind==='polygon'&&torso.local.length>=10&&widthAt(torso,.72)<widthAt(torso,.35)*.8,
+    'the breastplate must have a sculpted rib cage and a distinct narrow exposed waist');
   const coat=model.filledShapes.find(shape=>shape.color==='#b5c7cb');
   assert(coat,'the fixed white officer coat must remain present');
   const coatBounds=boundsOf(coat.local);
@@ -122,6 +151,15 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
     assert.equal(segments.length,2,'every limb must draw separate upper and lower segments');
     const widths=segments.map(segment=>{const b=boundsOf(segment.local);return b.right-b.left;});
     assert(widths[0]<=maxWidth+0.01&&widths[1]<=widths[0]+0.01,'limb armor must stay slender without a swollen lower segment');
+    const profiles=segments.map(segment=>[.2,.4,.6,.8].map(fraction=>widthAt(segment,fraction)));
+    for(let index=0;index<segments.length;index++) {
+      assert(segments[index].kind==='polygon'&&segments[index].local.length>=6,
+        'limb armor must be an actual shaped plate rather than a placeholder rectangle');
+      assert(Math.max(...profiles[index])-Math.min(...profiles[index])>widths[index]*.12,
+        'upper and lower armor must taper through their body, not only bevel the corners');
+    }
+    assert(profiles[0].some((width,index)=>Math.abs(width/widths[0]-profiles[1][index]/widths[1])>.08),
+      'upper and lower limb plates must have distinct anatomical profiles');
     const edgeCenter=(segment,atEnd)=>{
       const bound=boundsOf(segment.local),edge=atEnd?bound.bottom:bound.top;
       const points=segment.world.filter((point,index)=>Math.abs(segment.local[index][1]-edge)<0.001);
@@ -135,12 +173,44 @@ for(const facing of[-1,1])for(const phase of[0,0.125,0.375,0.625]) {
       'every upper/lower limb connection must expose its own articulated joint');
   }
   assert(model.joints.length>=4,'both knees and both elbows must retain distinct articulated joints');
+  assert.equal(model.handSizes.length,2,'both visible fists must be measured from their real silhouettes');
+  assert.equal(model.feet.length,2,'both visible boots must be measured from their real silhouettes');
   assert(model.handSizes.every(size=>size.width<=5&&size.height<=5),'oversized gloves must not hide the wrists');
   assert(model.feet.every(foot=>foot.width<=9&&foot.height===6),'compact boots must preserve the same sole height');
+  assert(model.handSizes.every(size=>size.shape.kind==='polygon'&&size.shape.local.length>=8&&isConcave(size.shape.local)),
+    'fists must expose faceted knuckles and a separate thumb cutout, not square gloves');
+  assert(model.feet.every(foot=>foot.shape.kind==='polygon'&&foot.shape.local.length>=8&&widthAt(foot.shape,.8)-widthAt(foot.shape,.2)>2),
+    'boots must distinguish the ankle neck from the projecting toe and continuous sole');
+  const torsoOrder=model.filledShapes.indexOf(torso);
+  assert(model.filledShapes.filter(shape=>shape.color==='#203443').every(shape=>model.filledShapes.indexOf(shape)<torsoOrder),
+    'the far arm must remain behind the torso in locomotion');
+  assert(model.filledShapes.filter(shape=>shape.color==='#526c7a').every(shape=>model.filledShapes.indexOf(shape)>torsoOrder),
+    'the near arm must remain readable in front of the torso');
   if(phase===0) {
     const helmet=model.filledShapes.find(shape=>shape.color==='#172833');
     const headBounds=boundsOf(helmet.world);
     assert(headBounds.right-headBounds.left<=21,'the helmet must remain proportionate to the slimmer torso');
+    assert(helmet.kind==='polygon'&&helmet.local.length>=10,'the robot mask must have a distinct brow, nape and articulated chin');
+    const nape=model.filledShapes.find(shape=>shape.color==='#344954');
+    assert(nape?.kind==='polygon'&&nape.local.length>=7&&boundsOf(nape.local).left<boundsOf(helmet.local).left-2,
+      'the swept nape vane must extend from the actual mask silhouette');
+    const optic=model.filledShapes.find(shape=>shape.color==='#ff496c'&&shape.local.every(point=>point[1]<-45));
+    assert(optic?.kind==='polygon'&&optic.local.length>=6&&new Set(optic.local.map(point=>point[1])).size>=4,
+      'the recessed red optic must be a tapered lens rather than the former rectangular bar');
+    const mantle=model.filledShapes.find(shape=>shape.color==='#e8e9d8');
+    assert(mantle?.kind==='polygon'&&mantle.local.length>=10,'the officer coat must include its shaped ivory half-mantle');
+    const mantleBounds=boundsOf(mantle.local);
+    assert(mantleBounds.right-mantleBounds.left>=18&&Math.abs(mantleBounds.left+mantleBounds.right)>1,
+      'the half-mantle must preserve a visibly asymmetric diagonal profile');
+    const trim=model.filledShapes.find(shape=>shape.color==='#b79765');
+    const clasp=model.filledShapes.find(shape=>shape.color==='#a67740');
+    assert(trim?.kind==='polygon'&&clasp?.kind==='polygon'&&isConcave(clasp.local),
+      'brass mantle edging and the concave crescent hook must be visible authored shapes');
+    const scabbard=model.filledShapes.find(shape=>shape.color==='#132631');
+    assert(scabbard?.kind==='polygon'&&scabbard.local.length>=8,'the sheathed blade must retain its sculpted lacquer scabbard');
+    const scabbardBounds=boundsOf(scabbard.local);
+    assert((scabbardBounds.right-scabbardBounds.left)/(scabbardBounds.bottom-scabbardBounds.top)>8,
+      'the scabbard must remain long enough to read as a katana sheath');
   }
 }
 
