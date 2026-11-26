@@ -187,6 +187,74 @@
     }
     for(let i=0;i<65;i++){const x=Math.floor(random()*64),y=Math.floor(random()*64);r(x,y,1,1,random()>.7?c[3]:c[1]);}
   }
+  // A foundation is a run of constructed bays, not one 64px wall tile
+  // stamped in a checkerboard. Leave the small landing ledges on paintSurface.
+  // Each face is drawn at native 2× pixels; hardware is recessed below the lip.
+  const FLOOR_WIDTHS = [256,384,192,320,448,192,256]; // 2048 world pixels
+  const FLOOR_FORMS = [0,1,0,2,3,0,4]; // quiet slab, structure, service, repair, grate
+  function floorMix(n) { n=Math.imul(n^(n>>>16),0x45d9f3b);n=Math.imul(n^(n>>>16),0x45d9f3b);return (n^(n>>>16))>>>0; }
+  function paintGroundBay(context,act,form,w,variation,training) {
+    const {rect:r,line:l,poly:g}=pixels(context),c=PALETTES[act],
+      rnd=seeded((act+1)*104729+w*41+form*773+variation*11), h=96;
+    const side=variation? .28:.64, fixture=Math.floor(w*side);
+    const bolt=(x,y)=>{r(x,y,3,2,c[0]);r(x,y,2,1,c[4]);};
+    const joint=(x,y,len)=>{r(x,y,2,len,c[0]);r(x+2,y,1,len,c[3]);};
+    const plate=(x,y,pw,ph,fill=c[2])=>{
+      g([[x+3,y],[x+pw-2,y],[x+pw,y+2],[x+pw,y+ph-2],[x+pw-2,y+ph],[x+1,y+ph],[x,y+ph-2],[x,y+3]],c[0]);
+      r(x+2,y+2,pw-4,ph-4,fill);r(x+4,y+1,pw-8,1,c[3]);bolt(x+4,y+4);bolt(x+pw-8,y+ph-5);
+    };
+    const grille=(x,y,gw,gh)=>{r(x,y,gw,gh,c[3]);r(x+2,y+2,gw-4,gh-4,c[0]);
+      for(let a=x+4;a<x+gw-5;a+=6){r(a,y+3,2,gh-6,c[2]);r(a,y+3,1,gh-8,c[3]);}};
+    const pipe=(x,y,pw)=>{r(x,y,pw,6,c[0]);r(x,y+1,pw,3,c[3]);r(x,y+1,pw,1,c[4]);for(let a=x+9;a<x+pw-3;a+=32){r(a,y-1,4,8,c[2]);r(a,y,1,6,c[4]);}};
+    const masonry=(y0,brickH,baseW)=>{for(let y=y0;y<h;y+=brickH){
+      for(let x=-Math.floor(rnd()*baseW);x<w;){const bw=baseW-8+Math.floor(rnd()*21);
+        r(x+1,y+1,bw-2,brickH-2,rnd()<.22?c[1]:c[2]);
+        r(x+2,y+1,bw-4,1,c[3]);r(x+bw-2,y+2,1,brickH-4,c[1]);x+=bw;}
+    }};
+    r(0,0,w,h,c[1]);r(0,4,w,40,c[2]);r(0,44,w,2,c[0]);r(0,46,w,1,c[2]);
+    if(act===0){ // Salvage: salvaged steel lips, a splice, a trestle, a patch and a drain.
+      if(form===0){plate(5,9,w-12,24);l(9,37,w-11,36,c[1]);r(fixture,19,13,1,c[3]);}
+      if(form===1){r(3,10,w-6,37,c[0]);r(3,43,w-6,4,c[3]);g([[9,40],[w-21,12],[w-11,12],[21,40]],c[2]);l(12,40,w-17,13,c[3]);joint(w-9,8,49);}
+      if(form===2){pipe(0,32,w);plate(fixture-18,8,39,23);grille(fixture-11,14,21,9);}
+      if(form===3){plate(4,9,w*.64,26);plate(w*.51,16,w*.45,21);for(let i=0;i<4;i++)r(w*.55+i*7,15,3,2,c[4]);}
+      if(form===4){grille(9,10,w*.52,21);r(w*.66,14,w*.25,3,c[3]);joint(w*.7,24,19);}
+    }else if(act===1){ // Hot masonry, cold service hatches and manifolds alternate.
+      masonry(6,13,46);
+      if(form===1){r(w*.25,7,14,75,c[1]);r(w*.25+2,7,5,64,c[3]);pipe(0,26,w*.65);}
+      if(form===2){plate(fixture-23,9,48,34);grille(fixture-16,16,31,19);r(fixture-8,30,9,1,c[6]);}
+      if(form===3){plate(6,8,w-12,32);l(fixture-7,11,fixture,18,c[1]);l(fixture,18,fixture-4,25,c[0]);l(fixture-4,25,fixture+5,28,c[1]);}
+      if(form===4){r(8,11,w-16,20,c[0]);for(let x=11;x<w-12;x+=10){r(x,13,5,16,c[2]);r(x,13,1,14,c[3]);}pipe(w*.19,37,w*.71);}
+    }else if(act===2){ // Stone courses, occasional fluted plinth or restrained broken inlay.
+      masonry(8,22,66);
+      if(form===1){const x=fixture-14;g([[x-6,37],[x-6,31],[x,28],[x,8],[x+27,8],[x+27,28],[x+34,31],[x+34,37]],c[3]);
+        r(x+2,10,23,19,c[2]);for(let j=0;j<3;j++)r(x+4+j*7,10,2,16,c[1]);}
+      if(form===2){plate(fixture-23,12,47,17,c[1]);l(fixture-12,20,fixture,15,c[3]);l(fixture,15,fixture+12,20,c[3]);r(fixture-10,22,20,1,c[3]);}
+      if(form===3){const x=w*.39;l(x,8,x+7,16,c[0],2);l(x+7,16,x+3,22,c[0]);l(x+3,22,x+14,29,c[0]);r(x+7,19,7,1,c[3]);}
+      if(form===4){r(13,12,w-26,17,c[1]);for(let i=20;i<w-21;i+=20){g([[i,25],[i,19],[i+5,15],[i+10,19],[i+10,25]],c[0]);}}
+    }else if(act===3){ // Cable raceway, bolted lids, tension plate and access bay.
+      r(0,11,w,25,c[0]);r(0,34,w,4,c[3]);
+      if(form===0){plate(3,9,w-6,25);r(12,15,w*.37,2,c[1]);}
+      if(form===1){for(let n=0;n<3;n++){const end=16+n*5;l(0,end,w*.45,end,c[2],2);l(w*.45,end,w*.7,end+5,c[2],2);l(w*.7,end+5,w,end+5,c[2],2);}r(fixture,12,5,22,c[3]);}
+      if(form===2){plate(4,9,w*.43,26);grille(w*.51,11,w*.41,20);}
+      if(form===3){g([[6,30],[24,11],[w-10,11],[w-26,30]],c[2]);bolt(22,25);bolt(w-22,16);l(12,30,25,15,c[3]);}
+      if(form===4){pipe(0,25,w);plate(fixture-15,7,34,24);r(fixture-7,13,17,3,c[3]);}
+    }else{ // Vault: solid ceramic, isolated glass inserts, flexible seals and inspection ports.
+      plate(3,9,w-7,29,form===0?c[2]:c[1]);
+      if(form===1||form===3){const x=Math.max(8,fixture-25),pw=Math.min(w-x-8,53);
+        g([[x+5,12],[x+pw-4,12],[x+pw,16],[x+pw-3,32],[x,32],[x,17]],c[3]);
+        r(x+3,16,pw-6,14,c[0]);g([[x+7,16],[x+16,16],[x+31,29],[x+22,29]],c[2]);
+        if(form===3){l(x+35,15,x+30,21,c[3]);l(x+30,21,x+34,25,c[2]);}}
+      if(form===2){plate(fixture-16,12,32,19,c[0]);r(fixture-9,18,18,6,c[2]);r(fixture-7,19,4,1,c[4]);}
+      if(form===4){for(let x=10;x<w-12;x+=13){r(x,14,4,16,c[0]);r(x+4,14,1,13,c[3]);}pipe(9,39,w-18);}
+    }
+    // Local blemishes in clusters, not a repeating noise grid. Keep the recess
+    // darker below the immediate walkable rim so it cannot look like a second ledge.
+    if(act!==1&&act!==2){r(0,52,w,6,c[0]);r(0,52,w,1,c[2]);joint(w*.28,58,34);}
+    for(let n=0;n<7;n++){const x=Math.floor(rnd()*(w-8)),y=8+Math.floor(rnd()*36);r(x,y,2+Math.floor(rnd()*6),1,c[1]);}
+    r(0,3,w,3,c[3]);r(0,6,w,1,c[0]);r(0,3,2,5,c[0]);r(w-3,3,2,3,c[1]);
+    if(training){for(let j=0;j<(form===0?2:4);j++)r(8+j*6,4,3,1,c[5]);}
+  }
+
   function createRenderer(ctx, options = {}) {
     const cache=new Map(), stats={rasterBuilds:0,cacheHits:0};
     const canvasFactory=options.canvasFactory || ((w,h)=>{
@@ -286,6 +354,47 @@
       && object.x < view.x + view.w + padding && object.y + object.h > view.y - padding
       && object.y < view.y + view.h + padding;
 
+    function drawFoundation(platform,act,view) {
+      const {x,y,w,h}=platform,theme=THEMES[act],c=PALETTES[act],training=platform.kind==='training';
+      const left=Math.max(x,view.x-2),right=Math.min(x+w,view.x+view.w+2);
+      const top=Math.max(y,view.y-2),bottom=Math.min(y+h,view.y+view.h+2);
+      if(right<=left||bottom<=top)return true;
+      const bay=(bw,form,v)=>raster(`floor:${act}:${+training}:${bw}:${form}:${v}`,bw/2,96,
+        pc=>paintGroundBay(pc,act,form,bw/2,v,training));
+      ctx.save();ctx.imageSmoothingEnabled=false;ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+      ctx.fillStyle=c[1];ctx.fillRect(left,top,right-left,bottom-top);
+      // World-space segmentation lets a narrow extension inherit exactly the
+      // cut face of its neighbouring slab. Camera motion cannot regenerate it.
+      for(let group=Math.floor(left/2048);group<=Math.floor((right-0.001)/2048);group++){
+        const code=floorMix(group+act*317+24071),turn=code%7,motif=(code>>>5)%7,dir=(code&256)?1:-1;
+        let ax=group*2048;
+        for(let j=0;j<7;j++){
+          const bw=FLOOR_WIDTHS[(turn+dir*j+7)%7],bx=ax+bw;
+          if(bx>left&&ax<right){
+            const form=FLOOR_FORMS[(motif+j)%7],v=(code>>>(9+j))&1;
+            if(top<y+192){
+              const tile=bay(bw,form,v);
+              if(!tile){ctx.restore();return false;}
+              ctx.drawImage(tile,ax,y,bw,192);
+            }
+            if(bottom>y+192){
+              // Broad, quiet retaining courses below the detailed service band.
+              const start=Math.max(0,Math.floor((top-y-192)/164));
+              for(let k=start;k<=Math.floor((bottom-y-192)/164);k++){
+                const yy=y+192+k*164,cut=ax+Math.floor(bw*(k%2?.63:.27)/2)*2;
+                ctx.fillStyle=c[0];ctx.fillRect(ax,yy,bw,4);ctx.fillRect(cut,yy+4,4,160);
+                ctx.fillStyle=c[2];ctx.fillRect(ax,yy+4,bw,2);
+              }
+            }
+          }
+          ax=bx;
+        }
+      }
+      ctx.fillStyle=theme.edge;ctx.fillRect(left,y,right-left,2);
+      ctx.fillStyle=theme.trim;ctx.fillRect(left,y+2,right-left,2);
+      ctx.fillStyle=theme.recess;ctx.fillRect(left,y+6,right-left,2);
+      ctx.restore();return true;
+    }
     function drawPixelPlatform(platform,act,view){
       const probe=raster(`surface:${act}:0`,64,64,c=>paintSurface(c,act,0));if(!probe)return false;
       const {x,y,w,h}=platform,theme=THEMES[act],tileSize=128;
@@ -308,11 +417,15 @@
     }
 
     function drawPlatform(platform, stageIndex, view) {
-      if (platform.kind === "training") return false; // Existing drill markings stay intact.
       if (![platform.x, platform.y, platform.w, platform.h].every(Number.isFinite)
         || platform.w <= 0 || platform.h <= 0) return false;
+      const foundation = Number.isFinite(view.worldBottom) && Math.abs(platform.y+platform.h-view.worldBottom)<1
+        && platform.h>=160 && platform.w>=8 && platform.kind!=="wall";
+      if (platform.kind === "training" && !foundation) return false; // Keep every training obstacle and drill marking.
       if (!visible(platform, view, 3)) return true;
       const act = clamp(Math.trunc(stageIndex), 0, 4), theme = THEMES[act];
+      if(foundation&&drawFoundation(platform,act,view))return true;
+      if(platform.kind==="training")return false;
       if(drawPixelPlatform(platform,act,view))return true;
       const { x, y, w, h } = platform;
       const tall = h > 64;

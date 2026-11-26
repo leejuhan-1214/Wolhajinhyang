@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.1";
+  const GAME_VERSION = "3.11.2";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -10766,7 +10766,7 @@
 
   function drawPlatform(platform) {
     const drawn = environmentRenderer?.drawPlatform(platform, getStageIndexAt(platform.x + platform.w / 2), {
-      x: camera.x, y: camera.y, w: W, h: H, time: game.time,
+      x: camera.x, y: camera.y, w: W, h: H, time: game.time, worldBottom: WORLD_H,
       mobile: Boolean(touchControls && !touchControls.hidden),
     });
     if (drawn) drawDynamicPlatformIndicator(platform);

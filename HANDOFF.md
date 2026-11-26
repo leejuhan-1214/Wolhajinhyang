@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.11.1**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.11.2**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.11.2: 월드 하단까지 이어진 기초 바닥에만 다양한 무늬를 그립니다. `qa-floor-rhythm.cjs`에서 막별 반복, 스크롤 왕복, 인접한 바닥 연결부, 공중 발판과 벽을 검사합니다. 후면 풍경은 v3.11.1 그대로입니다.
 
 3.11.1: 막 경계 배경, 칼끝과 검광 사이 잔상, 홍련 포신·장전 표시, 세로 화면 타이틀을 점검했습니다. `qa-act-boundaries.cjs`와 `qa-boss-animation.cjs`는 각각 경계 통과와 보스 무장 정렬 재발을 검사합니다.
 
