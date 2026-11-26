@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.3";
+  const GAME_VERSION = "3.11.4";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -6005,6 +6005,46 @@
     if (!bullet?.enemy || ["mutant-debris", "warden-beam", "rain-controller", "rain-core-burst"].includes(bullet.kind)) return false;
     return slashIntersectsRect(bullet);
   }
+  // Local metal profiles (tube, muzzle collars and lip), not a bigger body box.
+  const cannonMetal = [[3,-7,36,14],[39,-13,11,26],[50,-11,1,22],[47,-8,6,16]];
+  const mortarMetal = [[0,-6,43,12],[11,-7,4,14],[25,-7,4,14],[34,-9,11,18],[41,-6,6,12]];
+  function turretBarrelPose(enemy, lane = 0) {
+    if (enemy.type === "mortarTurret") return { x: lane * 11, y: 31, angle: -1.08 + lane * 0.12,
+      kick: enemy.windup > 0 && enemy.windup < 0.1 ? Math.sin((1 - enemy.windup / 0.1) * Math.PI) * 7 : 0 };
+    const aimY = enemy.targetY ?? player.y + player.h / 2;
+    const aimX = enemy.targetX ?? player.x + player.w / 2;
+    return { x: 7, y: 23, angle: clamp(Math.atan2(aimY - (enemy.y + enemy.h * 0.42),
+      Math.abs(aimX - (enemy.x + enemy.w / 2))), -0.62, 0.62), kick: clamp((enemy.turretRecoil || 0) / 0.2, 0, 1) * 11 };
+  }
+  function slashHitsTurretBarrel(enemy, bounds, segments) {
+    if (!isStationaryTurret(enemy) || !segments.length || bounds.x > enemy.x + enemy.w + 48
+      || bounds.x + bounds.w < enemy.x - 48 || bounds.y > enemy.y + enemy.h + 12 || bounds.y + bounds.h < enemy.y - 32) return false;
+    const mortar = enemy.type === "mortarTurret", outerLane = mortar ? 1 : 0;
+    for (let lane = -outerLane; lane <= outerLane; lane++) {
+      const pose = turretBarrelPose(enemy, lane), cos = Math.cos(pose.angle), sin = Math.sin(pose.angle);
+      const local = point => {
+        const x = (point.x - enemy.x - enemy.w / 2) * enemy.facing - pose.x;
+        const y = point.y - enemy.y - pose.y;
+        return { x: x * cos + y * sin + pose.kick, y: y * cos - x * sin };
+      };
+      for (const steel of segments) {
+        const edge = { base: local(steel.base), tip: local(steel.tip) };
+        for (const [x,y,w,h] of mortar ? mortarMetal : cannonMetal) {
+          if (slashSegmentHitsRect(edge, {x,y,w,h}, 1)) return true;
+        }
+      }
+    }
+    return false;
+  }
+  function registerSwordDeflection(bullet) {
+    if (bullet.kind === "training-round") markTutorialSignal("deflect");
+    const doctorHazard = bullet.kind === "potion" || bullet.kind === "poison-gas";
+    const shieldRound = bullet.kind === "revenant-shield-shot";
+    spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.kind === "potion" ? "#dfffe9" : shieldRound ? "#ffcd70" : bullet.color || palette.cyan, doctorHazard ? 14 : 7, 280, 0.4, 80);
+    if (bullet.kind === "potion") sound.glassShatter();
+    player.shotgunCharge = Math.min(3, player.shotgunCharge + (shieldRound ? 0.8 : 0.34));
+    if (!player.grounded) player.airJumpAvailable = true;
+  }
 
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
@@ -6855,6 +6895,7 @@
       lockedImpactY: targetY,
       impactTimer: flightTime,
       terrainCollision,
+      fromMortarTurret: enemy.type === "mortarTurret",
       color: "#ff6f75",
     });
     if (!silent) sound.tone(92, 0.18, "sawtooth", 0.03, 0.55);
@@ -8559,24 +8600,18 @@
     if (isAttackActive()) {
       refreshSlashContact(slashStartPose);
       const hitbox = attackBox();
-      const physicalHitbox = slashBounds(currentSlashSegments());
+      const steel = currentSlashSegments();
+      const physicalHitbox = slashBounds(steel);
       for (const enemy of enemies) {
         if (enemy.alive && enemy.bossKind === "hunter") tryHitHunterClasp(enemy);
-        if (enemy.alive && overlaps(hitbox, enemy)) damageEnemy(enemy);
+        if (enemy.alive && (overlaps(hitbox, enemy) || slashHitsTurretBarrel(enemy, physicalHitbox, steel))) damageEnemy(enemy);
       }
       // 칼날에 직접 닿은 투사체를 제거한다. 대역-13의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
       for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
         const bullet = bullets[bulletIndex];
-        const doctorHazard = ["potion", "poison-gas"].includes(bullet.kind);
-        const swordContact = bulletIntersectsSlashBlade(bullet);
-        if (!bullet.enemy || !swordContact) continue;
-        if (bullet.kind === "training-round") markTutorialSignal("deflect");
-        const shieldRound = bullet.kind === "revenant-shield-shot";
-        spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.kind === "potion" ? "#dfffe9" : shieldRound ? "#ffcd70" : bullet.color || palette.cyan, doctorHazard ? 14 : 7, 280, 0.4, 80);
-        if (bullet.kind === "potion") sound.glassShatter();
+        if (!bulletIntersectsSlashBlade(bullet)) continue;
+        registerSwordDeflection(bullet);
         bullets.splice(bulletIndex, 1);
-        player.shotgunCharge = Math.min(3, player.shotgunCharge + (shieldRound ? 0.8 : 0.34));
-        if (!player.grounded) player.airJumpAvailable = true;
       }
       for (const node of boostNodes) {
         if (node.hitAttackId === player.attackId || !overlaps(physicalHitbox, node) || !slashIntersectsRect(node)) continue;
@@ -10090,6 +10125,10 @@
 
   function updateBullets(dt, activeEnemies = getActiveEnemies()) {
     const currentPlayerZoneIndex = getCurrentPlayerZoneIndex();
+    // The player's motion sweep already tested stationary rounds in updatePlayer.
+    // During projectile motion only the resolved blade is still there, not its afterimage.
+    const blade = bullets.length && isAttackActive() ? currentSlashSegments().at(-1) : null;
+    const bladeBounds = blade ? slashBounds([blade], 4) : null;
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
       const bullet = bullets[i];
 
@@ -10216,9 +10255,12 @@
         }
       }
 
+      const tripleMortar = bullet.kind === "mortar" && bullet.fromMortarTurret === true;
+      let travelDt = dt;
       if (bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer)) {
-        bullet.impactTimer -= dt;
-        if (bullet.impactTimer <= 0) {
+        if (tripleMortar) travelDt = Math.min(dt, Math.max(0, bullet.impactTimer));
+        bullet.impactTimer -= travelDt;
+        if (!tripleMortar && bullet.impactTimer <= 0) {
           bullet.x = bullet.lockedImpactX - bullet.w / 2;
           bullet.y = bullet.lockedImpactY - bullet.h / 2;
           explodeMortar(bullet);
@@ -10240,8 +10282,10 @@
         shatterIceChunk(bullet, bullet.y + bullet.h);
         exploded = true;
       }
-      const steps = Math.max(1, Math.ceil(Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)) / 6));
-      const stepTime = dt / steps;
+      const steps = Math.max(1, Math.ceil(Math.max(Math.abs(bullet.vx * travelDt), Math.abs(bullet.vy * travelDt)) / 6));
+      const stepTime = travelDt / steps;
+      const cutInFlight = blade && bullet.enemy && (bullet.kind === "turret-row" || tripleMortar);
+      let cut = false;
       const nearbyBulletPlatforms = bullet.piercePlatforms
         ? []
         : getNearbyPlatforms(bullet, 110 + Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)));
@@ -10257,9 +10301,17 @@
         } else {
           bullet.x += bullet.vx * stepTime;
           bullet.y += bullet.vy * stepTime;
+          // Use the same ballistic arc as fireMortar's locked-target solution.
+          if (tripleMortar) bullet.y += 0.5 * bullet.gravity * stepTime * stepTime;
         }
         bullet.vy += (bullet.gravity || 0) * stepTime;
 
+        if (cutInFlight && overlaps(bladeBounds, bullet) && slashSegmentHitsRect(blade, bullet)
+          && !(tripleMortar && nearbyBulletPlatforms.some(p => !p.hidden && overlaps(bullet, p)))) {
+          registerSwordDeflection(bullet);
+          cut = remove = true;
+          break;
+        }
         const lockedMortarInFlight = bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer);
         if (bullet.enemy && !bullet.harmless && overlaps(bullet, player)) {
           if (bullet.kind === "mortar") {
@@ -10320,8 +10372,14 @@
         }
       }
 
+      // The last fraction of flight must hit steel, a body, or terrain before
+      // the target-marker fuse is allowed to explode a surviving shell.
+      if (!remove && tripleMortar && bullet.impactTimer <= 0) {
+        explodeMortar(bullet);
+        exploded = remove = true;
+      }
       if (remove) {
-        if (!exploded) spawnParticles(bullet.x, bullet.y, bullet.color, 4, 100, 0.2, 0);
+        if (!exploded && !cut) spawnParticles(bullet.x, bullet.y, bullet.color, 4, 100, 0.2, 0);
         bullets.splice(i, 1);
       }
     }
@@ -13238,10 +13296,7 @@
       ctx.fillStyle="#64828e";ctx.fillRect(-7,26,13,2);
       ctx.fillStyle="#9fb7bd";ctx.fillRect(-7,27,3,1);
     } else if (enemy.type === "turret") {
-      const aimY = enemy.targetY ?? player.y + player.h / 2;
-      const aimX = enemy.targetX ?? player.x + player.w / 2;
-      const aimAngle = clamp(Math.atan2(aimY - (enemy.y + enemy.h * 0.42), Math.abs(aimX - (enemy.x + enemy.w / 2))), -0.62, 0.62);
-      const cannonRecoil = clamp((enemy.turretRecoil || 0) / 0.2, 0, 1) * 11;
+      const barrelPose = turretBarrelPose(enemy), cannonRecoil = barrelPose.kick;
       ctx.fillStyle = "#101820";
       ctx.fillRect(-25, 40, 50, 9);
       ctx.fillStyle = "#48535a";
@@ -13255,8 +13310,8 @@
       ctx.fillStyle = "#ffcf62";
       ctx.beginPath(); ctx.arc(2, 24, 4 + Math.sin(enemy.anim * 5) * 0.6, 0, TAU); ctx.fill();
       ctx.save();
-      ctx.translate(7, 23);
-      ctx.rotate(aimAngle);
+      ctx.translate(barrelPose.x, barrelPose.y);
+      ctx.rotate(barrelPose.angle);
       ctx.fillStyle = "#1a2329";
       ctx.beginPath(); ctx.arc(3, 0, 14, 0, TAU); ctx.fill();
       ctx.strokeStyle = "#667d88"; ctx.lineWidth = 2;
@@ -13293,7 +13348,6 @@
       ctx.fillRect(15, 37, 7, 2);
     } else if (enemy.type === "mortarTurret") {
       const chargePulse = enemy.windup > 0 ? 0.55 + Math.sin(enemy.anim * 22) * 0.28 : 0.2;
-      const mortarKick = enemy.windup > 0 && enemy.windup < 0.1 ? Math.sin((1 - enemy.windup / 0.1) * Math.PI) * 7 : 0;
       ctx.fillStyle = "#11171d";
       ctx.fillRect(-31, 49, 62, 10);
       ctx.fillStyle = "#4d3b40";
@@ -13307,9 +13361,10 @@
       ctx.fillStyle = `rgba(255, 128, 102, ${chargePulse})`;
       ctx.beginPath(); ctx.arc(0, 34, 5, 0, TAU); ctx.fill();
       for (let barrel = -1; barrel <= 1; barrel += 1) {
+        const barrelPose = turretBarrelPose(enemy, barrel), mortarKick = barrelPose.kick;
         ctx.save();
-        ctx.translate(barrel * 11, 31);
-        ctx.rotate(-1.08 + barrel * 0.12);
+        ctx.translate(barrelPose.x, barrelPose.y);
+        ctx.rotate(barrelPose.angle);
         ctx.fillStyle = "#111c27"; ctx.fillRect(-5,5,24,7);
         ctx.fillStyle = "#8197a1"; ctx.fillRect(7,7,Math.max(2,17-mortarKick),2);
         ctx.translate(-mortarKick,0);

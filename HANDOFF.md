@@ -1,6 +1,8 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.11.3**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.11.4**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.11.4: 노란 대포탄과 삼연 박격포탄은 이동 중에도 실제 칼날과 충돌합니다. `qa-turret-deflection.cjs`, `qa-mortar-deflection.cjs`, `qa-turret-melee.cjs`, `qa-turret-metal.cjs`에서 탄 소거, 착탄·벽 충돌, 포탑 본체와 움직이는 포신의 발도 판정을 검사합니다.
 
 3.11.3: 공중 발판은 실제 폭·두께의 전용 그림을 사용합니다. `qa-ledge-art.cjs`는 양끝 마감, 착지 경계, 구형 바닥·벽·배경 그림 보존과 사용자 지정 긴 발판을 검사합니다.
 
