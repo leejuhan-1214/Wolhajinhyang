@@ -37,7 +37,7 @@
 
   async function start() {
     try {
-      await Promise.all([loadPublishedProfile(), ...["story-data.js","operative-renderer.js","duel-ghost.js","environment-renderer.js"].map(loadScript)]);
+      await Promise.all([loadPublishedProfile(), ...["story-data.js","operative-renderer.js","duel-ghost.js","environment-renderer.js","campaign-edit-compat.js"].map(loadScript)]);
       await loadScript("game.js");
       if (document.documentElement.dataset.gameBootstrap !== "ready") {
         throw new Error("게임 초기화 실패");

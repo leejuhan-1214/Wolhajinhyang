@@ -66,7 +66,7 @@ test('a held animation is one observed attack, not one vote per frame',()=>{
   q.finishMirrorFight(e);assert.equal(q.exportMirrorHabits().records.breaker.scores.slash,1);
 });
 test('normal boss updates actually feed the campaign learner',()=>{
-  fixture(7);const e=boss('breaker',7);e.cooldown=99;q.player.invincible=99;
+  fixture(3);const e=boss('breaker',3);e.cooldown=99;q.player.invincible=99;
   q.player.attackTimer=.2;q.player.attackId=1;
   for(let frame=0;frame<180;frame++)q.updateEnemy(e,1/60);
   q.killEnemy(e);assert.equal(q.getMirrorHabitSummary().styles[0],'slash');
@@ -92,7 +92,7 @@ test('checkpoint export and restore preserve only completed earlier encounters',
   q.pruneMirrorHabits(7);assert(!q.getMirrorHabitSummary().known);
 });
 test('sanitization bounds records, scores and durations',()=>{
-  q.resetMirrorHabits({version:1,records:{warden:{zone:7,seconds:10000,scores:{slash:Infinity,shotgun:-3}},echo:{zone:79,seconds:10,scores:{slash:10}},unknown:{zone:1,seconds:10,scores:{slash:10}}}});
+  q.resetMirrorHabits({version:1,records:{warden:{zone:7,seconds:10000,scores:{slash:Infinity,shotgun:-3}},echo:{zone:39,seconds:10,scores:{slash:10}},unknown:{zone:1,seconds:10,scores:{slash:10}}}});
   const saved=q.exportMirrorHabits();assert.equal(saved.records.warden.seconds,90);assert.equal(saved.records.warden.scores.slash,500);
   assert.equal(saved.records.warden.scores.shotgun,0);assert(!saved.records.echo&&!saved.records.unknown);
 });
@@ -105,21 +105,21 @@ test('practice may use learned habits without pruning or rewriting them',()=>{
   assert.deepEqual(q.exportMirrorHabits(),before);const e=boss('echo');assert(q.beginLearnedEchoMimic(e,200));assert.equal(e.echoMimic.kind,'rush');
 });
 test('two strong learned habits alternate, not an unbounded random set',()=>{
-  q.resetMirrorHabits({version:1,records:{warden:{zone:15,seconds:10,scores:{slash:12,shotgun:10,air:.1,rush:.1}}}});
+  q.resetMirrorHabits({version:1,records:{warden:{zone:7,seconds:10,scores:{slash:12,shotgun:10,air:.1,rush:.1}}}});
   const e=boss('echo');assert.deepEqual(q.getMirrorHabitSummary().styles,['slash','shotgun']);
   q.beginLearnedEchoMimic(e,200);assert.equal(e.echoMimic.kind,'slash');e.echoMimic=null;
   q.beginLearnedEchoMimic(e,200);assert.equal(e.echoMimic.kind,'shotgun');e.echoMimic=null;
   q.beginLearnedEchoMimic(e,200);assert.equal(e.echoMimic.kind,'slash');
 });
 test('warning locks direction and target instead of reading future player movement',()=>{
-  fixture(79);seed('shotgun');const e=boss('echo',79);q.player.x=e.x+250;
+  fixture(39);seed('shotgun');const e=boss('echo',39);q.player.x=e.x+250;
   assert(q.beginLearnedEchoMimic(e,250));const locked=e.echoMimic.targetX;
   q.player.x=e.x-250;
   for(let i=0;i<7;i++)q.updateLearnedEchoMimic(e,.1);
   assert.equal(q.bullets.length,0,'minimum warning precedes all shots');assert.equal(e.echoMimic.targetX,locked);assert.equal(e.facing,1);
 });
 for(const kind of ['slash','shotgun','air','rush'])test(`${kind} produces its distinct bounded copied sequence`,()=>{
-  fixture(79);seed(kind);const e=boss('echo',79);q.player.invincible=99;
+  fixture(39);seed(kind);const e=boss('echo',39);q.player.invincible=99;
   assert(q.beginLearnedEchoMimic(e,300));const seen=toRecovery(e);
   assert.equal(seen.maxStep,kind==='slash'?3:2);
   assert.equal(q.bullets.length,kind==='shotgun'?10:kind==='air'?3:0);
@@ -133,18 +133,18 @@ for(const kind of ['slash','shotgun','air','rush'])test(`${kind} produces its di
   assert.equal(e.echoMimic,null);assert(e.cooldown>=.3);
 });
 test('recovery is vulnerable to normal shotgun and has no passive contact damage',()=>{
-  fixture(79);seed();const e=boss('echo',79);q.beginLearnedEchoMimic(e,300);q.player.invincible=99;toRecovery(e);
+  fixture(39);seed();const e=boss('echo',39);q.beginLearnedEchoMimic(e,300);q.player.invincible=99;toRecovery(e);
   e.echoReactiveParryCooldown=0;e.hitShotId=-1;q.player.invincible=0;q.player.x=e.x;q.player.y=e.y;
   const hp=e.hp;const bullet={x:e.x,y:e.y,vx:400,damage:1.15,shotId:99,kind:'shotgun',piercing:false};
   q.damageEnemyWithShotgun(e,bullet);assert(Math.abs(hp-e.hp-1.15)<1e-8);assert(!bullet.cancelled);
   e.hitStun=0;const playerHp=q.player.hp;q.updateBoss(e,1/60,0,0);assert.equal(q.player.hp,playerHp);
 });
 test('ordinary decision cadence selects learned mimic every third decision',()=>{
-  fixture(79);seed('shotgun');const e=boss('echo',79);q.player.x=e.x+250;
+  fixture(39);seed('shotgun');const e=boss('echo',39);q.player.x=e.x+250;
   q.updateBoss(e,1/60,250,250);assert.equal(e.echoMimic?.kind,'shotgun');assert.equal(e.echoDecisionSerial,1);
 });
 test('respawn clears an active mimic but preserves earlier checkpoint habits',()=>{
-  fixture(79);seed('slash',7);const e=boss('echo',79);q.beginLearnedEchoMimic(e,200);q.respawn();
+  fixture(39);seed('slash',7);const e=boss('echo',39);q.beginLearnedEchoMimic(e,200);q.respawn();
   assert.equal(e.echoMimic,null);assert(q.getMirrorHabitSummary().known);
 });
 const failed=results.filter(r=>!r.ok);for(const r of results)console.log(`${r.ok?'PASS':'FAIL'} ${r.name}`);

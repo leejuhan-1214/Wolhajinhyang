@@ -82,8 +82,13 @@
   const W = 1280;
   const H = 720;
   const ZONE_W = 4000;
-  const ZONES_PER_STAGE = 16;
-  const MID_BOSS_ZONE_INDEX = 7;
+  const ZONES_PER_STAGE = 8;
+  const MID_BOSS_ZONE_INDEX = 3;
+  // Keep both boss arenas, the story landmarks and distinct terrain rhythms.
+  const CAMPAIGN_ROUTE = [
+    [0,2,5,7,9,12,14,15], [0,1,5,7,9,12,14,15],
+    [0,1,5,7,9,11,14,15], [0,3,6,7,9,10,14,15], [0,1,4,7,10,12,14,15],
+  ];
   const BOSS_ZONE_INDEX = ZONES_PER_STAGE - 1;
   const STAGE_COUNT = 5;
   const TOTAL_ZONE_COUNT = ZONES_PER_STAGE * STAGE_COUNT;
@@ -99,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.10.1";
+  const GAME_VERSION = "3.11.0";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -224,6 +229,9 @@
   const MAX_ADMIN_PLACED_OBJECTS = 200;
   const MAX_ADMIN_WORLD_EDITS = 1200;
   const ADMIN_PORTABLE_PROFILE_VERSION = 1;
+  const ADMIN_WORLD_LAYOUT_KEY = "moonlit-echo-admin-world-layout";
+  const ADMIN_QUARANTINE_KEY = "moonlit-echo-admin-world-archived-edits";
+  const ADMIN_PRECOMPACT_BACKUP_KEY = "moonlit-echo-admin-80-room-original";
   const LIVE_WORLD_API_BASE = "https://wolhajinhyang-live-world.magic-shark-7297.chatgpt.site";
   const LIVE_WORLD_POLL_MS = 2000;
   const publishedAdminProfileApplied = applyPublishedAdminProfile();
@@ -265,6 +273,7 @@
   let adminPlacedObjectData = readAdminPlacedObjects();
   let adminRemovedObjectIds = readAdminRemovedObjects();
   let adminWorldEditData = readAdminWorldEdits();
+  let adminAuthoredBase = null;
   let liveWorldRevision = null;
   let liveWorldPollInFlight = false;
   let liveWorldPushTimer = 0;
@@ -318,7 +327,7 @@
     };
   });
 
-  const stageZoneNames = [
+  const authoredZoneNames = [
     ["백야 검문선", "비가림 야적장", "분쇄기 협곡", "침몰 화물선", "자석 크레인 숲", "폐철 사냥터", "노동자 숙소 잔해", "감독 기록고", "폭우 운송교", "기억 매립 구덩이", "폐기물 심층", "잔해 환승벽", "침수 정비선", "소각 명령고", "최후 검문교", "감독관 격납고"],
     ["적열 반입로", "용탕 배수관", "왕복 프레스동", "냉각 수직갱", "검은 조립선", "탄도 시험장", "반응 연료 저장고", "폐쇄 실험선", "화염 터빈실", "노심 제어 회랑", "냉각 붕괴선", "증기 압착교", "용탕 우회관", "심부 연료선", "노심 방벽", "용광 심장부"],
     ["망각 접수실", "백면 회랑", "기억 세척 수로", "거울 서버탑", "잔향 보관 성소", "가면 심문정", "금서 분류고", "합창 연산실", "열아홉 제단", "증언 봉인실", "다중 진실 회랑", "부유 성가대", "기억 분기당", "허위 연대기실", "최후 성소", "직조 제단"],
@@ -342,25 +351,26 @@
   ];
   const zones = stages.flatMap((stage, stageIndex) => Array.from({ length: ZONES_PER_STAGE }, (_, zoneIndex) => {
     const globalIndex = stageIndex * ZONES_PER_STAGE + zoneIndex;
+    const authoredLocalIndex = CAMPAIGN_ROUTE[stageIndex][zoneIndex];
     return {
       x: ZONE_STARTS[globalIndex],
       width: ZONE_WIDTHS[globalIndex],
       end: ZONE_STARTS[globalIndex + 1],
       globalIndex,
       localIndex: zoneIndex,
-      name: zoneIndex < stageZoneNames[stageIndex].length
-        ? stageZoneNames[stageIndex][zoneIndex]
-        : `${stageZoneNames[stageIndex][zoneIndex % stageZoneNames[stageIndex].length]} · 심층`,
+      authoredLocalIndex,
+      name: authoredZoneNames[stageIndex][authoredLocalIndex],
       code: `${String(stageIndex + 1).padStart(2, "0")}-${zoneIndex + 1} · ${stageZoneCodes[stageIndex]}`,
       color: stage.color,
       kind: stage.kind,
-      template: zoneTemplateRows[stageIndex][zoneIndex],
+      template: zoneTemplateRows[stageIndex][authoredLocalIndex],
       stageIndex,
     };
   }));
   zones[0].template = "tutorial";
   zones[0].name = "초승 훈련장";
   zones[0].code = "TRAINING-00 · MOONLIT";
+  const stageZoneNames = stages.map((_, stageIndex) => zones.filter(z => z.stageIndex === stageIndex).map(z => z.name));
 
   const BOSS_DEFINITIONS = {
     warden: {
@@ -2310,6 +2320,8 @@
       format: "moonlit-echo-admin-profile",
       formatVersion: ADMIN_PORTABLE_PROFILE_VERSION,
       gameVersion: GAME_VERSION,
+      worldLayout: "campaign-40-v1",
+      quarantinedEdits: readArchivedAdminEdits(),
       published: true,
       revision: `admin-${Date.now().toString(36)}`,
       exportedAt,
@@ -2367,6 +2379,47 @@
     return profile;
   }
 
+  function readArchivedAdminEdits() {
+    try { return JSON.parse(window.localStorage?.getItem(ADMIN_QUARANTINE_KEY) || "[]"); } catch { return []; }
+  }
+
+  function reconcileWorldEdits(profile) {
+    if (!globalThis.CampaignEditCompat || !adminAuthoredBase) return profile;
+    const result = globalThis.CampaignEditCompat.reconcile(profile, adminAuthoredBase);
+    if (result.changed && result.sourceLayout !== "campaign-40-v1" && profileHasWorldEdits(profile)) {
+      // Preserve the original before storing translated IDs/positions. Edits
+      // without an identifiable counterpart can also be recovered from exports.
+      try {
+        if (!window.localStorage?.getItem(ADMIN_PRECOMPACT_BACKUP_KEY)) {
+          window.localStorage?.setItem(ADMIN_PRECOMPACT_BACKUP_KEY, JSON.stringify(profile));
+        }
+      } catch { /* The unmodified input and quarantined edits are still available in memory. */ }
+    }
+    return result.profile;
+  }
+
+  function prepareCompactWorldEdits() {
+    if (!globalThis.CampaignEditCompat) return;
+    // Capture unedited locations once: a live profile can arrive while a boss
+    // is moving or a platform has just been dragged to another location.
+    if (!adminAuthoredBase) {
+      const geometry = list => list.map(({id,x,y,w,h,type,kind,bossKind,homeZoneIndex}) => ({id,x,y,w,h,type,kind,bossKind,homeZoneIndex}));
+      adminAuthoredBase = {zones,enemies:geometry(enemies),platforms:geometry(platforms),hazards:geometry(hazards),
+        pickups:geometry(pickups),boostNodes:geometry(boostNodes),signs:geometry(signs),backdrops:geometry(adminBackdrops)};
+    }
+    let layout;
+    try { layout = window.localStorage?.getItem(ADMIN_WORLD_LAYOUT_KEY); } catch { return; }
+    if (layout === "campaign-40-v1") return;
+    const previous = { ...buildAdminPortableProfile(), gameVersion: null, worldLayout: layout || "campaign-80-v1" };
+    const compact = reconcileWorldEdits(previous);
+    adminRemovedEnemyIds = new Set(compact.removedEnemies);
+    adminRemovedObjectIds = new Set(compact.removedObjects);
+    adminSpawnedEnemyData = compact.spawnedEnemies;
+    adminPlacedObjectData = compact.placedObjects;
+    adminWorldEditData = compact.worldEdits;
+    try { writeAdminPortableProfile(compact); } catch { /* Private browsing: session state remains usable. */ }
+  }
+
   function writeAdminPortableProfile(profile) {
     const data = validateAdminPortableProfile(profile);
     const writes = [
@@ -2377,6 +2430,10 @@
       [ADMIN_WORLD_EDITS_KEY, data.worldEdits],
     ];
     for (const [key, value] of writes) window.localStorage?.setItem(key, JSON.stringify(value));
+    const [major, minor] = String(data.gameVersion || "").split(".").map(Number);
+    window.localStorage?.setItem(ADMIN_WORLD_LAYOUT_KEY, data.worldLayout ||
+      (major > 3 || (major === 3 && minor >= 11) ? "campaign-40-v1" : "campaign-80-v1"));
+    window.localStorage?.setItem(ADMIN_QUARANTINE_KEY, JSON.stringify(data.quarantinedEdits || []));
     if (data.startScreenEdits && typeof data.startScreenEdits === "object") {
       window.localStorage?.setItem(START_SCREEN_EDITS_KEY, JSON.stringify(data.startScreenEdits));
     } else {
@@ -2480,7 +2537,8 @@
   }
 
   function applyLiveWorldProfile(profile) {
-    const data = validateAdminPortableProfile(profile);
+    validateAdminPortableProfile(profile);
+    const data = reconcileWorldEdits(profile);
     const revision = String(data.revision || data.exportedAt || "live-world");
     if (revision === liveWorldRevision) return false;
     const localProfile = buildAdminPortableProfile();
@@ -2830,7 +2888,7 @@
     // Author two contained forks after the ordinary map is built. Existing IDs
     // outside these lanes stay stable, so saved admin edits cannot drift.
     for (const zone of zones) zone.aerialShortcut = null;
-    for (const zoneIndex of [5, 2 * ZONES_PER_STAGE + 11]) {
+    for (const zoneIndex of [CAMPAIGN_ROUTE[0].indexOf(5), 2 * ZONES_PER_STAGE + CAMPAIGN_ROUTE[2].indexOf(11)]) {
       const zone = zones[zoneIndex];
       const ground = platforms.find((p) => p.x === zone.x && p.w >= ZONE_W && p.h > 500);
       if (!ground) continue;
@@ -3669,6 +3727,7 @@
 
     addAerialShortcutRoutes();
     initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies();
+    prepareCompactWorldEdits();
     applyAdminWorldEdits();
     normalizeCheckpointPlacements();
     removeEmbeddedRepairPickups();
@@ -3961,6 +4020,25 @@
     }
   }
 
+  function migrateLocalCheckpoint(stageIndex, oldLocal, oldCount) {
+    const local = clamp(oldLocal, 0, oldCount - 1);
+    if (oldCount === ZONES_PER_STAGE) return local;
+    // A post-midboss save must never return to the encounter it already
+    // cleared. A pre-boss save must not skip a still-living boss.
+    if (oldCount === 16) {
+      const route = CAMPAIGN_ROUTE[stageIndex];
+      const exact = route.indexOf(local);
+      if (exact >= 0) return exact;
+      if (local > 7 && local < route[4]) return 4;
+      return route.reduce((previous, source, i) => source <= local ? i : previous, 0);
+    }
+    if (oldCount >= 8 && oldCount % 2 === 0) {
+      const half = oldCount / 2, offset = local >= half ? 4 : 0, pos = local % half;
+      return offset + (pos === half - 1 ? 3 : Math.min(2, Math.floor(pos * 3 / (half - 1))));
+    }
+    return Math.round(local / Math.max(1, oldCount - 1) * (ZONES_PER_STAGE - 1));
+  }
+
   function resolveCampaignCheckpointIndex(saved) {
     if (!saved || checkpoints.length === 0) return 0;
     const savedStageIndex = clamp(Number(saved.respawnStage) || 0, 0, stages.length - 1);
@@ -3968,21 +4046,22 @@
     if (typeof saved.checkpointKey === "string") {
       const keyMatch = /^(\d+):(\d+)$/.exec(saved.checkpointKey);
       const migratedCheckpointKey = keyMatch && savedZonesPerStage && savedZonesPerStage !== ZONES_PER_STAGE
-        ? `${clamp(Number(keyMatch[1]), 0, STAGE_COUNT - 1)}:${Math.round(clamp(Number(keyMatch[2]), 0, savedZonesPerStage - 1) / Math.max(1, savedZonesPerStage - 1) * (ZONES_PER_STAGE - 1))}`
+        ? `${clamp(Number(keyMatch[1]), 0, STAGE_COUNT - 1)}:${migrateLocalCheckpoint(clamp(Number(keyMatch[1]), 0, STAGE_COUNT - 1), Number(keyMatch[2]), savedZonesPerStage)}`
         : saved.checkpointKey;
       const keyedIndex = checkpoints.findIndex((checkpoint) => checkpoint.checkpointKey === migratedCheckpointKey);
       if (keyedIndex >= 0) return keyedIndex;
     }
     if (Number.isInteger(saved.respawnZone)) {
+      if (savedZonesPerStage && savedZonesPerStage !== ZONES_PER_STAGE && Math.floor(saved.respawnZone / savedZonesPerStage) === savedStageIndex) {
+        return savedStageIndex * ZONES_PER_STAGE + migrateLocalCheckpoint(savedStageIndex, saved.respawnZone % savedZonesPerStage, savedZonesPerStage);
+      }
       const zoneIndex = clamp(saved.respawnZone, 0, checkpoints.length - 1);
       if (zones[zoneIndex]?.stageIndex === savedStageIndex) return zoneIndex;
     }
     const legacyZonesPerStage = savedZonesPerStage || 7;
     if (Number.isInteger(saved.respawnCheckpointIndex)) {
       const legacyLocalIndex = clamp(saved.respawnCheckpointIndex - savedStageIndex * legacyZonesPerStage, 0, legacyZonesPerStage - 1);
-      const currentLocalIndex = legacyZonesPerStage === ZONES_PER_STAGE
-        ? legacyLocalIndex
-        : Math.round((legacyLocalIndex / Math.max(1, legacyZonesPerStage - 1)) * (ZONES_PER_STAGE - 1));
+      const currentLocalIndex = migrateLocalCheckpoint(savedStageIndex, legacyLocalIndex, legacyZonesPerStage);
       const migratedIndex = clamp(savedStageIndex * ZONES_PER_STAGE + currentLocalIndex, 0, checkpoints.length - 1);
       if (zones[migratedIndex]?.stageIndex === savedStageIndex) return migratedIndex;
     }
@@ -4185,7 +4264,17 @@
   function restoreCampaign(saved) {
     const savedCheckpointIndex = resolveCampaignCheckpointIndex(saved);
     const restartZoneIndex = getZoneIndexAt(checkpoints[savedCheckpointIndex]?.x || 0);
-    resetMirrorHabits(saved.mirrorHabits);
+    let savedHabits = saved.mirrorHabits;
+    if (savedHabits?.records && Number.isInteger(saved.zonesPerStage) && saved.zonesPerStage !== ZONES_PER_STAGE) {
+      const records = {};
+      for (const [kind, entry] of Object.entries(savedHabits.records)) {
+        if (!Number.isInteger(entry?.zone) || entry.zone < 0 || entry.zone >= STAGE_COUNT * saved.zonesPerStage) continue;
+        const act = Math.floor(entry.zone / saved.zonesPerStage);
+        records[kind] = { ...entry, zone: act * ZONES_PER_STAGE + migrateLocalCheckpoint(act, entry.zone % saved.zonesPerStage, saved.zonesPerStage) };
+      }
+      savedHabits = { ...savedHabits, records };
+    }
+    resetMirrorHabits(savedHabits);
     pruneMirrorHabits(restartZoneIndex);
     const deadIds = new Set(saved.defeatedEnemyIds || []);
     const migratedZoneLayout = Number.isInteger(saved.zonesPerStage) && saved.zonesPerStage !== ZONES_PER_STAGE;
@@ -10375,7 +10464,8 @@
     if (storyContextEnabled) {
       for (const event of CUTSCENE_EVENTS) {
         const eventStageIndex = getStageIndexAt(event.x);
-        if (eventStageIndex !== narrationStageIndex || player.x < event.x || game.cutsceneSeen.has(event.id)) continue;
+        if (eventStageIndex !== narrationStageIndex || getZoneIndexAt(event.x) !== narrationZoneIndex
+          || player.x < event.x || game.cutsceneSeen.has(event.id)) continue;
         startCutscene(event);
         startedCutscene = true;
         break;
@@ -10463,6 +10553,9 @@
     };
 
   function drawBackground() {
+    if (environmentRenderer?.drawBackground?.(game.stage, { x: camera.x, y: camera.y, w: W, h: H,
+      time: game.time, zoneIndex: getZoneIndexAt(camera.x + W / 2), stageX: stages[game.stage]?.x || 0,
+      mobile: !!(touchControls && !touchControls.hidden) })) return;
     const stageVisuals = BACKGROUND_THEMES[game.stage] || BACKGROUND_THEMES[0];
     const gradient = ctx.createLinearGradient(0, 0, 0, H);
     gradient.addColorStop(0, stageVisuals.top);
@@ -10976,6 +11069,95 @@
 
   const drawPlayerBody = globalThis.MoonlitOperative.createRenderer(ctx, player, game, palette);
 
+  function samplePlayerSlashTrail() {
+    if (!isAttackActive() || ((player.crossShotTimer || 0) > 0 && player.recoilTimer > 0)) return null;
+    const progress = 1 - player.attackTimer / player.attackDuration;
+    const combo = player.slashComboActive ? player.slashComboIndex : -1;
+    const start = combo >= 0 ? [0.18, 0.15, 0.23][combo] : 0.14;
+    const phase = clamp((progress - start) / (0.8 - start), 0, 1);
+    const ease = value => value * value * (3 - value * 2);
+    const alpha = Math.pow(Math.sin(phase * Math.PI), 0.65) * (1 - ease(clamp((phase - 0.76) / 0.24, 0, 1)));
+    if (alpha < 0.005) return null;
+    const box = attackBox();
+    const center = { x: player.x + player.w / 2, y: player.y + player.h / 2 };
+    const magnitude = Math.max(0.001, Math.hypot(player.attackDir.x, player.attackDir.y));
+    const axis = { x: player.attackDir.x / magnitude, y: player.attackDir.y / magnitude };
+    const normal = { x: -axis.y * player.facing, y: axis.x * player.facing };
+    // Read the real damaging boundary, including the different vertical and
+    // third-cut reach. These coordinates are presentation only, never hit tests.
+    const reachX = Math.abs(axis.x) > 0.001
+      ? ((axis.x > 0 ? box.x + box.w : box.x) - center.x) / axis.x : Infinity;
+    const reachY = Math.abs(axis.y) > 0.001
+      ? ((axis.y > 0 ? box.y + box.h : box.y) - center.y) / axis.y : Infinity;
+    const reach = Math.min(reachX, reachY);
+    const growth = lerp(0.38, 1, ease(clamp(phase / 0.36, 0, 1)));
+    const span = Math.min(reach * 0.5, Math.abs(normal.x) * box.w / 2 + Math.abs(normal.y) * box.h / 2) * 0.88;
+    const reverse = combo === 1 ? -1 : 1;
+    const sweepHead = -1 + 2 * clamp(phase * 1.42, 0, 1);
+    const sweepTail = Math.max(-1, sweepHead - (combo === 2 ? 1.48 : 1.25));
+    const sampleTs = Array.from({ length: 23 }, (_, index) => lerp(sweepTail, sweepHead, index / 22));
+    if (sweepTail < 0 && sweepHead > 0) sampleTs.push(0);
+    sampleTs.sort((a, b) => a - b);
+    const point = (t, inset = 0) => {
+      const forward = reach * growth * (1 - 0.48 * t * t) - inset;
+      const sideways = span * t * reverse * growth;
+      // Pixel-stepped shoulders stay inside the attack region, even for an
+      // oblique cut whose axis is close to a corner of the damage rectangle.
+      return { x: clamp(Math.round(center.x + axis.x * forward + normal.x * sideways), box.x, box.x + box.w),
+        y: clamp(Math.round(center.y + axis.y * forward + normal.y * sideways), box.y, box.y + box.h) };
+    };
+    const thickness = combo === 2 || player.slashChain === 3 ? 10.5 : 7.5;
+    const band = (width, offset = 0) => {
+      const outer = [], inner = [];
+      for (const t of sampleTs) {
+        const along = (t - sweepTail) / Math.max(0.001, sweepHead - sweepTail);
+        const taper = Math.pow(Math.sin(along * Math.PI), 0.7);
+        outer.push(point(t, offset));
+        inner.push(point(t, offset + width * taper * (1 - phase * 0.22)));
+      }
+      return outer.concat(inner.reverse());
+    };
+    const steel = globalThis.MoonlitOperative.sampleBlade(player, game, player.facing);
+    const hand = steel?.base || { x: center.x + axis.x * 12, y: center.y + axis.y * 12 };
+    const steelTip = steel?.tip || hand;
+    const join = fraction => point(lerp(sweepTail, sweepHead, fraction), thickness * 0.5);
+    const rootJoin = [
+      { x: hand.x + normal.x * 1.2, y: hand.y + normal.y * 1.2 },
+      { x: steelTip.x + normal.x * 1.5, y: steelTip.y + normal.y * 1.5 },
+      join(0.45), join(0.61), join(0.76), join(0.87),
+      { x: steelTip.x - normal.x * 1.5, y: steelTip.y - normal.y * 1.5 },
+      { x: hand.x - normal.x * 1.2, y: hand.y - normal.y * 1.2 },
+    ];
+    const filaments = [0.27, 0.58, 0.83].map(fraction => {
+      const t = lerp(sweepTail, sweepHead, fraction);
+      return [point(t, thickness + 5), point(Math.min(sweepHead, t + 0.11), thickness + 3), point(t, thickness + 7)];
+    });
+    const flame = game.stage >= ACT_FOUR_INDEX;
+    const empowered = player.buffTimer > 0 || player.chargedAttack;
+    return { box, center, axis, reach, hand, phase, alpha, rootJoin, filaments,
+      glow: band(thickness * 2.2), ribbon: band(thickness), rim: band(1.6),
+      color: flame ? "#ed874e" : empowered ? "#ebc479" : "#66d9d4",
+      core: flame ? "#ffd69f" : empowered ? "#fff1ba" : "#b5f6ec",
+      edge: flame ? "#fff1d5" : "#ecfff9" };
+  }
+
+  function drawPlayerSlashTrail() {
+    const trail = samplePlayerSlashTrail();
+    if (!trail) return;
+    const paint = (points, color, alpha) => {
+      ctx.globalAlpha = trail.alpha * alpha;
+      drawCharacterPlate(points.flatMap(point => [point.x, point.y]), color, null);
+    };
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    paint(trail.rootJoin, trail.color, 0.29);
+    paint(trail.glow, trail.color, 0.13);
+    paint(trail.ribbon, trail.core, 0.52);
+    paint(trail.rim, trail.edge, 0.94);
+    for (const filament of trail.filaments) paint(filament, trail.color, 0.38);
+    ctx.restore();
+  }
+
   function drawPlayer() {
     const empoweredSlash = player.buffTimer > 0;
     if (Math.abs(player.vx) > 250) {
@@ -10997,9 +11179,12 @@
     }
 
     const blink = player.invincible > 0 && Math.floor(player.invincible * 16) % 2 === 0;
-    // The blade draws its own short trail in the wrist frame; effects must
-    // not orbit the player's center independently of the actual weapon.
-    if (!blink) drawPlayerBody(player.x, player.y, player.facing, 1, false, "player", isAttackActive());
+    // A wrist-linked crescent communicates the forgiving enemy-body reach;
+    // the physical steel and its short precision trail remain unchanged.
+    if (!blink) {
+      drawPlayerSlashTrail();
+      drawPlayerBody(player.x, player.y, player.facing, 1, false, "player", isAttackActive());
+    }
 
     if (player.burstTimer > 0) {
       const progress = 1 - player.burstTimer / 0.38;
@@ -11465,6 +11650,126 @@
     ctx.restore();
   }
 
+  function getFurnaceWispPose(enemy, time = game.time) {
+    const drift = clamp(-enemy.vx * enemy.facing / 90, -3, 3);
+    return [-1, 0, 1].map((side, index) => ({
+      rootX: side * 15,
+      tipX: side * 21 + drift + Math.sin(time * 2.6 + index * 1.7) * (side ? 6 : 9),
+      tipY: enemy.h - (side ? 13 : 7) + Math.sin(time * 3.2 + index * 2) * 3,
+      bend: Math.cos(time * 2.2 + index) * 7 + drift,
+    }));
+  }
+
+  function drawFurnaceGhostLower(enemy) {
+    const wisps = getFurnaceWispPose(enemy);
+    ctx.save();
+    // The foundry shell dissolves into embers: no knee, shin or foot primitives.
+    ctx.fillStyle = enemy.hurt > 0 ? "#ffe0cf" : "#351a28";
+    ctx.beginPath(); ctx.moveTo(-23, 48); ctx.lineTo(22, 48);
+    ctx.bezierCurveTo(30, 62, 18, 77, 2, 78);
+    ctx.bezierCurveTo(-18, 77, -30, 63, -23, 48); ctx.fill();
+    for (let index = 0; index < wisps.length; index++) {
+      const wisp = wisps[index];
+      ctx.fillStyle = index === 1 ? "rgba(170,56,61,0.78)" : "rgba(105,38,57,0.76)";
+      ctx.beginPath(); ctx.moveTo(wisp.rootX - 11, 57);
+      ctx.bezierCurveTo(wisp.rootX - 15 + wisp.bend, 72, wisp.tipX - 12, wisp.tipY - 1, wisp.tipX, wisp.tipY);
+      ctx.bezierCurveTo(wisp.tipX - 5, wisp.tipY - 9, wisp.rootX + 11 + wisp.bend, 70, wisp.rootX + 11, 55);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = index === 1 ? "#ffaf80" : "#ed7269"; ctx.lineWidth = index === 1 ? 2 : 1.2;
+      ctx.beginPath(); ctx.moveTo(wisp.rootX + 3, 61);
+      ctx.bezierCurveTo(wisp.rootX + wisp.bend + 3, 73, wisp.tipX - 4, wisp.tipY - 10, wisp.tipX - 1, wisp.tipY - 4); ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255,139,103,0.7)";
+    for (let ember = 0; ember < 4; ember++) {
+      const phase = (game.time * 0.45 + ember * 0.25) % 1;
+      const x = Math.sin(ember * 2.4 + game.time * 1.6) * (10 + phase * 13);
+      ctx.fillRect(x, enemy.h - 8 - phase * 21, 2 - phase, 2 - phase);
+    }
+    ctx.restore();
+  }
+
+  function drawHunterRedesign(enemy, accent, pulse, chargeProgress, chargingShot) {
+    const flash = enemy.hurt > 0;
+    const plate = (points, color, edge = "#8d7772") => drawCharacterPlate(points, flash ? "#fff0dd" : color, edge, 1.5);
+    const pose = getHunterShieldPose(enemy);
+    const stride = clamp(Math.abs(enemy.vx) / 150, 0, 1);
+    const gait = (enemy.x - enemy.originX) * enemy.facing * 0.157;
+    ctx.save(); ctx.lineJoin = "round";
+    // The asymmetric counterweight and narrow wasp waist distinguish the hunter.
+    plate([-21,23,-34,14,-31,36,-20,47,-12,42], "#302b36", "#6b5964");
+    plate([-28,17,-38,3,-31,7,-22,23], "#71414a", "#ba7c74");
+    ctx.strokeStyle = "#151c26"; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(-9,29); ctx.lineTo(pose.x,40); ctx.stroke();
+    ctx.strokeStyle = "#8c8580"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-9,27); ctx.lineTo(pose.x,38); ctx.stroke();
+    for (const side of [-1,1]) {
+      const phase = gait + (side < 0 ? Math.PI : 0);
+      const footX = side * 12 + Math.cos(phase) * stride * 9;
+      const footY = 80 - Math.max(0, Math.sin(phase)) * stride * 9;
+      const kneeX = side * 12 + 6 + Math.cos(phase) * stride * 3;
+      ctx.strokeStyle = "#090e17"; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(side*7,48); ctx.lineTo(kneeX,63); ctx.lineTo(footX,footY-3); ctx.stroke();
+      ctx.strokeStyle = side < 0 ? "#51434b" : "#865053"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(side*7,48); ctx.lineTo(kneeX,63); ctx.lineTo(footX,footY-3); ctx.stroke();
+      plate([kneeX-5,59,kneeX+5,59,footX+4,footY-7,footX-3,footY-3], side<0?"#3f3542":"#713c43", "#9e7978");
+      plate([footX-5,footY-4,footX+3,footY-4,footX+11,footY,footX-6,footY], "#29303a", "#8e979d");
+      ctx.fillStyle="#c7b7a1";ctx.fillRect(kneeX-2,61,4,2);
+    }
+    plate([-15,22,-4,18,14,24,20,39,8,49,-5,50,-17,36], "#713c45", "#b87c76");
+    plate([-5,34,10,34,10,49,3,58,-7,48], "#1a2430", "#7f727c");
+    plate([-18,19,-7,16,2,26,-8,35,-22,28], "#9c615b", "#e0a28d");
+    plate([12,24,23,18,32,28,25,40,16,36], "#493743", "#aa7b7a");
+    ctx.strokeStyle="#c8ab93";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-12,30);ctx.lineTo(1,38);ctx.lineTo(14,30);ctx.stroke();
+    ctx.fillStyle="#90e6e4";ctx.fillRect(-2,39,4,5);
+    // Swept-back crown, single targeting slit and a pointed respirator mask.
+    plate([-14,16,-17,3,-8,-11,2,-6,15,3,16,15,5,25,-4,21], "#332934", "#a58481");
+    plate([-16,3,-10,-12,-5,-5,8,0,13,5,-6,7], "#985859", "#e5a88f");
+    plate([-11,10,14,6,12,13,2,17,-10,15], "#0d1c26", "#628b95");
+    ctx.fillStyle="#a6f7ff";ctx.fillRect(3,10,8,2);
+    plate([-4,17,7,16,11,14,6,26,-2,22], "#68505a", "#b49a91");
+    // Both shield art and the physical clasp use this exact hinge transform.
+    ctx.save();ctx.translate(pose.x,40);ctx.rotate(pose.angle);
+    plate([-7,-37,16,-25,22,-9,17,25,-3,39,-21,16,-19,-22], "#272d3a", pose.broken?"#ac6974":"#c4cdd0");
+    plate([-7,-33,-3,-5,-17,12,-16,-20], "#804552", "#bd7c7c");
+    plate([1,-30,13,-22,18,-8,12,7,3,-1], "#a26560", "#ddb09a");
+    plate([-15,18,-1,3,12,14,12,23,-3,33], "#673b49", "#ae7578");
+    ctx.strokeStyle=pose.broken?"#f27a87":"#a6f7ff";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-5,-28);ctx.lineTo(1,-7);ctx.lineTo(-8,12);ctx.lineTo(-1,27);ctx.stroke();
+    ctx.fillStyle=pose.broken?"#733c54":"#d2fffb";
+    ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(5,1);ctx.lineTo(0,10);ctx.lineTo(-5,1);ctx.closePath();ctx.fill();
+    if (pose.broken && pose.ease >= 0.85) {
+      ctx.fillStyle="#11191e";ctx.fillRect(2,-4,16,18);
+      ctx.strokeStyle=enemy.hunterClaspBroken?"#719395":"#ffe39b";ctx.lineWidth=2;ctx.strokeRect(4,-2,12,14);
+      ctx.fillStyle=enemy.hunterClaspBroken?"#4d6067":"#ffcf69";ctx.fillRect(7,1,6,8);
+      if(enemy.hunterClaspBroken){ctx.beginPath();ctx.moveTo(3,10);ctx.lineTo(16,-2);ctx.stroke();}
+    }
+    ctx.restore();
+    // A stock, braced forearm and recessed triple barrel replace a floating gun icon.
+    plate([13,30,23,27,34,35,29,43,18,39], "#332f3d", "#a28784");
+    plate([22,30,51,27,60,31,60,39,30,41,22,37], "#282c39", "#89979e");
+    ctx.fillStyle="#9a746d";ctx.fillRect(29,30,21,3);
+    ctx.fillStyle="#111721";ctx.fillRect(38,34,16,3);
+    for(let bore=0;bore<3;bore++){
+      ctx.fillStyle="#6c777e";ctx.fillRect(54,28+bore*5,18,4);
+      ctx.fillStyle="#d0c4b1";ctx.fillRect(56,28+bore*5,14,1);
+      ctx.fillStyle="#07121d";ctx.fillRect(69,29+bore*5,4,3);
+    }
+    if (pose.broken && enemy.reflectBreakTimer>0) {
+      ctx.fillStyle="rgba(255,106,132,0.72)";ctx.fillRect(-51,84,44*clamp(enemy.reflectBreakTimer/HUNTER_REFLECT_BREAK_SECONDS,0,1),2);
+    }
+    if (enemy.reflectTimer>0 && !pose.broken) {
+      ctx.strokeStyle="rgba(166,247,255,0.62)";ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(18,42,56,-1.45,1.45);ctx.stroke();
+    }
+    if (chargingShot) {
+      ctx.strokeStyle="#ffd69b";ctx.lineWidth=2+chargeProgress*2;
+      ctx.beginPath();ctx.arc(72,34,5+chargeProgress*9,0,TAU);ctx.stroke();
+      ctx.fillStyle="#fff0ce";ctx.fillRect(71,32,3,4);
+    }
+    ctx.restore();
+  }
+
   function drawSpecialBossCharacter(enemy, rawBossKind, accent, pulse, chargeProgress, chargingShot) {
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
@@ -11629,9 +11934,8 @@
         ctx.beginPath(); ctx.arc(18, 42, 64, -1.7, 1.7); ctx.stroke();
       }
     } else if (rawBossKind === "furnace") {
-      // A braced artillery body: knees, recoil pistons and separate shoulder housings.
-      limb(-12,56,-19,91,10,flash ? "#fff" : "#583d40");
-      limb(12,56,22,91,10,flash ? "#fff" : "#72483f");
+      // The artillery shell hovers on a dissolving ghost tail, not mechanical legs.
+      drawFurnaceGhostLower(enemy);
       drawCharacterPlate([-23,27,-12,16,14,17,25,37,20,56,0,68,-22,55], flash ? "#fff" : "#542b31", "#101522", 2);
       for (const side of [-1,1]) {
         ctx.save(); ctx.translate(side*20,35+side*motion*4);
@@ -12261,6 +12565,10 @@
   }
 
   function drawDetailedBossCharacter(enemy, bossKind, accent, pulse, chargeProgress, chargingShot, rawBossKind = bossKind) {
+    if (rawBossKind === "hunter") {
+      drawHunterRedesign(enemy, accent, pulse, chargeProgress, chargingShot);
+      return;
+    }
     const flash = enemy.hurt > 0;
     const motion = Math.sin(enemy.anim * 5.2);
     const fastMotion = Math.sin(enemy.anim * 10.5);

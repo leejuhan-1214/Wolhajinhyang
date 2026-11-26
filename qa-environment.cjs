@@ -77,7 +77,7 @@ const before=JSON.stringify([q.platforms,q.hazards]);
 for(let act=0;act<5;act++){
   q.camera.x=q.stages[act].x;q.camera.y=0;
   for(const platform of q.platforms.filter(p=>p.x>=q.stages[act].x&&p.x<q.stages[act].end).slice(0,24))q.drawPlatform(platform);
-  const zone=q.zones[act*16+15];q.camera.x=zone.x+160;q.drawBossArenaBackdrop(q.camera.x-200,q.camera.x+1480);
+  const zone=q.zones.filter(zone=>zone.stageIndex===act).at(-1);q.camera.x=zone.x+160;q.drawBossArenaBackdrop(q.camera.x-200,q.camera.x+1480);
 }
 assert.equal(JSON.stringify([q.platforms,q.hazards]),before,'render integration must preserve the entire layout and all hazards');
 delete window.MoonlitEnvironment;

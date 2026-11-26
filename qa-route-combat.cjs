@@ -11,7 +11,7 @@ const hook=`window.__ROUTE_COMBAT_QA__={player,game,zones,stages,enemies,platfor
 vm.runInThisContext(fs.readFileSync('game.js','utf8').replace(/\}\)\(\);\s*$/,hook+'\n})();'),{filename:'game-route-combat-test.js'});
 const q=window.__ROUTE_COMBAT_QA__,original=structuredClone(q.player),results=[],evidence=[];
 const modes=['chick','cadet','darkhorse','weapon'];
-function fixture(zoneIndex=5,difficulty='darkhorse'){
+function fixture(zoneIndex=2,difficulty='darkhorse'){
   q.adminRemovedEnemyIds.clear();q.persistAdminRemovedEnemies();q.rebuild(difficulty);
   const route=q.zones[zoneIndex].aerialShortcut;assert(route,'authored route exists');
   const drones=q.enemies.filter(e=>route.droneIds.includes(e.id));assert.equal(drones.length,2);
@@ -50,7 +50,7 @@ function simulate(drones,seconds,dt=1/60){
 }
 function test(name,run){try{run();results.push({name,ok:true});}catch(error){results.push({name,ok:false,error:error.stack});}}
 
-for(const zone of [5,43])for(const difficulty of modes)test(`both anchors attack on route ${zone}, ${difficulty}`,()=>{
+for(const zone of [2,21])for(const difficulty of modes)test(`both anchors attack on route ${zone}, ${difficulty}`,()=>{
   for(const index of [0,1]){
     const {drones}=fixture(zone,difficulty),enemy=drones[index];
     drones[1-index].alive=false;positionNear(enemy,index? -220:220);
@@ -74,7 +74,7 @@ for(const zone of [5,43])for(const difficulty of modes)test(`both anchors attack
 });
 
 test('safe lower route never acquires an aerial target in any difficulty',()=>{
-  for(const zone of [5,43])for(const difficulty of modes){
+  for(const zone of [2,21])for(const difficulty of modes){
     const {route,drones}=fixture(zone,difficulty);positionNear(drones[0],140);
     q.player.y=route.floorY-q.player.h;
     const hp=q.player.hp;assert.equal(simulate(drones,9).length,0);assert.equal(q.player.hp,hp);
@@ -105,7 +105,7 @@ for(const state of ['administrator','cutscene','paused','wrong-zone'])test(`${st
   if(state==='administrator')q.game.adminMode=true;
   if(state==='cutscene')q.game.cutscene={id:'test'};
   if(state==='paused')q.game.mode='paused';
-  if(state==='wrong-zone')q.player.x=q.zones[6].x+40;
+  if(state==='wrong-zone')q.player.x=q.zones[3].x+40;
   assert.equal(simulate(drones,5).length,0);assert.equal(enemy.windup,0);
 });
 
@@ -163,14 +163,14 @@ function traverse(zone,difficulty,attacks=true,maxHits=2){
   return {landed,lower,refreshes,hp:q.player.hp};
 }
 test('both upper routes remain reachable with two real slash refreshes in all modes',()=>{
-  for(const zone of [5,43])for(const difficulty of modes){
+  for(const zone of [2,21])for(const difficulty of modes){
     const result=traverse(zone,difficulty);
     assert(result.landed&&result.refreshes===2,`${zone}/${difficulty}: ${JSON.stringify(result)}`);
     assert.equal(result.hp,5,'the intended crossing needs no damage tanking');
   }
 });
 test('missed or one-hit crossings fall safely onto the lower route',()=>{
-  for(const zone of [5,43])for(const difficulty of modes)for(const hits of [0,1]){
+  for(const zone of [2,21])for(const difficulty of modes)for(const hits of [0,1]){
     const result=traverse(zone,difficulty,hits>0,hits);
     assert(!result.landed&&result.lower,`${zone}/${difficulty}/${hits}: ${JSON.stringify(result)}`);
     assert.equal(result.hp,5,'failed optional crossing remains forgiving');

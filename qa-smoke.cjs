@@ -99,7 +99,7 @@ const titleThumbnailHeight = titleThumbnail.readUInt32BE(20);
 if (!indexSource.includes('title-screen-v3.6.26.png') || titleThumbnailWidth !== 1920 || titleThumbnailHeight !== 1080 || titleThumbnail.length > 10 * 1024 * 1024 || !indexSource.includes('id="start-title" class="visually-hidden"')) {
   throw new Error("v3.6.26 title-only opening artwork is not active");
 }
-if (diagnostics.stages !== 5 || diagnostics.zones !== 80 || diagnostics.zonesPerStage !== 16 || diagnostics.midBossZone !== 8 || diagnostics.finalBossZone !== 16 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
+if (diagnostics.stages !== 5 || diagnostics.zones !== 40 || diagnostics.zonesPerStage !== 8 || diagnostics.midBossZone !== 4 || diagnostics.finalBossZone !== 8 || diagnostics.midBossArenaCount !== 5 || diagnostics.finalBossArenaCount !== 5) {
   throw new Error(`campaign zone structure invalid: ${diagnostics.stages}/${diagnostics.zones}/${diagnostics.zonesPerStage}/${diagnostics.midBossZone}/${diagnostics.finalBossZone}/${diagnostics.midBossArenaCount}/${diagnostics.finalBossArenaCount}`);
 }
 if (Object.values(diagnostics.difficultyPlayerHp).some((hp) => hp !== 5) || Object.values(diagnostics.difficultyDamagePerHit).some((damage) => damage !== 1)) {
@@ -258,7 +258,7 @@ if (/getZoneRemaining\(clearedZoneIndex\)[\s\S]{0,280}player\.hp\s*=/.test(gameS
   throw new Error("zone-clear healing is still present");
 }
 if (!diagnostics.checkpointSafetyPass) throw new Error("unsafe checkpoint placement detected");
-if (!continueText.includes("03-09")) throw new Error(`24-zone save resolved incorrectly: ${continueText}`);
+if (!continueText.includes("03-05")) throw new Error(`24-zone save resolved incorrectly: ${continueText}`);
 if (!diagnostics.adminDirectCanvasTransform || !diagnostics.mobileAttackAimAssist || !diagnostics.revenantShieldArtillery) {
   throw new Error("v2.6.0 feature diagnostics missing");
 }
@@ -279,7 +279,8 @@ if (diagnostics.adminRemovedEnemyCount !== 1 || diagnostics.adminRemovedEnemyAli
 }
 const persistedAdminSpawns = JSON.parse(storage.get("moonlit-echo-admin-spawned-enemies-v1") || "[]");
 if (persistedAdminSpawns.length !== 0) throw new Error("deleted administrator-spawned enemy was restored");
-if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount < 65 || diagnostics.routeProfileCount < 30) {
+const expectedTraversalZones = diagnostics.zones - diagnostics.midBossArenaCount - diagnostics.finalBossArenaCount - 1;
+if (!diagnostics.layeredRouteTransitions || diagnostics.layeredRouteZoneCount !== expectedTraversalZones || diagnostics.routeProfileCount !== expectedTraversalZones) {
   throw new Error(`layered route generation missing: ${diagnostics.layeredRouteZoneCount}/${diagnostics.routeProfileCount}`);
 }
 if (diagnostics.machinegunBurstRounds !== 4 || diagnostics.machinegunCount < 1) {
@@ -400,9 +401,9 @@ for (let frame = 0; frame < 12; frame += 1) {
   if (typeof callback === "function") callback(1000 + frame * 16.667);
 }
 const restored = window.__MOONLIT_ECHO_DIAGNOSTICS__();
-if (restored.activeCheckpointKey !== "2:8") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
+if (restored.activeCheckpointKey !== "2:4") throw new Error(`continue loaded wrong checkpoint: ${restored.activeCheckpointKey}`);
 const migrated = JSON.parse(storage.get("moonlit-echo-campaign-v1"));
-if (migrated.version !== 2 || migrated.zonesPerStage !== 16 || migrated.checkpointKey !== "2:8") throw new Error("24-zone save was not migrated to the 16-zone campaign");
+if (migrated.version !== 2 || migrated.zonesPerStage !== 8 || migrated.checkpointKey !== "2:4") throw new Error("24-zone save was not migrated to the 8-zone campaign");
 console.log(JSON.stringify({
   version: diagnostics.version,
   checkpointSafetyPass: diagnostics.checkpointSafetyPass,

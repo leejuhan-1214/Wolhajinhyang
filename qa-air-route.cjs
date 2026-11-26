@@ -71,7 +71,7 @@ function continueLowerRoute(route){
   }
   assert.fail(`safe lower path must remain traversable without drone attacks: x=${q.player.x},y=${q.player.y}`);
 }
-for(const zone of[5,43]){
+for(const zone of[2,21]){
   for(const dt of[1/60,1/120]){
     const result=traverse(zone,{dt});
     assert(result.landed,`two actual aerial slash refreshes must reach the shortcut landing: ${JSON.stringify(result)}`);
@@ -88,15 +88,15 @@ for(const zone of[5,43]){
   continueLowerRoute(oneHit.route);
 }
 for(const difficulty of['chick','cadet','darkhorse','weapon']){
-  fixture(5,difficulty);
+  fixture(2,difficulty);
   const anchors=q.enemies.filter(e=>e.optionalTraversal&&e.alive);
   assert.equal(anchors.length,2,'both route drones survive difficulty pruning');
   assert(anchors.every(e=>e.hp===1&&e.y>0&&e.y+e.h<720),'route drones are visible one-hit aerial targets');
-  assert.equal(q.getZoneRemaining(5),0,'optional drones cannot hold the mandatory zone seal');
-  const required=q.enemies.find(e=>e.homeZoneIndex===5&&!e.optionalTraversal);
+  assert.equal(q.getZoneRemaining(2),0,'optional drones cannot hold the mandatory zone seal');
+  const required=q.enemies.find(e=>e.homeZoneIndex===2&&!e.optionalTraversal);
   assert(required,'route keeps required combat at its entrance/exit');required.alive=true;
-  assert.equal(q.getZoneRemaining(5),1,'a living required enemy must still hold the seal');
-  for(const drone of anchors)assert.equal(q.normalizeEnemyHomeZone(drone),5,'anchors stay inside their own zone');
+  assert.equal(q.getZoneRemaining(2),1,'a living required enemy must still hold the seal');
+  for(const drone of anchors)assert.equal(q.normalizeEnemyHomeZone(drone),2,'anchors stay inside their own zone');
   const deleted=anchors[0];q.adminRemovedEnemyIds.add(deleted.id);q.applyAdminRemovedEnemyData();
   assert(!deleted.alive&&deleted.hp===0,'admin deletion overrides route anchor retention');
   q.persistAdminRemovedEnemies();q.rebuild(difficulty);

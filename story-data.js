@@ -339,24 +339,26 @@ window.createMoonlitStory = function createMoonlitStory({
     return ZONE_STARTS[globalIndex] + ZONE_WIDTHS[globalIndex] * progress + offset;
   }
 
-  const PRIMARY_STORY_ZONE_INDICES = Object.freeze([2, 4, 6, 9, 12, 14]);
-  const EXTENDED_STORY_ZONE_INDICES = Object.freeze([3, 10, 13]);
+  // Times are fractions of physical rooms, never elapsed play time. Keep
+  // the tutorial and the two boss introductions clear of radio chatter.
+  const PRIMARY_STORY_SLOTS = [[1,.18],[2,.12],[2,.48],[4,.63],[5,.66],[6,.58]];
+  const EXTENDED_STORY_SLOTS = [[1,.58],[5,.16],[6,.19]];
   const STORY_EVENTS = STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
-    const localZoneIndex = PRIMARY_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
+    const [localZoneIndex, progress] = PRIMARY_STORY_SLOTS[eventIndex];
     return {
       id: `stage-${stageIndex + 1}-story-${eventIndex + 1}`,
       stageIndex,
       zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
+      x: getStageZonePosition(stageIndex, localZoneIndex, progress),
       lines,
     };
   })).concat(EXTENDED_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
-    const localZoneIndex = EXTENDED_STORY_ZONE_INDICES[eventIndex] ?? ZONES_PER_STAGE - 2;
+    const [localZoneIndex, progress] = EXTENDED_STORY_SLOTS[eventIndex];
     return {
       id: `stage-${stageIndex + 1}-extended-story-${eventIndex + 1}`,
       stageIndex,
       zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, 0.08),
+      x: getStageZonePosition(stageIndex, localZoneIndex, progress),
       lines,
     };
   }))).concat(MIDBOSS_STORY_CHAPTERS.flatMap((chapter, stageIndex) => chapter.map((lines, eventIndex) => {
@@ -365,10 +367,12 @@ window.createMoonlitStory = function createMoonlitStory({
       id: `stage-${stageIndex + 1}-midboss-story-${eventIndex + 1}`,
       stageIndex,
       zoneIndex: stageIndex * ZONES_PER_STAGE + localZoneIndex,
-      x: getStageZonePosition(stageIndex, localZoneIndex, eventIndex === 0 ? 0.42 : 0.55),
+      x: getStageZonePosition(stageIndex, localZoneIndex, eventIndex === 0 ? 0.76 : 0.18),
       lines,
     };
   })));
+
+  STORY_EVENTS.sort((a,b) => a.x - b.x);
 
   const CUTSCENE_EVENTS = [
     {
@@ -480,7 +484,7 @@ window.createMoonlitStory = function createMoonlitStory({
     },
     {
       id: "cutscene-original",
-      x: getStageZonePosition(4, 4, 0, 620),
+      x: getStageZonePosition(4, 2, 0, 620),
       title: "장면 08 · 비어 있는 원본",
       location: "원본 생명유지실",
       visual: "capsule",
@@ -568,7 +572,7 @@ window.createMoonlitStory = function createMoonlitStory({
   CUTSCENE_EVENTS.push(
     {
       id: "cutscene-workers-names",
-      x: getStageZonePosition(0, 18, 0, 420),
+      x: getStageZonePosition(0, 4, 0.39),
       title: "추가 장면 · 이름이 묻힌 곳",
       location: "백야 폐기장 / 기억 매립 구덩이",
       visual: "rain",
@@ -580,7 +584,7 @@ window.createMoonlitStory = function createMoonlitStory({
     },
     {
       id: "cutscene-fuel-testimony",
-      x: getStageZonePosition(1, 18, 0, 420),
+      x: getStageZonePosition(1, 4, 0.39),
       title: "추가 장면 · 공포의 사용 설명서",
       location: "검은 공장 / 노심 제어 회랑",
       visual: "furnace",
@@ -592,7 +596,7 @@ window.createMoonlitStory = function createMoonlitStory({
     },
     {
       id: "cutscene-nineteen-voices",
-      x: getStageZonePosition(2, 18, 0, 420),
+      x: getStageZonePosition(2, 4, 0.39),
       title: "추가 장면 · 열아홉 개의 답",
       location: "기억 성당 / 증언 봉인실",
       visual: "choir",
@@ -604,7 +608,7 @@ window.createMoonlitStory = function createMoonlitStory({
     },
     {
       id: "cutscene-public-broadcast",
-      x: getStageZonePosition(3, 18, 0, 420),
+      x: getStageZonePosition(3, 4, 0.39),
       title: "추가 장면 · 편집되지 않은 증인",
       location: "새벽 송신탑 / 최후 중계실",
       visual: "broadcast",
@@ -616,7 +620,7 @@ window.createMoonlitStory = function createMoonlitStory({
     },
     {
       id: "cutscene-two-seats",
-      x: getStageZonePosition(4, 18, 0, 420),
+      x: getStageZonePosition(4, 4, 0.39),
       title: "추가 장면 · 두 개의 빈자리",
       location: "원형 보관소 / 두 사람의 회랑",
       visual: "duel",
