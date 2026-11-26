@@ -188,7 +188,7 @@
     for(let i=0;i<65;i++){const x=Math.floor(random()*64),y=Math.floor(random()*64);r(x,y,1,1,random()>.7?c[3]:c[1]);}
   }
   // A foundation is a run of constructed bays, not one 64px wall tile
-  // stamped in a checkerboard. Leave the small landing ledges on paintSurface.
+  // stamped in a checkerboard. Small landing ledges have their own span artwork.
   // Each face is drawn at native 2× pixels; hardware is recessed below the lip.
   const FLOOR_WIDTHS = [256,384,192,320,448,192,256]; // 2048 world pixels
   const FLOOR_FORMS = [0,1,0,2,3,0,4]; // quiet slab, structure, service, repair, grate
@@ -253,6 +253,74 @@
     for(let n=0;n<7;n++){const x=Math.floor(rnd()*(w-8)),y=8+Math.floor(rnd()*36);r(x,y,2+Math.floor(rnd()*6),1,c[1]);}
     r(0,3,w,3,c[3]);r(0,6,w,1,c[0]);r(0,3,2,5,c[0]);r(w-3,3,2,3,c[1]);
     if(training){for(let j=0;j<(form===0?2:4);j++)r(8+j*6,4,3,1,c[5]);}
+  }
+
+  // One drawing for the actual length and thickness of the walkable span.
+  // Hardware has a load-bearing shape and terminates at the two real ends;
+  // no ornamental shelf or wire extends the collision silhouette.
+  function paintLedge(context,act,w,h,variant,training,leftEnd,rightEnd) {
+    const {rect:r,line:l,poly:g}=pixels(context),t=THEMES[act],c=PALETTES[act], mid=Math.floor(w/2);
+    const foot=h-1,deck=Math.max(3,Math.min(5,Math.floor(h*.36))), low=foot-2;
+    const rand=seeded(4471+act*313+variant*119+w*17+h*29);
+    const fold=Math.min(4,Math.max(2,h-deck-2)),lf=leftEnd?fold:0,rf=rightEnd?fold:0;
+    const inset=Math.min(14,Math.max(5,Math.floor(w*.075)));
+    const socket=(x,tw)=>{r(x,foot-3,tw,3,t.recess);r(x+2,foot-2,tw-4,1,t.trim);};
+    const bolt=(x,y)=>{r(x,y,2,2,c[0]);r(x,y,1,1,c[4]);};
+    g([[0,1],[w,1],[w,foot-rf],[w-rf,h],[lf,h],[0,foot-lf]],t.recess);
+    r(0,1,w,deck-1,t.face);r(1,deck-1,w-2,1,t.trim);
+    if(training){
+      // The static drill treads no longer resemble a moving conveyor.
+      r(3,deck,w-6,Math.max(2,low-deck),c[2]);
+      l(inset,low,inset+12,deck,c[3],2);l(w-inset-12,deck,w-inset,low,c[3],2);
+      const rail=Math.min(32,w*.27);r(mid-rail/2,deck+1,rail,1,c[3]);
+      for(let n=0;n<3;n++)r(inset+6+n*4,2,2,1,c[5]);
+    }else if(act===0){ // Salvage catwalk: single flanged I-beam, spliced cover, gussets.
+      r(lf,low,w-lf-rf,1,t.face);r(3,deck,w-6,1,c[2]);
+      const a=Math.min(w*.22,18),b=Math.min(w*.23,24);
+      g([[lf+1,deck],[lf+1+a,deck],[lf+4,low+1]],t.face);
+      g([[w-rf-b,deck],[w-rf-1,deck],[w-rf-4,low+1]],t.face);
+      const splice=Math.floor(w*(variant%2?.59:.39)), sw=Math.min(18,Math.floor(w*.16));
+      r(splice-sw,deck-2,2*sw,deck>=4?4:3,c[3]);bolt(splice-sw+1,deck-1);bolt(splice+sw-3,deck-1);
+      l(splice-sw,deck+1,splice-sw-8,low,c[2],2);l(splice+sw,deck+1,splice+sw+8,low,c[2],2);
+    }else if(act===1){ // Heatshield blocks above a recessed cooling manifold.
+      r(4,1,w-8,deck-1,c[3]);let seam=9+variant*2;
+      while(seam<w-5){r(seam,1,1,deck-1,c[0]);seam+=18+Math.floor(rand()*18);}
+      const py=Math.min(low,deck+2);r(inset,py,w-2*inset,2,c[2]);r(inset,py,w-2*inset,1,t.trim);
+      for(const x of [inset,Math.floor(w*.54),w-inset-3])r(x,deck,3,Math.max(2,foot-deck),t.face);
+      const vx=Math.floor(w*(variant%2?.32:.67));r(vx-7,deck,15,Math.max(3,foot-deck),c[0]);
+      for(let n=0;n<3;n++){r(vx-5+n*4,deck+1,2,2,c[3]);r(vx-5+n*4,deck+1,1,1,c[4]);}
+    }else if(act===2){ // A complete stone corbelled shelf, not the tips of wall arches.
+      g([[1,deck-1],[w-1,deck-1],[w-6,low],[6,low]],c[2]);
+      r(5,low,w-10,1,t.trim);
+      const stone1=Math.floor(w*(variant%2?.31:.39)), stone2=Math.floor(w*.71);
+      l(stone1,2,stone1+2,low,c[1]);l(stone2,2,stone2-2,low,c[1]);
+      const key=Math.min(12,Math.floor(w*.11));
+      g([[mid-key,2],[mid+key,2],[mid+key-3,foot],[mid-key+3,foot]],t.face);
+      l(mid-key+1,3,mid-key+4,low,t.trim);r(mid-3,deck,6,1,c[4]);
+      for(const x of [inset,w-inset-6]){r(x,low-1,6,2,t.face);r(x+1,foot-1,4,1,c[3]);}
+    }else if(act===3){ // Tension bridge: bottom chord and complete triangulated bays.
+      r(lf+1,low,w-lf-rf-2,2,t.face);
+      const bays=Math.max(2,Math.min(6,Math.round(w/33)));
+      for(let j=0;j<bays;j++){const a=inset+(w-2*inset)*j/bays,b=inset+(w-2*inset)*(j+1)/bays;
+        l(a,j%2?low:deck,b,j%2?deck:low,c[3],2);}
+      for(const x of [inset-3,w-inset]){r(x,deck-1,4,Math.max(3,foot-deck),t.face);bolt(x+1,deck);}
+      r(mid-9,1,18,2,c[2]);r(mid-4,2,8,1,t.trim);
+    }else{ // Ceramic induction raft: two downward-facing shoes frame one glass inset.
+      g([[2,deck],[w-2,deck],[w-8,foot-1],[8,foot-1]],t.face);
+      const gw=Math.min(48,Math.floor(w*.35)), gx=mid-Math.floor(gw/2);
+      g([[gx,deck],[gx+gw,deck],[gx+gw-3,low],[gx+3,low]],t.recess);
+      l(gx+5,deck+1,gx+13,low,c[3]);r(gx+12,deck+1,Math.max(2,gw-22),1,c[2]);
+      const tw=Math.min(16,Math.max(7,Math.floor(w*.13)));socket(inset,tw);socket(w-inset-tw,tw);
+    }
+    for(const end of [leftEnd?0:null,rightEnd?w-1:null]){
+      if(end===null)continue;
+      const sign=end===0?1:-1,plug=end===0?0:w-5;
+      g([[end,1],[end+sign*6,1],[end+sign*6,deck],[end+sign*3,low],[end+sign,low-1]],t.face);
+      r(plug+1,2,3,1,t.trim);bolt(end+sign*3,deck);
+    }
+    // A few worn tread markings, scoped to the span, never a tiled light strip.
+    for(let n=0;n<Math.min(5,w/28);n++){const sx=7+Math.floor(rand()*Math.max(1,w-16));r(sx,1,2+Math.floor(rand()*5),1,c[3]);}
+    r(0,0,w,1,t.edge);
   }
 
   function createRenderer(ctx, options = {}) {
@@ -395,6 +463,37 @@
       ctx.fillStyle=theme.recess;ctx.fillRect(left,y+6,right-left,2);
       ctx.restore();return true;
     }
+    // Separate small, bounded bank so a room full of different ledge sizes
+    // cannot evict the larger backdrop or foundation tiles. Widths above
+    // 640 world pixels are assembled from culled sections (custom editor).
+    const ledgeBank=new Map();
+    function drawLedge(platform,act,view) {
+      const {x,y,w,h}=platform,training=platform.kind==='training',ph=Math.ceil(h/2);
+      const variant=floorMix(Math.floor(x/4)+act*197)%3,theme=THEMES[act];
+      // Balance custom bridge sections so a 641px bridge never ends in an
+      // isolated one-pixel-wide second span. Natural ledges fit one section.
+      const step=2*Math.ceil(w/(2*Math.ceil(w/640)));
+      const left=Math.max(x,view.x-2),right=Math.min(x+w,view.x+view.w+2);
+      if(right<=left)return true;
+      const first=Math.max(0,Math.floor((left-x)/step));
+      ctx.save();ctx.imageSmoothingEnabled=false;ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+      for(let i=first;x+i*step<right;i++){
+        const at=i*step,sw=Math.min(step,w-at),pw=Math.ceil(sw/2),a=at===0,b=at+sw>=w;
+        const key=[act,+training,pw,ph,variant,+a,+b].join(':');
+        let image=ledgeBank.get(key);
+        if(!image){
+          image=canvasFactory(pw,ph);const pc=image?.getContext?.('2d');
+          if(!pc){ctx.restore();return false;}
+          pc.imageSmoothingEnabled=false;paintLedge(pc,act,pw,ph,variant,training,a,b);
+          stats.rasterBuilds++;
+          if(ledgeBank.size>=48)ledgeBank.delete(ledgeBank.keys().next().value);
+        }else {ledgeBank.delete(key);stats.cacheHits++;}
+        ledgeBank.set(key,image);
+        ctx.drawImage(image,x+at,y,2*pw,2*ph);
+      }
+      ctx.fillStyle=theme.edge;ctx.fillRect(left,y,right-left,2);
+      ctx.restore();return true;
+    }
     function drawPixelPlatform(platform,act,view){
       const probe=raster(`surface:${act}:0`,64,64,c=>paintSurface(c,act,0));if(!probe)return false;
       const {x,y,w,h}=platform,theme=THEMES[act],tileSize=128;
@@ -421,10 +520,14 @@
         || platform.w <= 0 || platform.h <= 0) return false;
       const foundation = Number.isFinite(view.worldBottom) && Math.abs(platform.y+platform.h-view.worldBottom)<1
         && platform.h>=160 && platform.w>=8 && platform.kind!=="wall";
-      if (platform.kind === "training" && !foundation) return false; // Keep every training obstacle and drill marking.
+      const ledge=platform.kind!=="wall" && platform.h>=16 && platform.h<=40
+        && platform.w>=64 && platform.w>=3*platform.h
+        && (!Number.isFinite(view.worldBottom)||platform.y+platform.h<view.worldBottom-1);
+      if (platform.kind === "training" && !foundation && !ledge) return false;
       if (!visible(platform, view, 3)) return true;
       const act = clamp(Math.trunc(stageIndex), 0, 4), theme = THEMES[act];
       if(foundation&&drawFoundation(platform,act,view))return true;
+      if(ledge&&drawLedge(platform,act,view))return true;
       if(platform.kind==="training")return false;
       if(drawPixelPlatform(platform,act,view))return true;
       const { x, y, w, h } = platform;
@@ -615,7 +718,7 @@
       ctx.restore();
     }
     return Object.freeze({ drawPlatform, drawArena, drawBackground, drawCampaignBackground,
-      getCacheStats:()=>({entries:cache.size,rasterBuilds:stats.rasterBuilds,cacheHits:stats.cacheHits}) });
+      getCacheStats:()=>({entries:cache.size,ledgeEntries:ledgeBank.size,rasterBuilds:stats.rasterBuilds,cacheHits:stats.cacheHits}) });
   }
   return Object.freeze({ createRenderer, themes: THEMES });
 });

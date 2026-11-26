@@ -53,6 +53,8 @@ function harness(){let image=canvas(view.w,view.h);const proxy=new Proxy({}, {ge
 function crop(result,x,y,w,h){const out=[];for(let yy=y;yy<y+h;yy++)for(let xx=x;xx<x+w;xx++)out.push(result.image.pixels[(yy-result.view.y)*result.image.width+xx-result.view.x]);return out;}
 function fingerprint(data){let hash=2166136261;for(const pixel of data){hash^=pixel;hash=Math.imul(hash,16777619);}return (hash>>>0).toString(16);}
 function equalPixels(actual,expected,message){assert.equal(actual.length,expected.length,message);let changed=0;for(let i=0;i<actual.length;i++)if(actual[i]!==expected[i])changed++;assert.equal(changed,0,message);}
+module.exports={api,canvas,color,harness,crop,fingerprint,equalPixels,view};
+if(require.main===module){
 const floating=Object.freeze({x:100,y:200,w:240,h:24,kind:'roof'});
 const wall=Object.freeze({x:400,y:100,w:52,h:500,kind:'wall'});
 const smallHashes=[],wallHashes=[];
@@ -60,9 +62,8 @@ for(let act=0;act<5;act++){const h=harness();smallHashes.push(fingerprint(crop(h
 if(process.argv.includes('--record-baseline')){console.log(JSON.stringify({smallHashes,wallHashes}));process.exit(0);}
 const results=[];
 function test(name,run){try{run();results.push({name,ok:true});}catch(e){results.push({name,ok:false,error:e.stack});}}
-const baselineSmall=['47a2a8b9','96359e7d','39b6d7a5','8b6e4011','dcfca811'];
 const baselineWall=['7f1f9da5','b22961f5','888f0919','3cfdfe65','ecaa7b99'];
-test('floating ledges and narrow vertical walls retain their previous pixels',()=>{assert.deepEqual(smallHashes,baselineSmall);assert.deepEqual(wallHashes,baselineWall);});
+test('vertical walls retain their previous pixels while intentional ledge art is tested separately',()=>{assert.deepEqual(wallHashes,baselineWall);});
 for(let act=0;act<5;act++)for(const mobile of[false,true]){
   test(`act ${act+1} ${mobile?'mobile':'desktop'} long floor breaks the old 384px repeat`,()=>{
     const h=harness(),floor=Object.freeze({x:0,y:520,w:6144,h:800,kind:'factory'}),before=JSON.stringify(floor),bands=[];
@@ -107,7 +108,7 @@ test('absolute world-x rhythm continues across narrow foundation extensions',()=
     equalPixels(actual,expected,'platform object boundaries must not restart the ground pattern or add false seams');
   }
 });
-test('training base receives floor treatment while suspended training steps keep their fallback',()=>{
+test('training base receives floor treatment while ineligible narrow training steps keep their fallback',()=>{
   const h=harness(),floor=Object.freeze({x:0,y:520,w:2048,h:800,kind:'training'});
   const expected=h.draw({...floor,kind:'factory'},0),actual=h.draw(floor,0);
   let tickPixels=0,otherChanges=0;
@@ -117,14 +118,18 @@ test('training base receives floor treatment while suspended training steps keep
   }
   assert(tickPixels>0&&tickPixels<256,'training adds only small engraved ticks below the collision edge');
   assert.equal(otherChanges,0,'only the two-pixel training indicator row may differ from normal foundation');
-  assert.equal(h.renderer.drawPlatform({x:0,y:300,w:200,h:24,kind:'training'},0,view),false);
+  assert.equal(h.renderer.drawPlatform({x:0,y:300,w:40,h:24,kind:'training'},0,view),false);
 });
-test('world-bottom eligibility never repaints vertical walls or thin floating ledges',()=>{
+test('world-bottom eligibility never repaints walls or thin rectangles resting on the world boundary',()=>{
   const h=harness();
-  for(let act=0;act<5;act++)for(const surface of[wall,floating]){
-    const normal=h.draw(surface,act),atBottom=h.draw(surface,act,{worldBottom:surface.y+surface.h});
-    equalPixels(normal.image.pixels,atBottom.image.pixels,'walls and thin ledges keep their old pixels even at the supplied world boundary');
+  const legacyThin=['47a2a8b9','96359e7d','39b6d7a5','8b6e4011','dcfca811'];
+  for(let act=0;act<5;act++){
+    const normal=h.draw(wall,act),atBottom=h.draw(wall,act,{worldBottom:wall.y+wall.h});
+    equalPixels(normal.image.pixels,atBottom.image.pixels,'vertical walls keep their old pixels even at the supplied world boundary');
+    const thinAtBottom=h.draw(floating,act,{worldBottom:floating.y+floating.h});
+    assert.equal(fingerprint(crop(thinAtBottom,100,200,240,24)),legacyThin[act],'a thin world-bottom rectangle does not become an elevated ledge');
   }
 });
 for(const result of results)console.log(`${result.ok?'PASS':'FAIL'} ${result.name}`);for(const result of results.filter(r=>!r.ok))console.error(result.error);
 console.log(`Floor rhythm QA: ${results.filter(r=>r.ok).length}/${results.length} passed`);process.exitCode=Number(results.some(r=>!r.ok));
+}
