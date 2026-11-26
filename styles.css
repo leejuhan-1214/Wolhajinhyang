@@ -1632,20 +1632,61 @@ button:disabled {
   .version-badge { font-size: 8px; }
 }
 
-@media (orientation: portrait) and (max-width: 700px) {
-  #start-screen { background-position: 31% top; }
-  #start-screen::before { background: linear-gradient(180deg, transparent 20%, rgba(2, 8, 17, 0.15) 40%, #020811 90%); }
-  .start-menu { right: 5%; bottom: max(6%, 34px); width: 90%; max-height: 69%; padding: 20px; }
-  .start-briefing { margin-bottom: 16px; }
-  .start-briefing h2 { font-size: 28px; }
-  .start-briefing > p:last-child { display: block; font-size: 11px; }
-  .campaign-actions button { min-height: 46px; font-size: 14px; }
-  .difficulty-select { margin-top: 18px; }
+@media (orientation: portrait) and (max-width: 700px), (pointer: coarse) and (orientation: portrait) {
+  /* The title is part of the original 16:9 artwork. Contain the whole image
+     in its own flexible row instead of cropping letters with a tall cover. */
+  #start-screen {
+    background-color: #020811;
+    background-size: 0 0;
+  }
+  #start-screen.visible {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(10px, 2vh, 20px);
+    padding: max(12px, env(safe-area-inset-top)) 0 calc(34px + env(safe-area-inset-bottom));
+  }
+  #start-screen::before {
+    position: relative;
+    inset: auto;
+    z-index: 0;
+    flex: 0 1 auto;
+    width: min(100%, 960px);
+    aspect-ratio: 16 / 9;
+    min-height: 96px;
+    max-height: 43%;
+    background-image: inherit;
+    background-color: transparent;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .start-menu {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    z-index: 1;
+    flex: 0 0 auto;
+    width: min(520px, calc(100% - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: calc(100% - 116px);
+    padding: clamp(14px, 4vw, 22px);
+    overscroll-behavior: contain;
+  }
+  .start-briefing { margin-bottom: 12px; }
+  .start-briefing .start-kicker { margin-bottom: 4px; }
+  .start-briefing h2 { font-size: clamp(22px, 6vw, 30px); }
+  .start-briefing > p:last-child { display: block; margin-top: 6px; font-size: 11px; }
+  .campaign-actions { gap: 6px; }
+  .campaign-actions button { min-height: 46px; padding: 9px 12px; font-size: 14px; }
+  .difficulty-select { gap: 6px; margin-top: 14px; }
   .difficulty-select > span { font-size: 11px; }
   .difficulty-select > span small { display: block; }
-  .difficulty-select button { min-height: 50px; padding: 10px 12px; font-size: 12px; }
-  .difficulty-select button::after { font-size: 10px; }
-  #start-screen .admin-status { left: 5%; bottom: 10px; width: 75%; padding: 4px 8px; font-size: 9px; }
+  .difficulty-select button { min-height: 50px; padding: 9px 11px; font-size: 12px; }
+  .difficulty-select button::after { margin-top: 4px; font-size: 10px; }
+  .start-controls, .start-touch-hint { margin-top: 10px; }
+  #start-screen .version-badge { z-index: 2; }
+  #start-screen .admin-status { left: 5%; bottom: calc(10px + env(safe-area-inset-bottom)); width: 65%; padding: 4px 8px; font-size: 9px; }
 }
 @media (pointer: coarse) {
   .touch-controls button {

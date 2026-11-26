@@ -3,12 +3,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 new Function('require',fs.readFileSync('qa-smoke.cjs','utf8').split('const runtimeSource =')[0])(require);
 global.setTimeout=()=>1;global.clearTimeout=()=>{};
 function recorder(){
-  let matrix=[1,0,0,1,0,0],stack=[];const rects=[],calls=[];
+  let matrix=[1,0,0,1,0,0],stack=[];const rects=[],arcs=[],calls=[];
   const multiply=([a,b,c,d,e,f])=>{const m=matrix;matrix=[m[0]*a+m[2]*b,m[1]*a+m[3]*b,m[0]*c+m[2]*d,m[1]*c+m[3]*d,m[0]*e+m[2]*f+m[4],m[1]*e+m[3]*f+m[5]];};
   const point=(x,y)=>({x:matrix[0]*x+matrix[2]*y+matrix[4],y:matrix[1]*x+matrix[3]*y+matrix[5]});
-  const methods={rects,calls,save(){stack.push([...matrix]);},restore(){matrix=stack.pop()||[1,0,0,1,0,0];},translate(x,y){multiply([1,0,0,1,x,y]);},scale(x,y){multiply([x,0,0,y,0,0]);},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0]);},
+  const methods={rects,arcs,calls,save(){stack.push([...matrix]);},restore(){matrix=stack.pop()||[1,0,0,1,0,0];},translate(x,y){multiply([1,0,0,1,x,y]);},scale(x,y){multiply([x,0,0,y,0,0]);},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0]);},
     setTransform(a,b,c,d,e,f){matrix=[a,b,c,d,e,f];},measureText(s){return{width:String(s).length*8};},createLinearGradient(){return{addColorStop(){}};},createRadialGradient(){return{addColorStop(){}};}};
   for(const name of ['fillRect','strokeRect'])methods[name]=function(x,y,w,h){rects.push({name,x,y,w,h,center:point(x+w/2,y+h/2)});calls.push([name,x,y,w,h]);};
+  methods.arc=function(x,y,r,...rest){arcs.push({x,y,r,center:point(x,y)});calls.push(['arc',x,y,r,...rest]);};
   return new Proxy(methods,{get(t,key){if(key in t)return t[key];return(...args)=>calls.push([key,...args]);},set(t,key,value){t[key]=value;return true;}});
 }
 let target=recorder();

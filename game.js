@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.0";
+  const GAME_VERSION = "3.11.1";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -10553,9 +10553,8 @@
     };
 
   function drawBackground() {
-    if (environmentRenderer?.drawBackground?.(game.stage, { x: camera.x, y: camera.y, w: W, h: H,
-      time: game.time, zoneIndex: getZoneIndexAt(camera.x + W / 2), stageX: stages[game.stage]?.x || 0,
-      mobile: !!(touchControls && !touchControls.hidden) })) return;
+    if (environmentRenderer?.drawCampaignBackground?.(stages, { x: camera.x, y: camera.y, w: W, h: H,
+      time: game.time, mobile: !!(touchControls && !touchControls.hidden) })) return;
     const stageVisuals = BACKGROUND_THEMES[game.stage] || BACKGROUND_THEMES[0];
     const gradient = ctx.createLinearGradient(0, 0, 0, H);
     gradient.addColorStop(0, stageVisuals.top);
@@ -11121,13 +11120,36 @@
     const hand = steel?.base || { x: center.x + axis.x * 12, y: center.y + axis.y * 12 };
     const steelTip = steel?.tip || hand;
     const join = fraction => point(lerp(sweepTail, sweepHead, fraction), thickness * 0.5);
-    const rootJoin = [
-      { x: hand.x + normal.x * 1.2, y: hand.y + normal.y * 1.2 },
-      { x: steelTip.x + normal.x * 1.5, y: steelTip.y + normal.y * 1.5 },
-      join(0.45), join(0.61), join(0.76), join(0.87),
-      { x: steelTip.x - normal.x * 1.5, y: steelTip.y - normal.y * 1.5 },
-      { x: hand.x - normal.x * 1.2, y: hand.y - normal.y * 1.2 },
-    ];
+    // Continue the steel's tangent into the moving crescent, rather than
+    // filling a rigid triangle between the hand and the distant damage arc.
+    const end = join(0.76), beforeEnd = join(0.68), afterEnd = join(0.84);
+    const bladeLength = Math.hypot(steelTip.x - hand.x, steelTip.y - hand.y);
+    const bladeAxis = bladeLength > 0.01
+      ? { x: (steelTip.x - hand.x) / bladeLength, y: (steelTip.y - hand.y) / bladeLength } : axis;
+    const endLength = Math.max(0.01, Math.hypot(afterEnd.x - beforeEnd.x, afterEnd.y - beforeEnd.y));
+    const endAxis = { x: (afterEnd.x - beforeEnd.x) / endLength, y: (afterEnd.y - beforeEnd.y) / endLength };
+    const gap = Math.hypot(end.x - steelTip.x, end.y - steelTip.y);
+    const startHandle = Math.min(22, gap * 0.3), endHandle = Math.min(reach * 0.28, gap * 0.36);
+    const controlA = { x: steelTip.x + bladeAxis.x * startHandle, y: steelTip.y + bladeAxis.y * startHandle };
+    const controlB = { x: end.x - endAxis.x * endHandle, y: end.y - endAxis.y * endHandle };
+    const spine = [{ ...hand, width: 1.1 }, { ...steelTip, width: 1.3 }];
+    for (let index = 1; index <= 14; index++) {
+      const t = index / 14, u = 1 - t;
+      spine.push({
+        x: u*u*u*steelTip.x + 3*u*u*t*controlA.x + 3*u*t*t*controlB.x + t*t*t*end.x,
+        y: u*u*u*steelTip.y + 3*u*u*t*controlA.y + 3*u*t*t*controlB.y + t*t*t*end.y,
+        width: 1.3 + Math.sin(t * Math.PI) * 2.2 + thickness * 0.28 * t,
+      });
+    }
+    const rootOuter = [], rootInner = [];
+    for (let index = 0; index < spine.length; index++) {
+      const a = spine[Math.max(0, index - 1)], b = spine[Math.min(spine.length - 1, index + 1)];
+      const length = Math.max(0.01, Math.hypot(b.x - a.x, b.y - a.y));
+      const nx = -(b.y - a.y) / length, ny = (b.x - a.x) / length, p = spine[index];
+      rootOuter.push({ x: p.x + nx * p.width, y: p.y + ny * p.width });
+      rootInner.push({ x: p.x - nx * p.width, y: p.y - ny * p.width });
+    }
+    const rootJoin = rootOuter.concat(rootInner.reverse());
     const filaments = [0.27, 0.58, 0.83].map(fraction => {
       const t = lerp(sweepTail, sweepHead, fraction);
       return [point(t, thickness + 5), point(Math.min(sweepHead, t + 0.11), thickness + 3), point(t, thickness + 7)];
@@ -11150,7 +11172,7 @@
     };
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    paint(trail.rootJoin, trail.color, 0.29);
+    paint(trail.rootJoin, trail.color, 0.17);
     paint(trail.glow, trail.color, 0.13);
     paint(trail.ribbon, trail.core, 0.52);
     paint(trail.rim, trail.edge, 0.94);
@@ -11261,8 +11283,14 @@
     } else if (enemy.type === "boss" && enemy.bossAction === "chargeShot" && getBossArchetype(enemy.bossKind) !== "weaver") {
       const duration = Math.max(0.01, enemy.bossChargeDuration || enemy.windup);
       const progress = clamp(1 - enemy.windup / duration, 0, 1);
-      const muzzleX = enemy.x + enemy.w / 2 + enemy.facing * enemy.w * 0.68;
-      const muzzleY = enemy.y + enemy.h * 0.42;
+      // These articulated weapons draw their charging light with the weapon.
+      // The aim guide still starts at the real projectile source, not a second
+      // approximate muzzle floating between the arm and its moving barrel.
+      const attachedWeaponWarning = ["furnace", "hunter"].includes(enemy.bossKind);
+      const furnaceLob = enemy.bossKind === "furnace" && enemy.bossShotPattern !== "furnace-rifle";
+      const furnaceCore = ["furnace-rain", "furnace-crimson-storm"].includes(enemy.bossShotPattern);
+      const muzzleX = enemy.x + enemy.w / 2 + (attachedWeaponWarning ? 0 : enemy.facing * enemy.w * 0.68);
+      const muzzleY = enemy.y + (attachedWeaponWarning ? furnaceLob ? furnaceCore ? 36 : 12 : enemy.h * 0.38 : enemy.h * 0.42);
       const accent = BOSS_DEFINITIONS[enemy.bossKind]?.accent || palette.red;
       const beamCharge = BOSS_BEAM_CHARGE_PATTERNS.has(enemy.bossShotPattern);
       ctx.save();
@@ -11321,6 +11349,7 @@
         ctx.stroke();
         ctx.setLineDash([]);
       }
+      if (!attachedWeaponWarning) {
       ctx.strokeStyle = beamCharge && enemy.bossShotPattern === "warden-core" ? "#ff304f" : accent;
       for (let ring = 0; ring < (beamCharge ? 5 : 3); ring += 1) {
         const radius = (beamCharge ? 48 : 34) - progress * (beamCharge ? 37 : 24) + ring * 8;
@@ -11335,6 +11364,7 @@
       ctx.beginPath();
       ctx.arc(muzzleX, muzzleY, (beamCharge ? 7 : 4) + progress * (beamCharge ? 14 : 9), 0, TAU);
       ctx.fill();
+      }
       ctx.restore();
     } else if (
       enemy.type === "boss"
@@ -11650,6 +11680,14 @@
     ctx.restore();
   }
 
+  function getFurnaceArmPose(enemy, side) {
+    return {
+      x: side * 20,
+      y: 35 + side * Math.sin(enemy.anim * 5.2) * 4,
+      angle: side * (0.22 + Math.sin(enemy.anim * 10.5) * 0.04),
+    };
+  }
+
   function getFurnaceWispPose(enemy, time = game.time) {
     const drift = clamp(-enemy.vx * enemy.facing / 90, -3, 3);
     return [-1, 0, 1].map((side, index) => ({
@@ -11938,8 +11976,8 @@
       drawFurnaceGhostLower(enemy);
       drawCharacterPlate([-23,27,-12,16,14,17,25,37,20,56,0,68,-22,55], flash ? "#fff" : "#542b31", "#101522", 2);
       for (const side of [-1,1]) {
-        ctx.save(); ctx.translate(side*20,35+side*motion*4);
-        ctx.rotate(side*(0.22+Math.sin(enemy.anim*10.5)*0.04));
+        const arm = getFurnaceArmPose(enemy, side);
+        ctx.save(); ctx.translate(arm.x, arm.y); ctx.rotate(arm.angle);
         drawCharacterPlate([side*1,-10,side*16,-13,side*25,-6,side*27,7,side*16,12,side*1,8], flash ? "#fff" : "#734438", "#131822", 2);
         const start = side<0 ? -49 : 22;
         ctx.fillStyle = "#21212a"; ctx.fillRect(start,-7,29,14);
@@ -11952,11 +11990,21 @@
         }
         ctx.fillStyle = "#222731"; ctx.beginPath(); ctx.arc(side*9,0,6,0,TAU); ctx.fill();
         ctx.strokeStyle = "#ad9384"; ctx.lineWidth = 1; ctx.stroke();
+        if (chargingShot && enemy.bossShotPattern === "furnace-rifle" && side === 1) {
+          ctx.strokeStyle = "#ffd69b"; ctx.lineWidth = 2 + chargeProgress * 2;
+          ctx.beginPath(); ctx.arc(61, 0.5, 5 + chargeProgress * 9, 0, TAU); ctx.stroke();
+          ctx.fillStyle = "#fff0ce"; ctx.fillRect(60, -1, 3, 3);
+        }
         ctx.restore();
         ctx.save(); ctx.translate(side*15,22); ctx.rotate(side*0.12);
         drawCharacterPlate([-5,0,-5,-24,5,-25,6,0], "#3b3038", "#82696b", 1.5);
         ctx.fillStyle = "#0d1721"; ctx.fillRect(-3,-23,6,7);
-        ctx.fillStyle = "#ab8170"; ctx.fillRect(-3,-24,6,2); ctx.restore();
+        ctx.fillStyle = "#ab8170"; ctx.fillRect(-3,-24,6,2);
+        if (chargingShot && enemy.bossShotPattern !== "furnace-rifle") {
+          ctx.strokeStyle = "#ffd69b"; ctx.lineWidth = 1.5 + chargeProgress;
+          ctx.beginPath(); ctx.arc(0, -24, 4 + chargeProgress * 6, 0, TAU); ctx.stroke();
+        }
+        ctx.restore();
       }
     } else if (rawBossKind === "oracle") {
       ctx.fillStyle = flash ? "#fff" : "#231a38";
@@ -12084,7 +12132,7 @@
       return false;
     }
 
-    if (chargingShot) {
+    if (chargingShot && rawBossKind !== "furnace") {
       ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = accent; ctx.lineWidth = 2 + chargeProgress * 3;
       ctx.beginPath(); ctx.arc(58, 35, 7 + chargeProgress * 13, 0, TAU); ctx.stroke(); ctx.restore();
     }
@@ -12374,11 +12422,6 @@
       }
       plate([-12,8,4,7,10,14,4,22,-13,20], "#30242b", "#9b8e83");
       port(1, 4, 29, 8, "#d1a587");
-      for (const side of [-1, 1]) {
-        ctx.fillStyle = "#17181e"; ctx.fillRect(side < 0 ? -57 : 42, 31, 15, 13);
-        ctx.fillStyle = "#b08467";
-        for (let barrel = 0; barrel < 3; barrel += 1) ctx.fillRect(side < 0 ? -57 : 45, 33 + barrel * 4, 12, 1);
-      }
     } else if (rawBossKind === "hunter") {
       plate([-19,22,-10,17,15,18,23,51,0,63,-20,50], "#673f36", "#b7836c");
       plate([-16,28,-6,24,-2,48,-14,48], "#292a2d", "#65747b");
@@ -12486,8 +12529,8 @@
       ctx.fillStyle = "#26202a"; ctx.fillRect(-5,19,13,5);
       ctx.fillStyle = "#ac7e63"; ctx.fillRect(-3,20,2,3); ctx.fillRect(2,20,2,3);
       for (const side of [-1,1]) {
-        ctx.save(); ctx.translate(side*20,35+side*Math.sin(enemy.anim*5.2)*4);
-        ctx.rotate(side*(0.22+Math.sin(enemy.anim*10.5)*0.04));
+        const arm = getFurnaceArmPose(enemy, side);
+        ctx.save(); ctx.translate(arm.x, arm.y); ctx.rotate(arm.angle);
         plate([side*2,-9,side*17,-12,side*35,-7,side*35,7,side*14,10,side*2,5], "#563039", "#ac7a68");
         ctx.fillStyle = "#151820"; ctx.fillRect(side<0?-31:17,-4,13,7);
         ctx.fillStyle = "#b68b71"; ctx.fillRect(side<0?-30:18,-3,11,1);
@@ -12991,7 +13034,7 @@
     const enemyGaitPhase = (enemy.x - enemy.originX) * enemy.facing * (enemy.type === "runner" ? 0.189 : enemy.type === "shield" ? 0.377 : 0.27);
     const movingRatio = clamp(Math.abs(enemy.vx) / (enemy.type === "shield" ? 58 : 104), 0, 1);
     const fixedBase = enemy.type === "turret" || enemy.type === "mortarTurret" || (enemy.type === "boss" && enemy.bossKind === "breaker");
-    const floatingBoss = enemy.type === "boss" && ["warden", "weaver", "oracle", "censor"].includes(enemy.bossKind);
+    const floatingBoss = enemy.type === "boss" && ["warden", "weaver", "oracle", "censor", "furnace"].includes(enemy.bossKind);
     const bodyBob = fixedBase ? 0 : enemy.type === "drone" || floatingBoss
       ? Math.sin(enemy.anim * 2.8) * 1.25
       : (1 - Math.cos(enemyGaitPhase * 2)) * movingRatio * 0.65;
@@ -15866,8 +15909,12 @@
   function syncVisibleViewport() {
     viewportSyncFrame = 0;
     const viewport = window.visualViewport;
-    const width = Math.max(1, Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth));
-    const height = Math.max(1, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight));
+    // The browser may temporarily fit the previous landscape layout at a
+    // fractional scale during rotation. Feeding its unscaled CSS width back
+    // into the root locks the game in landscape. Keep browser zoom enabled.
+    const scale = viewport?.scale || 1;
+    const width = Math.max(1, Math.round(viewport ? viewport.width * scale : window.innerWidth || document.documentElement.clientWidth));
+    const height = Math.max(1, Math.round(viewport ? viewport.height * scale : window.innerHeight || document.documentElement.clientHeight));
     document.documentElement.style.setProperty("--app-width", `${width}px`);
     document.documentElement.style.setProperty("--app-height", `${height}px`);
   }

@@ -226,6 +226,47 @@
       }
       ctx.restore();return true;
     }
+    // Two physical rooms can share a viewport. The new backdrop should come
+    // in through the gate, not repaint the entire sky on the player's first
+    // step into the next act. Reuse this pixel stencil at every boundary.
+    let transitionStencil = null, stencilSize = '';
+    const seamWidth = 32;
+    function getTransitionStencil(w,h) {
+      if (typeof Path2D !== 'function') return null;
+      const size = w + ':' + h;
+      if (stencilSize === size && transitionStencil) return transitionStencil;
+      const shape = new Path2D(), order = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5], cell = 4;
+      shape.rect(seamWidth,0,w+2*seamWidth,h);
+      for(let row=0;row<h/cell;row++){
+        let start=-1;
+        for(let column=0;column<=16;column++){
+          const visible=column<16 && order[(row%4)*4+(column%4)]<column;
+          if(visible && start<0)start=column;
+          if(!visible && start>=0){
+            shape.rect(-seamWidth+start*cell,row*cell,(column-start)*cell,cell);
+            start=-1;
+          }
+        }
+      }
+      stencilSize=size; transitionStencil=shape;
+      return shape;
+    }
+    function drawCampaignBackground(stages, view) {
+      if (!stages?.length) return false;
+      let left = 0;
+      while (left < stages.length-1 && stages[left].end <= view.x-seamWidth) left++;
+      const draw = i => drawBackground(i, {...view,stageX:stages[i].x});
+      if (!draw(left)) return false;
+      if (left === stages.length-1) return true;
+      const seam = Math.round((stages[left+1].x-view.x)/2)*2;
+      if (seam >= view.w+seamWidth) return true;
+      ctx.save();ctx.translate(seam,0);
+      const stencil=getTransitionStencil(view.w,view.h);
+      if(stencil)ctx.clip(stencil);
+      else {ctx.beginPath();ctx.rect(0,0,view.w+seamWidth,view.h);ctx.clip();}
+      ctx.translate(-seam,0);draw(left+1);ctx.restore();
+      return true;
+    }
     const polygon = (points, fill, stroke = null, width = 1) => {
       ctx.beginPath();
       points.forEach(([x, y], index) => index ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
@@ -460,7 +501,7 @@
       }
       ctx.restore();
     }
-    return Object.freeze({ drawPlatform, drawArena, drawBackground,
+    return Object.freeze({ drawPlatform, drawArena, drawBackground, drawCampaignBackground,
       getCacheStats:()=>({entries:cache.size,rasterBuilds:stats.rasterBuilds,cacheHits:stats.cacheHits}) });
   }
   return Object.freeze({ createRenderer, themes: THEMES });
