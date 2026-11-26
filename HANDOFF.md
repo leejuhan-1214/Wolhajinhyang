@@ -1,6 +1,10 @@
 # 월하잔향 프로젝트 인수인계
 
-현재 버전은 **3.11.4**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+현재 버전은 **3.11.5**입니다. 루트의 HTML/CSS/JavaScript가 배포되는 게임이며, `moonlit-echo-github-v1.3.0-windows/`는 과거 배포본입니다.
+
+3.11.5: 일반 총탄의 움직임과 칼날을 같은 시간에 비교합니다. `qa-gun-deflection.cjs`는 실제 발사, 마우스/J, 좌우, 프레임률, 피격 및 소거 예외를 검사하고, `qa-gun-timing.cjs`는 회수 직전의 접촉과 지나간 칼날에 뒤늦게 들어온 탄을 구분합니다.
+
+같은 버전의 `qa-offscreen-enemies.cjs`는 월드 경계, 지형 충돌로 위로 밀린 드론, 체크포인트 재시작과 관리자 배치 복원을 검사합니다. 유효한 공유 편집 기록은 변경하지 않으며, 제거된 잘못된 배치는 처치·보상으로 계산하지 않습니다.
 
 3.11.4: 노란 대포탄과 삼연 박격포탄은 이동 중에도 실제 칼날과 충돌합니다. `qa-turret-deflection.cjs`, `qa-mortar-deflection.cjs`, `qa-turret-melee.cjs`, `qa-turret-metal.cjs`에서 탄 소거, 착탄·벽 충돌, 포탑 본체와 움직이는 포신의 발도 판정을 검사합니다.
 

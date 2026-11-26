@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.4";
+  const GAME_VERSION = "3.11.5";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -242,7 +242,7 @@
     { id: "wallJump", title: "벽타기와 벽점프", instruction: "표시된 수직 훈련 구역에서 벽을 타고 점프로 벽을 차세요.", minX: 1200, maxX: 1840, gateX: 1870 },
     { id: "burst", title: "버스트", instruction: "표시된 구역 안에서 E 또는 버스트 버튼으로 충격파를 사용하세요.", minX: 1910, maxX: 2390, gateX: 2420 },
     { id: "combat", title: "발도와 샷건", instruction: "표시된 무장 구역 안에서 좌클릭 발도와 우클릭 샷건을 각각 사용하세요.", minX: 2460, maxX: 2970, gateX: 3000 },
-    { id: "deflect", title: "칼날 탄환 소거", instruction: "훈련포의 탄환이 칼날에 닿도록 정확히 발도해 쳐내세요.", minX: 3040, maxX: 3590, gateX: 3620 },
+    { id: "deflect", title: "칼날 탄환 소거", instruction: "탄이 다가올 때 베세요. 검광이 아니라 칼날에 닿으면 금속음과 함께 탄이 사라집니다.", minX: 3040, maxX: 3590, gateX: 3620 },
     { id: "exit", title: "훈련장 통과", instruction: "표시된 마지막 구역을 지나 오른쪽 출구까지 이동하세요.", minX: 3650, maxX: 3900, gateX: 3820 },
   ]);
   const TUTORIAL_END_X = ZONE_W - 180;
@@ -1508,6 +1508,15 @@
   }
 
   function recoverEnemyToHome(enemy) {
+    if (enemy.type === "boss" && enemyOutsideWorld(enemy, enemy.spawnX, enemy.spawnY)) {
+      // An authored boss is a progression gate. Repair a corrupt anchor inside its own arena.
+      const stage = stages[enemy.stageIndex] || stages[0];
+      const x = enemy.isMidBoss ? stage.midBossX : stage.bossX;
+      const ground = platforms.find(p => !p.hidden && p.y >= enemy.h && p.y < WORLD_H
+        && p.y + p.h >= WORLD_H - 2 && p.x <= x + enemy.w/2 && p.x + p.w > x + enemy.w/2);
+      enemy.x = enemy.originX = enemy.spawnX = x;
+      enemy.y = enemy.spawnY = (ground?.y ?? 650) - enemy.h;
+    }
     enemy.x = enemy.spawnX;
     enemy.y = enemy.spawnY;
     enemy.baseY = enemy.spawnY;
@@ -1604,16 +1613,12 @@
   function enforceEnemyLockdowns(collection = enemies) {
     for (const enemy of collection) {
       if (!enemy.alive) continue;
+      if (resolveOffworldEnemy(enemy)) continue;
       normalizeEnemyHomeZone(enemy);
       constrainEnemyToLockdown(enemy);
       ejectEnemyFromPlatforms(enemy);
       constrainBossToArenaVertical(enemy);
-      if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
-        recoverEnemyToHome(enemy);
-      } else if (enemy.y > WORLD_H + 100) {
-        if (enemy.type === "boss") recoverEnemyToHome(enemy);
-        else killEnemy(enemy, { countKill: false });
-      }
+      resolveOffworldEnemy(enemy);
     }
   }
 
@@ -1922,16 +1927,43 @@
     return `${zone.code} · 구역 ${localZoneIndex + 1}/${ZONES_PER_STAGE} · ${routeLabels[zone.template] || "작전 진행"}`;
   }
 
-  function removeInitiallyOffscreenEnemies() {
-    // 전체 월드는 가로로 길기 때문에 X 위치는 검사하지 않는다.
-    // 생성 직후 위·아래 화면 범위를 완전히 벗어난 잘못된 배치만 배열에서 제거한다.
+  function enemyOutsideWorld(enemy, x = enemy.x, y = enemy.y) {
+    return !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(enemy.h) || !Number.isFinite(enemy.w)
+      || x + enemy.w <= 0 || x >= WORLD_W || y + enemy.h <= 0 || y >= WORLD_H;
+  }
+  function invalidEnemyPlacement(enemy, x = enemy.x, y = enemy.y) {
+    if (enemyOutsideWorld(enemy, x, y)) return true;
+    if (enemy.type === "boss") return false;
+    // Authored hovering mobs oscillate around this anchor rather than dropping
+    // onto a surface. Do not place one whose aiming center starts above the map.
+    if (enemy.type === "drone" && enemy.placementWave && !enemy.adminSpawned && y + enemy.h / 2 < 0) return true;
+    // Test the same ejection that will run on entry. A top ledge can hide the
+    // last visible pixels of an otherwise valid spawn (notably the Act 5 drone).
+    const probe = { ...enemy, x, y };
+    if (!getNearbyPlatforms(probe, 0).some(p => !p.hidden && p.y <= 1 && overlaps(p, probe))) return false;
+    ejectEnemyFromPlatforms(probe);
+    return enemyOutsideWorld(probe);
+  }
+  function resolveOffworldEnemy(enemy) {
+    if (!enemyOutsideWorld(enemy)) return false;
+    if (enemy.type === "boss") recoverEnemyToHome(enemy);
+    else {
+      enemy.alive = false; enemy.hp = 0; enemy.vx = 0; enemy.vy = 0; enemy.countedKill = false;
+      enemy.invalidWorldPlacement = invalidEnemyPlacement(enemy, enemy.spawnX, enemy.spawnY);
+    }
+    return true;
+  }
+  function removeInitiallyOffscreenEnemies(adjustBaseCounts = false) {
+    // Never compare against the current camera: valid future rooms and low routes remain intact.
     let removed = 0;
     for (let index = enemies.length - 1; index >= 0; index -= 1) {
       const enemy = enemies[index];
-      const outsideVerticalScreen = !Number.isFinite(enemy.y)
-        || enemy.y + enemy.h <= 0
-        || enemy.y >= H;
-      if (!outsideVerticalScreen) continue;
+      if (!invalidEnemyPlacement(enemy)) continue;
+      if (enemy.type === "boss" && !enemy.adminSpawned) { recoverEnemyToHome(enemy); continue; }
+      if (adjustBaseCounts && !enemy.adminSpawned && enemy.type !== "boss") {
+        const zone = zones[getZoneIndexAt(enemy.originX)];
+        if (zone?.baseTargetEnemyCount > 0) zone.baseTargetEnemyCount--;
+      }
       enemies.splice(index, 1);
       removed += 1;
     }
@@ -2810,11 +2842,14 @@
     if (!record || isAdminRemovedEnemy(record.id) || enemies.some((enemy) => enemy.id === record.id)) return null;
     const rawX = Number(record.x);
     const rawY = Number(record.y);
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY) || rawX >= WORLD_W || rawY >= WORLD_H) return null;
     const x = clamp(rawX, 0, WORLD_W - 1);
     const stageIndex = Number.isInteger(record.stageIndex)
       ? clamp(record.stageIndex, 0, stages.length - 1)
       : getStageIndexAt(x);
     const enemy = addEnemy(record.type, x, rawY, Number.isFinite(record.range) ? record.range : 220);
+    const savedHeight = record.type === "boss" && record.bossKind === "echo" ? player.h : enemy.h;
+    if (rawX + enemy.w <= 0 || rawY + savedHeight <= 0) { enemies.pop(); return null; }
     enemy.adminSpawned = true;
     enemy.id = record.id;
     enemy.stageIndex = stageIndex;
@@ -2831,7 +2866,10 @@
     enemy.vy = 0;
     enemy.alive = true;
     enemy.countedKill = false;
-    if (enemy.type !== "boss") return enemy;
+    if (enemy.type !== "boss") {
+      if (invalidEnemyPlacement(enemy)) { enemies.pop(); return null; }
+      return enemy;
+    }
     enemy.bossKind = BOSS_DEFINITIONS[record.bossKind]
       ? record.bossKind
       : stages[stageIndex].bossKind;
@@ -3088,7 +3126,7 @@
         const type = forcedType || pattern[(index + localZoneIndex) % pattern.length];
         const height = enemyHeights[type] || 60;
         const spawnY = type === "drone" ? Math.min(surfaceY - 170, floorY - 230) : surfaceY - height;
-        const outsideVerticalScreen = spawnY + height <= 0 || spawnY >= H;
+        const outsideVerticalScreen = spawnY + height <= 0 || spawnY >= WORLD_H;
         return outsideVerticalScreen ? [localX, floorY, type] : [localX, surfaceY, type];
       });
 
@@ -3726,7 +3764,6 @@
     }
 
     addAerialShortcutRoutes();
-    initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies();
     prepareCompactWorldEdits();
     applyAdminWorldEdits();
     normalizeCheckpointPlacements();
@@ -3743,6 +3780,7 @@
       if (adminRemovedObjectIds.has(boostNodes[index].id)) boostNodes.splice(index, 1);
     }
     rebuildPlatformSpatialIndex();
+    initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies(true);
     auditEnemyZoneContainment();
     applyAdminRemovedEnemyData();
     applyDifficultyPopulationScale();
@@ -4221,7 +4259,7 @@
     try {
       const checkpointZone = clamp(Number(player.respawnZone) || 0, 0, zones.length - 1);
       const defeatedBeforeCheckpoint = enemies.filter((enemy) => (
-        !enemy.alive && getZoneIndexAt(enemy.originX) < checkpointZone
+        !enemy.alive && !enemy.invalidWorldPlacement && getZoneIndexAt(enemy.originX) < checkpointZone
       ));
       const persistedBosses = [...game.defeatedBosses].filter((bossKind) => {
         const boss = enemies.find((enemy) => enemy.type === "boss" && enemy.bossKind === bossKind);
@@ -4709,7 +4747,7 @@
         <article><kbd>E</kbd><b>버스트</b><span>일반 적 탄환을 지우는 1.8초 재사용 방어 기술입니다.</span></article>
         <article><kbd>좌클릭 / J</kbd><b>발도 · 3연격</b><span>J 연속 입력으로 전방 발도·올려베기·내려베기를 연결합니다. 칼날에 닿은 탄환과 플라스크·독가스를 제거합니다.</span></article>
         <article><kbd>우클릭</kbd><b>샷건</b><span>조준 방향으로 강한 산탄을 발사합니다.</span></article>
-        <article><kbd>좌클릭</kbd><b>탄환 쳐내기</b><span>훈련탄이 칼날에 직접 닿도록 발도해 탄환을 없앱니다.</span></article>`;
+        <article><kbd>좌클릭 / J</kbd><b>탄환 쳐내기</b><span>베는 중에 칼날에 닿은 탄은 사라집니다. 검광만 스치거나 칼을 거두는 중에는 막을 수 없습니다.</span></article>`;
     }
     if (description) description.textContent = "일곱 과제를 순서대로, 각자 표시된 훈련 구역 안에서 완료해야 다음 문이 열립니다. 다른 구역에서 미리 사용한 조작은 인정되지 않습니다.";
     if (tutorialClose) tutorialClose.textContent = "훈련 시작";
@@ -5301,6 +5339,11 @@
         enemy.spawnY = enemy.y;
         enemy.baseY = enemy.y;
       }
+    }
+    if (invalidEnemyPlacement(enemy)) {
+      enemies.pop();
+      game.hint = "적을 배치할 수 없는 위치입니다. 맵 안으로 이동하세요."; game.hintTimer = 2.5;
+      return null;
     }
     recordAdminSpawnedEnemy(enemy);
     game.totalEnemies += 1;
@@ -5916,6 +5959,10 @@
   }
 
   let slashContactFrame = null;
+  let pendingGunSweep = null;
+  const gunRoundKinds = new Set(["standard", "machinegun", "phase", "training-round", "funnel-shot",
+    "reflected-shotgun", "revenant-shield-shot", "echo-parry-return", "echo-afterimage-shot", "missile-spark"]);
+  const slashStartFraction = pose => pose.slashComboActive ? [0.18, 0.15, 0.23][pose.slashComboIndex] : 0.14;
   function slashContactKey() {
     return [player.attackId, player.attackTimer, player.x, player.y, player.facing,
       player.attackDir.x, player.attackDir.y, player.slashComboIndex, player.slashComboActive, player.crossShotTimer].join(":");
@@ -5941,6 +5988,7 @@
     const sameSlash = previous && previous.attackId === player.attackId && previous.attackTimer > 0
       && Math.hypot(previous.x - player.x, previous.y - player.y) < 90;
     const steps = sameSlash ? 6 : 0;
+    const timeline = Array(steps + 1).fill(null);
     for (let index = 0; index <= steps; index++) {
       const t = steps ? index / steps : 1;
       const sampled = { ...player };
@@ -5952,16 +6000,24 @@
         }
       }
       const progress = 1 - sampled.attackTimer / sampled.attackDuration;
-      const start = sampled.slashComboActive ? [0.18, 0.15, 0.23][sampled.slashComboIndex] : 0.14;
+      const start = slashStartFraction(sampled);
       if (progress < start || progress > 0.8) continue;
       const segment = window.MoonlitOperative?.sampleBlade?.(sampled, game, sampled.facing);
-      if (segment) segments.push(segment);
+      if (segment) { timeline[index] = segment; segments.push(segment); }
     }
-    slashContactFrame = { key: slashContactKey(), segments };
+    slashContactFrame = { key: slashContactKey(), segments, timeline };
     return segments;
   }
   function currentSlashSegments() {
     return slashContactFrame?.key === slashContactKey() ? slashContactFrame.segments : refreshSlashContact();
+  }
+  function gunBladeAt(samples, fraction) {
+    const u = fraction * (samples.length - 1), index = Math.floor(u), a = samples[index];
+    if (u - index < 1e-8) return a;
+    const b = samples[index + 1];
+    if (!a || !b) return null;
+    const t = u - index, mix = key => ({ x: lerp(a[key].x, b[key].x, t), y: lerp(a[key].y, b[key].y, t) });
+    return { base: mix("base"), tip: mix("tip") };
   }
   function slashIntersectsRect(rect, forgiveness = 3) {
     return currentSlashSegments().some(segment => slashSegmentHitsRect(segment, rect, forgiveness));
@@ -6042,6 +6098,10 @@
     const shieldRound = bullet.kind === "revenant-shield-shot";
     spawnParticles(bullet.x + bullet.w / 2, bullet.y + bullet.h / 2, bullet.kind === "potion" ? "#dfffe9" : shieldRound ? "#ffcd70" : bullet.color || palette.cyan, doctorHazard ? 14 : 7, 280, 0.4, 80);
     if (bullet.kind === "potion") sound.glassShatter();
+    if (gunRoundKinds.has(bullet.kind) && player.lastGunCutSoundId !== player.attackId) {
+      player.lastGunCutSoundId = player.attackId;
+      sound.tone(1260, 0.055, "triangle", 0.025, 0.58);
+    }
     player.shotgunCharge = Math.min(3, player.shotgunCharge + (shieldRound ? 0.8 : 0.34));
     if (!player.grounded) player.airJumpAvailable = true;
   }
@@ -6049,7 +6109,7 @@
   function isAttackActive() {
     if (player.attackTimer <= 0) return false;
     const elapsed = player.attackDuration - player.attackTimer;
-    const contactStart = player.slashComboActive ? [0.18, 0.15, 0.23][player.slashComboIndex] : 0.14;
+    const contactStart = slashStartFraction(player);
     return elapsed > player.attackDuration * contactStart && elapsed < player.attackDuration * 0.8;
   }
 
@@ -6620,6 +6680,10 @@
 
     for (const enemy of enemies) {
       const enemyZoneIndex = getZoneIndexAt(enemy.originX);
+      if (enemy.type !== "boss" && (enemy.invalidWorldPlacement || invalidEnemyPlacement(enemy, enemy.spawnX, enemy.spawnY))) {
+        enemy.invalidWorldPlacement = true; enemy.alive = false; enemy.hp = 0; enemy.countedKill = false;
+        continue;
+      }
       enemy.vx = 0;
       enemy.vy = 0;
       enemy.windup = 0;
@@ -8597,8 +8661,22 @@
     // Smooth only render state after resolved movement; collision and attack timing stay authoritative.
     window.MoonlitOperative?.updateMotion?.(player, dt, wasGrounded);
 
-    if (isAttackActive()) {
-      refreshSlashContact(slashStartPose);
+    const activeCut = isAttackActive();
+    pendingGunSweep = null;
+    // A tick may end in recovery although the sword was still cutting at its start.
+    const crossesRecovery = slashStartPose && slashStartPose.attackId === player.attackId
+      && slashStartPose.attackTimer > slashStartPose.attackDuration * 0.2
+      && player.attackTimer <= player.attackDuration * 0.2;
+    if (activeCut || crossesRecovery) {
+      const segments = refreshSlashContact(slashStartPose);
+      if (dt > 0 && segments.length && slashContactFrame.timeline.length > 1 && slashStartPose.facing === player.facing) {
+        // New rounds spawned later by enemy AI cannot hit a pose from before they existed.
+        const rounds = bullets.filter(b => b.enemy && gunRoundKinds.has(b.kind));
+        if (rounds.length) pendingGunSweep = { dt, key: slashContactFrame.key, rounds: new WeakSet(rounds),
+          samples: slashContactFrame.timeline, bounds: slashBounds(segments, 4), startX: slashStartPose.x, startY: slashStartPose.y };
+      }
+    }
+    if (activeCut) {
       const hitbox = attackBox();
       const steel = currentSlashSegments();
       const physicalHitbox = slashBounds(steel);
@@ -8609,6 +8687,7 @@
       // 칼날에 직접 닿은 투사체를 제거한다. 대역-13의 독가스는 큰 구름의 가장자리 접촉도 인정한다.
       for (let bulletIndex = bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
         const bullet = bullets[bulletIndex];
+        if (pendingGunSweep?.rounds.has(bullet)) continue; // Test moving gun and steel at the same instant below.
         if (!bulletIntersectsSlashBlade(bullet)) continue;
         registerSwordDeflection(bullet);
         bullets.splice(bulletIndex, 1);
@@ -8784,12 +8863,7 @@
     } else {
       enemy.stuckTimer = Math.max(0, (enemy.stuckTimer || 0) - dt * 2);
     }
-    if (!Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
-      recoverEnemyToHome(enemy);
-    } else if (enemy.y > WORLD_H + 100) {
-      if (enemy.type === "boss") recoverEnemyToHome(enemy);
-      else killEnemy(enemy, { countKill: false });
-    }
+    resolveOffworldEnemy(enemy);
   }
 
   function resolveEnemySeparation(collection = enemies) {
@@ -10125,8 +10199,10 @@
 
   function updateBullets(dt, activeEnemies = getActiveEnemies()) {
     const currentPlayerZoneIndex = getCurrentPlayerZoneIndex();
-    // The player's motion sweep already tested stationary rounds in updatePlayer.
-    // During projectile motion only the resolved blade is still there, not its afterimage.
+    const swordTimerAtStart = player.attackTimer;
+    const sweep = pendingGunSweep?.dt === dt && pendingGunSweep.key === slashContactKey() ? pendingGunSweep : null;
+    pendingGunSweep = null;
+    // Newly fired shots and turret volleys meet the resolved blade, never its afterimage.
     const blade = bullets.length && isAttackActive() ? currentSlashSegments().at(-1) : null;
     const bladeBounds = blade ? slashBounds([blade], 4) : null;
     for (let i = bullets.length - 1; i >= 0; i -= 1) {
@@ -10282,14 +10358,27 @@
         shatterIceChunk(bullet, bullet.y + bullet.h);
         exploded = true;
       }
-      const steps = Math.max(1, Math.ceil(Math.max(Math.abs(bullet.vx * travelDt), Math.abs(bullet.vy * travelDt)) / 6));
+      const isGun = bullet.enemy && gunRoundKinds.has(bullet.kind);
+      const dx = bullet.vx * travelDt, dy = bullet.vy * travelDt;
+      const swordInterrupted = isGun && player.attackTimer !== swordTimerAtStart;
+      const tracked = !swordInterrupted && isGun && sweep?.rounds.has(bullet);
+      const movingSteel = tracked && overlaps(sweep.bounds, { x: Math.min(bullet.x, bullet.x + dx),
+        y: Math.min(bullet.y, bullet.y + dy), w: bullet.w + Math.abs(dx), h: bullet.h + Math.abs(dy) });
+      const movementSteps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 6));
+      const intervals = movingSteel ? sweep.samples.length - 1 : 1;
+      const steps = Math.ceil(movementSteps / intervals) * intervals;
       const stepTime = travelDt / steps;
-      const cutInFlight = blade && bullet.enemy && (bullet.kind === "turret-row" || tripleMortar);
+      const fixedBlade = blade && bullet.enemy && ((isGun && !tracked && !swordInterrupted) || bullet.kind === "turret-row" || tripleMortar);
       let cut = false;
       const nearbyBulletPlatforms = bullet.piercePlatforms
         ? []
         : getNearbyPlatforms(bullet, 110 + Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)));
 
+      const solidHere = () => nearbyBulletPlatforms.some(p => !p.hidden && overlaps(bullet, p));
+      if (movingSteel && !remove && sweep.samples[0] && slashSegmentHitsRect(sweep.samples[0], bullet) && !solidHere()) {
+        registerSwordDeflection(bullet);
+        cut = remove = true;
+      }
       for (let step = 0; step < steps && !remove; step += 1) {
         if (bullet.kind === "turret-row" && Number.isFinite(bullet.pathX) && Number.isFinite(bullet.pathY)) {
           bullet.pathX += bullet.vx * stepTime;
@@ -10306,14 +10395,18 @@
         }
         bullet.vy += (bullet.gravity || 0) * stepTime;
 
-        if (cutInFlight && overlaps(bladeBounds, bullet) && slashSegmentHitsRect(blade, bullet)
-          && !(tripleMortar && nearbyBulletPlatforms.some(p => !p.hidden && overlaps(bullet, p)))) {
+        const fraction = (step + 1) / steps;
+        const edge = movingSteel ? gunBladeAt(sweep.samples, fraction)
+          : fixedBlade && overlaps(bladeBounds, bullet) ? blade : null;
+        if (edge && slashSegmentHitsRect(edge, bullet) && !((isGun || tripleMortar) && solidHere())) {
           registerSwordDeflection(bullet);
           cut = remove = true;
           break;
         }
         const lockedMortarInFlight = bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer);
-        if (bullet.enemy && !bullet.harmless && overlaps(bullet, player)) {
+        const body = movingSteel ? { x: lerp(sweep.startX, player.x, fraction), y: lerp(sweep.startY, player.y, fraction),
+          w: player.w, h: player.h } : player;
+        if (bullet.enemy && !bullet.harmless && overlaps(bullet, body)) {
           if (bullet.kind === "mortar") {
             explodeMortar(bullet);
             exploded = true;
@@ -10411,17 +10504,10 @@
     enemyWorldCullAccumulator += dt;
     if (enemyWorldCullAccumulator < 0.5) return;
     enemyWorldCullAccumulator = 0;
-    // 카메라 화면을 벗어난 것만으로 맵에 원래 배치된 적을 제거하지 않는다.
-    // 실제 월드 처치 경계를 벗어난 경우에만 사망/복귀 처리한다.
+    // 카메라가 지나갔다는 이유로 정상 적을 지우지 않는다. 월드 밖의 적만 정리한다.
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
-      if (!Number.isFinite(enemy.x) || !Number.isFinite(enemy.y) || enemy.y < -enemy.h - 260) {
-        recoverEnemyToHome(enemy);
-        continue;
-      }
-      if (enemy.y <= WORLD_H + 100) continue;
-      if (enemy.type === "boss") recoverEnemyToHome(enemy);
-      else killEnemy(enemy, { silent: true, countKill: false });
+      resolveOffworldEnemy(enemy);
     }
   }
 

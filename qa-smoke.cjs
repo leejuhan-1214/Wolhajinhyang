@@ -337,7 +337,9 @@ if (!diagnostics.enemyHomeZoneNormalization || diagnostics.enemiesOutsideHomeZon
 if (!diagnostics.mortarExactMarkedImpact || !diagnostics.mortarBallisticTargetLock || !/lockedImpactX:[\s\S]{0,180}impactTimer:/.test(gameSource)) {
   throw new Error("mortar marked-position targeting is missing");
 }
-if (!diagnostics.mortarAirbornePlayerCollision || gameSource.includes("!lockedMortarInFlight && overlaps(bullet, player)") || !gameSource.includes("bullet.enemy && !bullet.harmless && overlaps(bullet, player)")) {
+// Moving gun/steel contacts use the player's interpolated body; mortar still uses the resolved player.
+// qa-mortar-deflection.cjs separately exercises a live shell hitting an airborne player.
+if (!diagnostics.mortarAirbornePlayerCollision || gameSource.includes("!lockedMortarInFlight && overlaps(bullet, player)") || !gameSource.includes("bullet.enemy && !bullet.harmless && overlaps(bullet, body)")) {
   throw new Error("airborne mortar shells still fail to damage the player");
 }
 if (!diagnostics.turretPrefireLocalCharge || diagnostics.turretChargeSeconds !== 0.82 || diagnostics.turretChargeDisplay !== "muzzle-convergence") {
