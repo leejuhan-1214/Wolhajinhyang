@@ -31,6 +31,7 @@ function volleyAt(point,facing,gap){
   // the steel. Its other four lanes keep their native offsets and orbit phases.
   const e=target('turret',{facing:-facing});
   e.x=point.x+facing*gap-e.w/2+facing*32;e.y=point.y-e.h*.42;
+  e.spawnX=e.x; // The relocated emitter's home anchor must match its test zone.
   e.targetX=point.x-facing*300;e.targetY=point.y;q.fireTurretRow(e);
   return q.bullets.slice();
 }

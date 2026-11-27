@@ -89,6 +89,9 @@ const gameSource = runtimeSource + "\n" + storySource;
 const indexSource = fs.readFileSync("index.html", "utf8");
 vm.runInThisContext(fs.readFileSync("operative-renderer.js", "utf8"), { filename: "operative-renderer.js" });
 vm.runInThisContext(storySource, { filename: "story-data.js" });
+for (const feature of ["crossfire.js","freight-chase.js","echo-marks.js","field-caches.js"]) {
+  vm.runInThisContext(fs.readFileSync(feature,"utf8"), { filename: feature });
+}
 vm.runInThisContext(runtimeSource, { filename: "game.js" });
 const diagnostics = window.__MOONLIT_ECHO_DIAGNOSTICS__();
 const continueText = document.getElementById("continue-button").textContent;

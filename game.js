@@ -104,7 +104,8 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.6";
+  const GAME_VERSION = "3.12.0";
+  const fieldCaches = window.MoonlitFieldCaches?.create();
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -753,6 +754,20 @@
     wallJumpLock: 0,
   };
 
+  const freightChase = globalThis.MoonlitFreight?.create({
+    player, game, zones, platforms, enemies, hazards, combatRooms, checkpoints, worldHeight: WORLD_H,
+    markDirty: markPlatformSpatialIndexDirty,
+    isCustomStructure(object) { return object.adminWorldCustom === true || adminWorldEditData.some(record => record.id === object.id); },
+    announce(text) { game.hint = text; game.hintTimer = 6; },
+    complete(target) {
+      game.hint = "폭주 화물 제동 완료 · 연결장치 절단 · 다음 구역 개방";
+      game.hintTimer = 5;
+      spawnParticles(target.x + target.w / 2, target.y + target.h / 2, palette.amber, 14, 160, 0.4, 150);
+      sound.checkpoint();
+    },
+    save: saveCampaign,
+  });
+
   function applyBossRewards({ refill = false } = {}) {
     const baseHp = difficultySettings[game.difficulty]?.hp || 5;
     player.rewardPower = 0;
@@ -1378,6 +1393,8 @@
   }
 
   function getZoneRemaining(zoneIndex) {
+    const freightRemaining = freightChase?.remaining(zoneIndex);
+    if (freightRemaining !== null && freightRemaining !== undefined) return freightRemaining;
     return getZoneEnemies(zoneIndex).filter((enemy) => enemy.alive && !enemy.optionalTraversal).length;
   }
 
@@ -1596,10 +1613,11 @@
     return bullet.ownerZone;
   }
 
-  function tagEnemyProjectilesCreatedSince(startIndex, ownerZone) {
+  function tagEnemyProjectilesCreatedSince(startIndex, ownerZone, owner = null) {
     for (let index = startIndex; index < bullets.length; index += 1) {
       const bullet = bullets[index];
       if (bullet.enemy && !Number.isInteger(bullet.ownerZone)) bullet.ownerZone = ownerZone;
+      if (bullet.enemy && owner && !bullet.ownerId) bullet.ownerId = owner.id;
     }
   }
 
@@ -2150,7 +2168,8 @@
     if (!Number.isFinite(enemy.shieldBreakTimer)) enemy.shieldBreakTimer = 0;
     if (!Number.isFinite(enemy.shieldGuardRegen)) enemy.shieldGuardRegen = 0;
     enemy.shieldGuard = clamp(enemy.shieldGuard, 0, SHIELD_GUARD_HITS);
-    return enemy.shieldBreakTimer <= 0 && enemy.shieldGuard > 0;
+    return enemy.shieldBreakTimer <= 0 && enemy.shieldGuard > 0
+      && !(enemy.crossfireExposedUntil > game.runTime);
   }
 
   function getEnemyFormation(enemy) {
@@ -3830,6 +3849,7 @@
     addAerialShortcutRoutes();
     prepareCompactWorldEdits();
     applyAdminWorldEdits();
+    freightChase?.build();
     normalizeCheckpointPlacements();
     removeEmbeddedRepairPickups();
     restoreAdminPlacedObjects();
@@ -3850,6 +3870,7 @@
     applyDifficultyPopulationScale();
     configureCombatRooms();
     zoneDiversityMetrics = calculateZoneDiversityMetrics();
+    fieldCaches?.build({zones,platforms,enemies,hazards,checkpoints,entryRange:zoneEntryVerticalRange});
     game.totalEnemies = enemies.filter((enemy) => enemy.alive).length;
     levelBuildDifficulty = selectedDifficulty;
     syncDifficultyRuntimeDataset();
@@ -4351,6 +4372,8 @@
         defeatedEnemyIds: defeatedBeforeCheckpoint.map((enemy) => enemy.id),
         countedKillEnemyIds: defeatedBeforeCheckpoint.filter((enemy) => enemy.countedKill).map((enemy) => enemy.id),
         mirrorHabits: exportMirrorHabits(checkpointZone),
+        fieldCacheClaims: fieldCaches?.save() || [],
+        freightChase: freightChase?.snapshot(),
         roomStates: combatRooms.map((room) => {
           const beforeCheckpoint = getZoneIndexAt(room.left) < checkpointZone;
           return { left: room.left, triggered: beforeCheckpoint && room.triggered, cleared: beforeCheckpoint && room.cleared };
@@ -4364,8 +4387,10 @@
   }
 
   function restoreCampaign(saved) {
+    fieldCaches?.restore(saved.fieldCacheClaims);
     const savedCheckpointIndex = resolveCampaignCheckpointIndex(saved);
     const restartZoneIndex = getZoneIndexAt(checkpoints[savedCheckpointIndex]?.x || 0);
+    freightChase?.restore(saved.freightChase, restartZoneIndex);
     let savedHabits = saved.mirrorHabits;
     if (savedHabits?.records && Number.isInteger(saved.zonesPerStage) && saved.zonesPerStage !== ZONES_PER_STAGE) {
       const records = {};
@@ -4467,6 +4492,7 @@
     const requestedAt = performance.now();
     if (!replayKind && !resume && requestedAt - lastResetAt < 700) return;
     lastResetAt = requestedAt;
+    fieldCaches?.restore([]);
     resetCrossChain();
     resetSlashCombo();
     // Presentation history must not blend across a new world or a restored save.
@@ -4474,6 +4500,7 @@
     setStartScreenEditor(false);
     resetBossRealityEffects();
     const saved = resume ? readCampaignSave() : null;
+    freightChase?.restore(null, 0);
     game.bossReplay = replayKind ? {kind:replayKind} : null;
     duelGhost?.clear(); syncGhostSwitches();
     game.duelOpponent = null;
@@ -5618,8 +5645,10 @@
     game.cutscene = { ...event, signatureCueIndex: 0,
       shots: introKind && !event.shots.some(shot => shot.bossSignature)
         ? [...event.shots, makeBossSignatureShot(introKind)] : event.shots.slice() };
+    // The three-scar recognition beat belongs only to the runtime final-duel copy.
+    window.MoonlitEchoMarks?.prepareScene(game.cutscene);
     game.cutsceneShotIndex = 0;
-    game.cutsceneTimer = event.shots[0]?.duration || 5;
+    game.cutsceneTimer = game.cutscene.shots[0]?.duration || 5;
     game.cutsceneShotElapsed = 0;
     game.story = null;
     game.storyTimer = 0;
@@ -5674,7 +5703,7 @@
   function requestCutsceneAdvance() {
     if (!game.cutscene) return;
     const shot = game.cutscene.shots[game.cutsceneShotIndex];
-    if (shot?.bossSignature) {
+    if (shot?.bossSignature || shot?.echoScarRecall) {
       if (game.cutsceneShotElapsed >= 0.25) advanceCutscene();
       return;
     }
@@ -5691,6 +5720,7 @@
     const scene = game.cutscene;
     game.cutsceneTimer -= dt;
     game.cutsceneShotElapsed += dt;
+    window.MoonlitEchoMarks?.updateRecall(scene, scene.shots[game.cutsceneShotIndex], game.cutsceneShotElapsed, sound);
     player.vx = 0;
     player.attackTimer = 0;
     const signatureEnemy = getBossSignatureEnemy();
@@ -6733,6 +6763,7 @@
     const checkpoint = checkpoints[checkpointIndex];
     const checkpointPosition = setRespawnCheckpoint(checkpoint, checkpointIndex);
     const restartZoneIndex = getZoneIndexAt(checkpoint.x);
+    freightChase?.onRespawn(restartZoneIndex);
     pruneMirrorHabits(restartZoneIndex);
     let restartedEnemyCount = 0;
 
@@ -6744,6 +6775,7 @@
 
     for (const enemy of enemies) {
       const enemyZoneIndex = getZoneIndexAt(enemy.originX);
+      window.MoonlitCrossfire?.reset(enemy);
       if (enemy.type !== "boss" && (enemy.invalidWorldPlacement || invalidEnemyPlacement(enemy, enemy.spawnX, enemy.spawnY))) {
         enemy.invalidWorldPlacement = true; enemy.alive = false; enemy.hp = 0; enemy.countedKill = false;
         continue;
@@ -6925,6 +6957,8 @@
       vy: Math.sin(angle) * speed * bulletScale,
       life: 4,
       enemy: true,
+      ownerId: enemy.id,
+      ownerZone: normalizeEnemyHomeZone(enemy),
       kind,
       gravity: 0,
       color: phaseShot
@@ -6937,6 +6971,7 @@
               ? palette.red
               : palette.amber,
     });
+    if (!game.adminMode && !game.tutorialActive) window.MoonlitCrossfire?.offerHint(bullets[bullets.length - 1], enemies, platforms, enemy, game.runTime);
     const recordedGunshot = USE_RECORDED_SFX && recordedSfx.gunshot(kind, enemy.type === "boss");
     if (!recordedGunshot) sound.tone(enemy.type === "boss" ? 130 : kind === "machinegun" ? 165 : 210, kind === "machinegun" ? 0.045 : 0.08, "square", 0.018, 0.65);
   }
@@ -6969,12 +7004,15 @@
         rowOrbitAngularSpeed: 8.5,
         life: 4.4,
         enemy: true,
+        ownerId: enemy.id,
+        ownerZone: normalizeEnemyHomeZone(enemy),
         kind: "turret-row",
         gravity: 0,
         piercePlatforms: true,
         color: "#ffcf62",
         damage: 1,
       });
+      if (!game.adminMode && !game.tutorialActive) window.MoonlitCrossfire?.offerHint(bullets[bullets.length - 1], enemies, platforms, enemy, game.runTime);
     }
     enemy.turretRecoil = 0.2;
     spawnParticles(sourceX, sourceY, "#ffcf62", 18, 330, 0.32, 60);
@@ -8743,7 +8781,13 @@
     if (activeCut) {
       const hitbox = attackBox();
       const steel = currentSlashSegments();
+      window.MoonlitEchoMarks?.inspectBlade({ game, player, segments: steel, checkpoints, platforms, hazards, sound });
       const physicalHitbox = slashBounds(steel);
+      freightChase?.tryCut(rect => slashIntersectsRect(rect, 3));
+      if (!game.adminMode && !game.bossReplay) {
+        const opened = fieldCaches?.slash(getCurrentPlayerZoneIndex(), c => slashIntersectsRect(c));
+        if (opened) signalFieldCache(opened);
+      }
       for (const enemy of enemies) {
         if (enemy.alive && enemy.bossKind === "hunter") tryHitHunterClasp(enemy);
         if (enemy.alive && (overlaps(hitbox, enemy) || slashHitsTurretBarrel(enemy, physicalHitbox, steel))) damageEnemy(enemy);
@@ -8782,6 +8826,13 @@
       if (!hazard.hidden && hazard.active && overlaps(player, hazard)) damagePlayer(1, hazard.x + hazard.w / 2);
     }
 
+    if (!game.adminMode && !game.bossReplay) {
+      const supplied = fieldCaches?.update(getCurrentPlayerZoneIndex(), dt, player);
+      if (supplied) {
+        signalFieldCache(supplied.c, supplied.label);
+        saveCampaign();
+      }
+    }
     for (const pickup of pickups) {
       if (!pickup.active || !overlaps(player, pickup)) continue;
       if (game.adminMode) continue;
@@ -8805,7 +8856,7 @@
         if (zoneRemaining === 0) continue;
         player.x = zoneBoundary - player.w;
         player.vx = Math.min(0, player.vx);
-        game.hint = `${lockedZone.name} 봉쇄 · 남은 적 ${zoneRemaining}기`;
+        game.hint = freightChase?.label(zoneIndex) || `${lockedZone.name} 봉쇄 · 남은 적 ${zoneRemaining}기`;
         game.hintTimer = Math.max(game.hintTimer, 1.2);
         break;
       }
@@ -10249,9 +10300,18 @@
     }
   }
 
+  function signalFieldCache(c, label = "수복함 개방 · 가까이 가서 회수") {
+    spawnParticles(c.x+c.w/2, c.y+12, "#9ff7de", 9, 110, 0.32, 150);
+    sound.tone(660, 0.075, "sine", 0.028, 1.45);
+    game.hint = label; game.hintTimer = 1.6;
+  }
   function explodeMortar(bullet) {
     const centerX = bullet.x + bullet.w / 2;
     const centerY = bullet.y + bullet.h / 2;
+    if (bullet.enemy && !game.adminMode && !game.bossReplay) {
+      const opened = fieldCaches?.blast(getZoneIndexAt(centerX),centerX,centerY);
+      if (opened) signalFieldCache(opened);
+    }
     const playerCenterX = player.x + player.w / 2;
     const playerCenterY = player.y + player.h / 2;
     if (Math.hypot(playerCenterX - centerX, playerCenterY - centerY) < 105) damagePlayer(1, centerX);
@@ -10438,6 +10498,15 @@
         ? []
         : getNearbyPlatforms(bullet, 110 + Math.max(Math.abs(bullet.vx * dt), Math.abs(bullet.vy * dt)));
 
+      const crossfire = !game.adminMode && !game.tutorialActive ? window.MoonlitCrossfire : null;
+      const crossfireOwner = crossfire && bullet.enemy && bullet.ownerId
+        ? activeEnemies.find(enemy => enemy.id === bullet.ownerId) : null;
+      const crossfireContext = {owner:crossfireOwner, zone:currentPlayerZoneIndex, now:game.runTime};
+      const crossfirePath = {x:Math.min(bullet.x, bullet.x+dx)-10, y:Math.min(bullet.y, bullet.y+dy)-10,
+        w:bullet.w+Math.abs(dx)+20, h:bullet.h+Math.abs(dy)+20};
+      const crossfireTargets = crossfireOwner ? activeEnemies.filter(enemy =>
+        crossfire.canHit(bullet, enemy, crossfireContext) && overlaps(crossfirePath, enemy)) : [];
+
       const solidHere = () => nearbyBulletPlatforms.some(p => !p.hidden && overlaps(bullet, p));
       if (movingSteel && !remove && sweep.samples[0] && slashSegmentHitsRect(sweep.samples[0], bullet) && !solidHere()) {
         registerSwordDeflection(bullet);
@@ -10466,6 +10535,25 @@
           registerSwordDeflection(bullet);
           cut = remove = true;
           break;
+        }
+        // Steel and solid cover resolve first. A hostile round can then strike
+        // one allied machine; it never chains through a room or kills it.
+        if (crossfireTargets.length && !solidHere()) {
+          for (const target of crossfireTargets) {
+            if (!target.alive || !overlaps(bullet, target)) continue;
+            crossfireContext.guardActive = ensureShieldState(target);
+            const impact = crossfire.impact(bullet, target, crossfireContext);
+            if (!impact) continue;
+            if (impact.stagger > 0) {
+              applyEnemyHitStun(target, impact.stagger);
+              target.hurt = Math.max(target.hurt, 0.14);
+              spawnParticles(bullet.x, bullet.y, impact.exposed ? "#85f2e4" : "#f7cb76", 9, 160, 0.28, 120);
+              sound.tone(impact.exposed ? 720 : 470, 0.045, "triangle", 0.018, 0.65);
+            }
+            remove = true;
+            break;
+          }
+          if (remove) break;
         }
         const lockedMortarInFlight = bullet.kind === "mortar" && Number.isFinite(bullet.impactTimer);
         const body = movingSteel ? { x: lerp(sweep.startX, player.x, fraction), y: lerp(sweep.startY, player.y, fraction),
@@ -10526,6 +10614,11 @@
             remove = true;
             break;
           }
+        }
+        if (!remove && !game.adminMode && !game.bossReplay && !bullet.enemy && bullet.kind === "shotgun" &&
+            fieldCaches?.shot(currentPlayerZoneIndex,bullet)) {
+          spawnParticles(bullet.x,bullet.y,"#ffda83",5,125,0.23,150);
+          remove = true;
         }
       }
 
@@ -10639,6 +10732,7 @@
     const enemiesBeforePlayerMovement = getActiveEnemies();
     updateCombatTerrain(dt, enemiesBeforePlayerMovement);
     enforceEnemyLockdowns(enemiesBeforePlayerMovement);
+    freightChase?.update(dt);
     updatePlayer(dt);
     if (game.duelOpponent?.alive && player.hp>0 && !game.adminMode && !game.adminCadetMode)
       duelGhost?.capture(game.runTime-game.duelOpponent.duelBeganAt,player);
@@ -10647,7 +10741,7 @@
     for (const enemy of activeEnemies) {
       const firstNewProjectileIndex = bullets.length;
       updateEnemy(enemy, dt);
-      tagEnemyProjectilesCreatedSince(firstNewProjectileIndex, normalizeEnemyHomeZone(enemy));
+      tagEnemyProjectilesCreatedSince(firstNewProjectileIndex, normalizeEnemyHomeZone(enemy), enemy);
     }
     resolveEnemySeparation(activeEnemies);
     resolvePlayerEnemyOverlap(activeEnemies);
@@ -14767,13 +14861,16 @@
     drawBossArenaBackdrop(left, right);
     drawTutorialStageScenery(left, right);
     for (const backdrop of adminBackdrops) if (!backdrop.hidden && backdrop.x + backdrop.w > left && backdrop.x < right) drawAdminBackdrop(backdrop);
-    for (const platform of getNearbyPlatforms({ x: left, w: right - left }, 0)) if (!platform.hidden && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
+    for (const platform of getNearbyPlatforms({ x: left, w: right - left }, 0)) if (!platform.hidden && !platform.freightCar && platform.x + platform.w > left && platform.x < right) drawPlatform(platform);
+    freightChase?.draw(ctx, left, right);
+    window.MoonlitEchoMarks?.drawWorld(ctx, { game, player, checkpoints, platforms, hazards, left, right });
     for (const patch of snowPatches) if (patch.x + patch.w > left && patch.x < right) drawSnowPatch(patch);
     for (const hazard of hazards) if (!hazard.hidden && hazard.x + hazard.w > left && hazard.x < right) drawHazard(hazard);
     // 표지판은 지형보다 뒤에 그려 발판에 가려지지 않게 한다.
     for (const sign of signs) if (!sign.hidden && sign.x > left - 200 && sign.x < right) drawSign(sign);
     for (const checkpoint of checkpoints) if (checkpoint.x > left && checkpoint.x < right) drawCheckpoint(checkpoint);
     for (const pickup of pickups) if (pickup.x > left && pickup.x < right) drawPickup(pickup);
+    if (!game.bossReplay) fieldCaches?.draw(ctx,getCurrentPlayerZoneIndex(),left,right,game.time,player);
     for (const node of boostNodes) if (node.x > left && node.x < right) drawBoostNode(node);
     drawAdminWorldSelection();
     if (!game.adminMode) {
@@ -14808,6 +14905,7 @@
         continue;
       }
       drawEnemy(enemy);
+      window.MoonlitCrossfire?.draw(ctx, enemy, game.runTime);
     }
     for (const bullet of bullets) drawBullet(bullet);
     drawPlayer();
@@ -15116,7 +15214,16 @@
     ctx.ellipse(echoX + player.w / 2, echoY + player.h / 2, 30, 43, 0, 0, TAU);
     ctx.fill();
     ctx.restore();
-    drawPlayerBody(echoX, echoY, -1, 1, false, "echo");
+    const recall = game.cutscene?.shots[game.cutsceneShotIndex]?.echoScarRecall
+      ? window.MoonlitEchoMarks?.recallBeat(game.cutsceneShotElapsed) : null;
+    if (recall) {
+      const aimY = [-0.55, 0.55, 0][recall.index];
+      const pose = { ...player, vx: 0, vy: 0, grounded: true, wallLeft: false, wallRight: false,
+        runCycle: 0, squash: 0, motionPose: null, recoilTimer: 0, crossShotTimer: 0,
+        attackDuration: 0.43, attackTimer: recall.cutting ? Math.max(0.001, 0.43 * (1 - recall.progress)) : 0,
+        attackDir: { x: -1, y: aimY }, chargedAttack: false, slashComboActive: false };
+      window.MoonlitOperative.createRenderer(ctx, pose, game)(echoX, echoY, -1, 1, false, "echo");
+    } else drawPlayerBody(echoX, echoY, -1, 1, false, "echo");
     ctx.fillStyle = "rgba(7, 4, 15, 0.82)";
     ctx.fillRect(echoX - 25, echoY - 30, 84, 18);
     ctx.fillStyle = "#d7a5ff";
@@ -15206,7 +15313,9 @@
       ctx.textAlign = "left";
     }
 
-    if (localDuel) {
+    if (shot.echoScarRecall) {
+      window.MoonlitEchoMarks?.drawRecall(ctx, { elapsed: game.cutsceneShotElapsed, echoX: echoActorX, feetY: playerScreenY + player.h });
+    } else if (localDuel) {
       const actorX = shot.speaker.includes("잔영") ? echoActorX : playerScreenX + player.w / 2;
       drawCutsceneSpeechBubble(shot, accent, actorX, playerScreenY, revealedText);
     } else {
@@ -15451,7 +15560,7 @@
     ctx.textAlign = "left";
     ctx.fillStyle = game.adminMode ? palette.amber : hudZoneRemaining > 0 ? "#ffa4ae" : palette.cyan;
     ctx.font = "800 11px 'Malgun Gothic', sans-serif";
-    ctx.fillText(spar ? (sparBest ? duelStats(sparBest) : "첫 기록에 도전 중") : game.adminMode ? "관리자 · 모든 봉쇄 통과" : hudZoneRemaining > 0 ? `구역 봉쇄 · 남은 적 ${hudZoneRemaining}` : "구역 확보 · 통로 개방", 15, 51, 186);
+    ctx.fillText(spar ? (sparBest ? duelStats(sparBest) : "첫 기록에 도전 중") : game.adminMode ? "관리자 · 모든 봉쇄 통과" : freightChase?.label(game.zone) || (hudZoneRemaining > 0 ? `구역 봉쇄 · 남은 적 ${hudZoneRemaining}` : "구역 확보 · 통로 개방"), 15, 51, 186);
     ctx.restore();
 
 
@@ -15963,6 +16072,16 @@
     ) return;
     const worldX = pointer.screenX + camera.x;
     const worldY = pointer.screenY + camera.y;
+    const freightAim = freightChase?.contextAim(worldX,worldY);
+    if (freightAim) { startAttack(freightAim); return; }
+    const latch = !game.adminMode && !game.bossReplay && fieldCaches?.touchLatch(getCurrentPlayerZoneIndex(),worldX,worldY);
+    if (latch) {
+      const aim = aimAtWorldPoint(latch.x+latch.w/2,latch.y+latch.h/2);
+      if (prospectiveSlashSegments(aim,1).some(s => slashSegmentHitsRect(s,latch))) { startAttack(aim); return; }
+    }
+    if (window.MoonlitEchoMarks?.wantsInspectAt?.(worldX, worldY, { game, player, checkpoints, platforms, hazards })) {
+      startAttack(aimAtWorldPoint(worldX, worldY)); return;
+    }
     if (crossFinisherReady()) { startShotgun(aimAtWorldPoint(worldX, worldY)); return; }
     const slashTarget = findTouchSlashTarget(worldX, worldY);
     if (slashTarget) {

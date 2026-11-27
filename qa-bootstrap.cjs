@@ -59,15 +59,17 @@ async function boot({ profile = "ok", failedScript, initializationFails = false 
 }
 
 (async () => {
+  const dependencies=["story-data.js","operative-renderer.js","duel-ghost.js","environment-renderer.js","campaign-edit-compat.js",
+    "crossfire.js","freight-chase.js","echo-marks.js","field-caches.js"];
   for (const profile of ["ok", "offline", "missing", "invalid", "slow"]) {
     const result = await boot({ profile });
-    assert.deepEqual(result.scripts, ["story-data.js","operative-renderer.js","duel-ghost.js","environment-renderer.js","campaign-edit-compat.js","game.js"].map(name=>name+"?v="+version));
+    assert.deepEqual(result.scripts, [...dependencies,"game.js"].map(name=>name+"?v="+version));
     assert.equal(result.root.dataset.gameBootstrap, "ready", `${profile}: game must start`);
     assert.equal(result.elements.get("loading-screen").hidden, true);
     assert.equal(result.timeout, null, "profile timeout must be released");
     assert.equal(Boolean(result.window.__MOONLIT_ECHO_PUBLISHED_ADMIN_PROFILE__), profile === "ok");
   }
-  for (const scenario of [...["story-data.js","operative-renderer.js","duel-ghost.js","environment-renderer.js","campaign-edit-compat.js","game.js"].map(failedScript=>({failedScript})), { initializationFails: true }]) {
+  for (const scenario of [...[...dependencies,"game.js"].map(failedScript=>({failedScript})), { initializationFails: true }]) {
     const result = await boot(scenario);
     const retry = result.elements.get("loading-retry");
     assert.equal(result.elements.get("loading-screen").hidden, false);
@@ -76,7 +78,7 @@ async function boot({ profile = "ok", failedScript, initializationFails = false 
     assert.equal(retry.focused, true);
     retry.click();
     assert.equal(result.reloads(), 1);
-    if (scenario.failedScript && scenario.failedScript !== "game.js") assert.equal(result.scripts.length, 5);
+    if (scenario.failedScript && scenario.failedScript !== "game.js") assert.equal(result.scripts.length, dependencies.length);
   }
   console.log("Bootstrap QA passed: dependency order, profile timeout/offline/invalid data, script and initialization errors, retry.");
 })().catch(error => { console.error(error); process.exitCode = 1; });
