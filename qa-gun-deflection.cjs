@@ -28,7 +28,7 @@ function pose(facing,input,progress){
 }
 function shoot(role,point){
   const e=target(role,{facing:q.player.facing*-1,cooldown:999,windup:.071});
-  Object.assign(e,{x:point.x-e.w/2,y:point.y-e.h*.38,originX:point.x-e.w/2,originY:point.y-e.h*.38,
+  Object.assign(e,{x:point.x-e.w/2,y:point.y-e.h*.38,originX:point.x-e.w/2,originY:point.y-e.h*.38,spawnX:point.x-e.w/2,
     targetX:q.player.x+q.player.w/2,targetY:q.player.y+q.player.h/2});
   if(role==='machinegun')Object.assign(e,{windup:0,burstRemaining:4,burstInterval:0});
   q.updateEnemy(e,.002);
