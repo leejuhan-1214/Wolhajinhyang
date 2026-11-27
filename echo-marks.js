@@ -116,6 +116,28 @@
     const t=clamp(elapsed-.3,0,2.1),index=Math.min(2,Math.floor(t/.7));
     return {index,progress:clamp((t-index*.7)/.43,0,1),cutting:elapsed>=.3&&elapsed<2.4&&(t-index*.7)<.43};
   }
+  // The three existing sword beats share a planted, left-facing body. These
+  // foot placements are relative to the original mark, not to the camera or
+  // the player. Smoothstep gives every plant zero speed before the next push.
+  const FOOTWORK=[[0,0],[.27,3],[.58,-11],[.87,-10],[1.06,-8],[1.32,-20],
+    [1.62,-18],[1.74,-16],[2.02,-34],[2.21,-32],[2.7,0]];
+  function stagePose(shot,elapsed,clock){
+    const time=Number.isFinite(clock)?clock:0,breath=.043+.034*Math.sin(time*2.45);
+    if(!shot?.echoScarRecall)return {offsetX:0,vx:0,runCycle:0,squash:breath};
+    const t=clamp(Number.isFinite(elapsed)?elapsed:0,0,2.7);
+    let walked=0;
+    for(let i=1;i<FOOTWORK.length;i++){
+      const [start,a]=FOOTWORK[i-1],[end,b]=FOOTWORK[i],delta=b-a;
+      if(t<=end){
+        const u=clamp((t-start)/(end-start),0,1),weight=u*u*(3-2*u);
+        const vx=delta*6*u*(1-u)/(end-start);
+        return {offsetX:a+delta*weight,vx,runCycle:(walked+Math.abs(delta)*weight)*.092,
+          squash:breath+Math.min(.08,Math.abs(vx)*.0007)};
+      }
+      walked+=Math.abs(delta);
+    }
+    return {offsetX:0,vx:0,runCycle:walked*.092,squash:breath};
+  }
   function updateRecall(scene,shot,elapsed,sound){
     if(!shot?.echoScarRecall)return;
     while((scene.echoScarCue||0)<3&&elapsed>=.3+(scene.echoScarCue||0)*.7){
@@ -129,5 +151,5 @@
       const tip=[c.from[0]+(c.to[0]-c.from[0])*beat.progress,c.from[1]+(c.to[1]-c.from[1])*beat.progress];ctx.fillStyle="#f0e6ff";
       for(let i=0;i<5;i++)ctx.fillRect(Math.round(tip[0]-i*3),Math.round(tip[1]+i*i*.6-6),2,2);ctx.restore();}
   }
-  window.MoonlitEchoMarks=Object.freeze({CUTS,SITES,getMarks,drawWorld,wantsInspectAt,inspectBlade,prepareScene,recallBeat,updateRecall,drawRecall});
+  window.MoonlitEchoMarks=Object.freeze({CUTS,SITES,getMarks,drawWorld,wantsInspectAt,inspectBlade,prepareScene,recallBeat,stagePose,updateRecall,drawRecall});
 })();

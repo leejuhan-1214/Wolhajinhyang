@@ -114,6 +114,17 @@ test('recall renders exactly one Echo actor and suppresses the combat double',()
   try{q.drawCutscene();}finally{window.MoonlitOperative=original;}
   assert.equal(echoDraws,1,'only the actual pose-rendered cinematic Echo should appear');
 });
+test('three cuts have continuous planted footwork and dialogue breath without drifting',()=>{
+  const shot={echoScarRecall:true},at=t=>m.stagePose(shot,t,0);
+  assert.equal(at(0).offsetX,0);assert.equal(at(2.7).offsetX,0);
+  for(const t of [.27,.58,.87,1.06,1.32,1.62,1.74,2.02,2.21,2.7])assert(Math.abs(at(t).vx)<1e-7);
+  assert(at(.58).offsetX<-10);assert(at(1.32).offsetX<at(.58).offsetX-5);assert(at(2.02).offsetX<at(1.32).offsetX-8);
+  let last=at(0);
+  for(let i=1;i<=324;i++){const frame=at(i/120);assert(Object.values(frame).every(Number.isFinite));
+    assert(Math.abs(frame.offsetX-last.offsetX)<1.1);assert(frame.runCycle>=last.runCycle);last=frame;}
+  const one=m.stagePose({speaker:'잔영-00'},.5,.1),two=m.stagePose({speaker:'서린'},3,2);
+  assert.equal(one.vx,0);assert.equal(two.offsetX,0);assert(Math.abs(one.squash-two.squash)>.025);
+});
 test('pixel rendering is finite/balanced and cutscene actor never mutates player',()=>{
   clean();const original=q.CUTSCENE_EVENT_BY_ID.get(q.BOSS_INTRO_CUTSCENE_IDS.echo);q.startCutscene(original);
   let depth=0,rects=0;const saved={};

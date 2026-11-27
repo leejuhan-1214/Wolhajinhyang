@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.12.0";
+  const GAME_VERSION = "3.12.1";
   const fieldCaches = window.MoonlitFieldCaches?.create();
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
@@ -4296,6 +4296,32 @@
     if (!duelBook.cleared.has(kind) || !Object.hasOwn(BOSS_DEFINITIONS,kind) || !availableDuelBoss(kind) || !["duelMenu","duelResult"].includes(game.mode)) return false;
     hideDuelPanel(); enterMobileFullscreen(); resetGame(false,kind); return true;
   }
+  function getEchoEncounterStart(boss, anchor, side, fallback) {
+    const arena = getBossArenaBounds(boss);
+    const center = anchor.x + anchor.w / 2, foot = anchor.y + anchor.h;
+    // Echo uses the operative's dimensions. Probe a supported, hazard-free
+    // opening on either side without changing the campaign checkpoint or IDs.
+    for (const gap of [360, -360, 465, -465, 250, -250]) {
+      const offset = gap * side;
+      const start = getCheckpointRespawnPosition({x:center+offset-16,y:foot-88,w:32,h:88});
+      const body = {...start,w:player.w,h:player.h}, dx = Math.abs(start.x+player.w/2-center);
+      if (start.x < arena.left+4 || start.x+player.w > arena.right-4 || dx < 180 || dx > 560 ||
+          Math.abs(start.y+player.h-foot) > 115 || !checkpointSpawnIsSafe(start.x,start.y)) continue;
+      const onFloor = platforms.some(p => !p.hidden && Math.abs(p.y-start.y-player.h) <= 2 &&
+        p.x <= start.x+2 && p.x+p.w >= start.x+player.w-2);
+      if (onFloor && !overlaps(body,anchor)) return start;
+    }
+    return fallback;
+  }
+  function stageEchoAtRestoredCheckpoint() {
+    if (game.adminMode || game.bossReplay || !game.cutsceneSeen.has(BOSS_INTRO_CUTSCENE_IDS.echo)) return;
+    const zone = getCurrentPlayerZoneIndex();
+    const echo = enemies.find(e => e.alive && !e.adminSpawned && e.type === "boss" &&
+      e.bossKind === "echo" && e.homeZoneIndex === zone);
+    if (!echo || Math.abs(echo.x - player.x) <= 580) return;
+    const pos = getEchoEncounterStart(echo, player, 1, null);
+    if (pos) { echo.x = pos.x; echo.y = pos.y; echo.vx = 0; echo.vy = 0; echo.facing = Math.sign(player.x - echo.x) || -1; }
+  }
   function prepareBossReplay(kind) {
     const target=availableDuelBoss(kind);
     if (!target) { leaveDuels(false); return; }
@@ -4304,7 +4330,8 @@
     game.defeatedBosses=new Set(stages.slice(0,target.stageIndex).map(s=>s.bossKind));
     game.tutorialActive=false; game.tutorialCompleted=true; game.burstUnlocked=true;
     game.stage=target.stageIndex; game.zone=target.homeZoneIndex;
-    const pos=setRespawnCheckpoint(checkpoints[game.zone],game.zone);
+    const checkpointPos=setRespawnCheckpoint(checkpoints[game.zone],game.zone);
+    const pos=kind==="echo" ? getEchoEncounterStart(target,target,-1,checkpointPos) : checkpointPos;
     player.x=pos.x; player.y=pos.y; player.vx=0; player.vy=0;
     game.cutsceneSeen=new Set(CUTSCENE_EVENTS.map(e=>e.id)); game.storySeen=new Set(STORY_EVENTS.map(e=>e.id));
     game.story=null; game.storyQueue=[]; game.stageTitle=0; game.zoneTitle=0; game.stageAbilityNoticeTimer=0;
@@ -4477,6 +4504,7 @@
     game.cutsceneShotElapsed = 0;
     game.stage = player.respawnStage;
     game.zone = player.respawnZone;
+    stageEchoAtRestoredCheckpoint();
     announceStageAbility(game.stage, true);
     game.stageBossDefeated = game.defeatedBosses.has("warden");
     game.bossDefeated = game.defeatedBosses.has("echo");
@@ -5761,11 +5789,15 @@
 
   function isBossIntroLocked(enemy) {
     if (!enemy || enemy.type !== "boss" || game.adminMode) return false;
+    if (enemy.bossKind === "echo" && getCurrentPlayerZoneIndex() !== normalizeEnemyHomeZone(enemy)) return true;
     if (enemy.combatStarted) return false;
     if (game.bossReplay?.kind === enemy.bossKind) return Boolean(game.cutscene);
     const introCutsceneId = getBossIntroCutsceneId(enemy);
     const introEvent = CUTSCENE_EVENT_BY_ID.get(introCutsceneId);
-    if (!introCutsceneId || !introEvent || player.x < introEvent.x || !game.cutsceneSeen.has(introCutsceneId)) return true;
+    if (!introCutsceneId || !introEvent || !game.cutsceneSeen.has(introCutsceneId)) return true;
+    // Once Echo's dialogue is complete, a death/continue starts at the room's
+    // actual checkpoint, not at the (much later) one-time story trigger.
+    if (enemy.bossKind !== "echo" && player.x < introEvent.x) return true;
     return Boolean(game.cutscene);
   }
 
@@ -6918,6 +6950,7 @@
     game.zone = restartZoneIndex;
     player.x = checkpointPosition.x;
     player.y = checkpointPosition.y;
+    stageEchoAtRestoredCheckpoint();
     player.vx = 0;
     player.vy = 0;
     player.grounded = false;
@@ -15199,7 +15232,10 @@
   }
 
   function drawEchoCutsceneActor(playerScreenX, playerScreenY) {
-    const echoX = clamp(playerScreenX + 310, W * 0.58, W * 0.68);
+    const anchorX = clamp(playerScreenX + 310, W * 0.58, W * 0.68);
+    const shot = game.cutscene?.shots[game.cutsceneShotIndex];
+    const stage = window.MoonlitEchoMarks?.stagePose?.(shot,game.cutsceneShotElapsed,game.time);
+    const echoX = anchorX + (stage?.offsetX || 0);
     const echoY = playerScreenY;
     const glow = 0.5 + Math.sin(game.time * 4.2) * 0.14;
     ctx.save();
@@ -15214,13 +15250,13 @@
     ctx.ellipse(echoX + player.w / 2, echoY + player.h / 2, 30, 43, 0, 0, TAU);
     ctx.fill();
     ctx.restore();
-    const recall = game.cutscene?.shots[game.cutsceneShotIndex]?.echoScarRecall
+    const recall = shot?.echoScarRecall
       ? window.MoonlitEchoMarks?.recallBeat(game.cutsceneShotElapsed) : null;
-    if (recall) {
-      const aimY = [-0.55, 0.55, 0][recall.index];
-      const pose = { ...player, vx: 0, vy: 0, grounded: true, wallLeft: false, wallRight: false,
-        runCycle: 0, squash: 0, motionPose: null, recoilTimer: 0, crossShotTimer: 0,
-        attackDuration: 0.43, attackTimer: recall.cutting ? Math.max(0.001, 0.43 * (1 - recall.progress)) : 0,
+    if (stage || recall) {
+      const aimY = recall ? [-0.55, 0.55, 0][recall.index] : 0;
+      const pose = { ...player, vx: stage?.vx || 0, vy: 0, grounded: true, wallLeft: false, wallRight: false,
+        runCycle: stage?.runCycle || 0, squash: stage?.squash || 0, motionPose: null, recoilTimer: 0, crossShotTimer: 0,
+        attackDuration: 0.43, attackTimer: recall?.cutting ? Math.max(0.001, 0.43 * (1 - recall.progress)) : 0,
         attackDir: { x: -1, y: aimY }, chargedAttack: false, slashComboActive: false };
       window.MoonlitOperative.createRenderer(ctx, pose, game)(echoX, echoY, -1, 1, false, "echo");
     } else drawPlayerBody(echoX, echoY, -1, 1, false, "echo");
@@ -15231,7 +15267,7 @@
     ctx.textAlign = "center";
     ctx.fillText("ECHO-00", echoX + player.w / 2, echoY - 27);
     ctx.textAlign = "left";
-    return echoX + player.w / 2;
+    return (recall ? anchorX : echoX) + player.w / 2;
   }
 
   function drawCutscene() {
