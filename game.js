@@ -104,7 +104,7 @@
   const TARGET_CAMPAIGN_MINUTES = 2440;
   const SCREEN_SHAKE_SCALE = 0.18;
   const MAX_SCREEN_SHAKE_AMPLITUDE = 6;
-  const GAME_VERSION = "3.11.5";
+  const GAME_VERSION = "3.11.6";
   const AUDIO_SETTINGS_KEY = "moonlit-echo-audio-settings-v1";
   const AUDIO_SETTINGS_REVISION = 5;
   const DEFAULT_AUDIO_SETTINGS = Object.freeze({ master: 1, music: 1, sfx: 1, muted: false, revision: AUDIO_SETTINGS_REVISION });
@@ -1970,6 +1970,69 @@
     return removed;
   }
 
+  function zoneEntryVerticalRange(zoneIndex) {
+    const cp = checkpoints[zoneIndex];
+    if (!cp) return null;
+    // normalizeCheckpointPlacements has already put the marker on its safe floor.
+    // Walking in and continuing at this checkpoint frame that floor slightly differently.
+    const spawnY = cp.y + cp.h - player.h - 1;
+    const first = zoneIndex === 0 ? 0 : clamp(spawnY - 420, 0, WORLD_H - H);
+    const walking = clamp(spawnY + player.h / 2 - H * 0.58, 0, WORLD_H - H);
+    return { top: Math.max(first, walking), bottom: Math.min(first, walking) + H };
+  }
+  function fitsEntryScreen(enemy, range, x = enemy.spawnX ?? enemy.x, y = enemy.spawnY ?? enemy.y) {
+    if (!range) return true;
+    const within = top => Number.isFinite(top) && top >= range.top && top + enemy.h <= range.bottom;
+    if (!within(y)) return false;
+    // Use a copy so validation cannot move a real enemy or cancel its attack.
+    const probe = { ...enemy, x, y };
+    constrainEnemyToLockdown(probe);
+    ejectEnemyFromPlatforms(probe);
+    constrainBossToArenaVertical(probe);
+    return within(probe.y);
+  }
+  function restoreRequiredBossInsideEntry(enemy, range) {
+    const bounds = getBossArenaBounds(enemy), minY = range.top, maxY = range.bottom - enemy.h;
+    const x = clamp(enemy.spawnX, bounds.left, bounds.right - enemy.w);
+    const place = (nextX, nextY) => {
+      const probe = { ...enemy, x: nextX, y: nextY, spawnX: nextX, spawnY: nextY, baseY: nextY };
+      if (!fitsEntryScreen(probe, range) || getNearbyPlatforms(probe, 0).some(p => !p.hidden && !bossIgnoresArenaPlatform(probe,p) && overlaps(p,probe))) return false;
+      enemy.x = enemy.originX = enemy.spawnX = nextX;
+      enemy.y = enemy.spawnY = enemy.baseY = nextY;
+      return true;
+    };
+    // Prefer existing floor within the boss room. All authored bosses fit unchanged;
+    // this fallback is for customized arena floors/checkpoints.
+    for (const p of platforms) {
+      if (p.hidden || bossIgnoresArenaPlatform(enemy, p)) continue;
+      const left = Math.max(bounds.left, p.x), right = Math.min(bounds.right, p.x + p.w) - enemy.w;
+      const y = p.y - enemy.h - 1;
+      if (left <= right && y >= minY && y <= maxY && place(clamp(x, left, right), y)) return;
+    }
+    for (let px = bounds.left; px <= bounds.right - enemy.w; px += Math.max(24, enemy.w / 2)) {
+      for (let py = maxY; py >= minY; py -= 24) if (place(px, py)) return;
+    }
+  }
+  function pruneInitialEntryScreenEnemies(adjustBaseCounts = false) {
+    const views = zones.map((_, i) => zoneEntryVerticalRange(i));
+    let removed = 0;
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      if (enemy.summonedByBossId) continue;
+      const zoneIndex = getZoneIndexAt(enemy.spawnX ?? enemy.originX ?? enemy.x);
+      const range = views[zoneIndex];
+      if (fitsEntryScreen(enemy, range)) continue;
+      if (enemy.type === "boss" && !enemy.adminSpawned) {
+        restoreRequiredBossInsideEntry(enemy, range);
+        continue;
+      }
+      if (adjustBaseCounts && !enemy.adminSpawned && zones[zoneIndex].baseTargetEnemyCount > 0) zones[zoneIndex].baseTargetEnemyCount--;
+      enemies.splice(i, 1);
+      removed++;
+    }
+    return removed;
+  }
+
   function isStationaryTurret(enemyOrType) {
     const type = typeof enemyOrType === "string" ? enemyOrType : enemyOrType?.type;
     return type === "turret" || type === "mortarTurret";
@@ -2867,7 +2930,7 @@
     enemy.alive = true;
     enemy.countedKill = false;
     if (enemy.type !== "boss") {
-      if (invalidEnemyPlacement(enemy)) { enemies.pop(); return null; }
+      if (invalidEnemyPlacement(enemy) || !fitsEntryScreen(enemy, zoneEntryVerticalRange(getZoneIndexAt(x)), x, rawY)) { enemies.pop(); return null; }
       return enemy;
     }
     enemy.bossKind = BOSS_DEFINITIONS[record.bossKind]
@@ -2890,6 +2953,7 @@
       enemy.spawnY = enemy.y;
       enemy.baseY = enemy.y;
     }
+    if (!fitsEntryScreen(enemy, zoneEntryVerticalRange(getZoneIndexAt(x)), x, rawY)) { enemies.pop(); return null; }
     return enemy;
   }
 
@@ -3780,7 +3844,7 @@
       if (adminRemovedObjectIds.has(boostNodes[index].id)) boostNodes.splice(index, 1);
     }
     rebuildPlatformSpatialIndex();
-    initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies(true);
+    initialOffscreenEnemyRemovals = removeInitiallyOffscreenEnemies(true) + pruneInitialEntryScreenEnemies(true);
     auditEnemyZoneContainment();
     applyAdminRemovedEnemyData();
     applyDifficultyPopulationScale();
@@ -5340,9 +5404,9 @@
         enemy.baseY = enemy.y;
       }
     }
-    if (invalidEnemyPlacement(enemy)) {
+    if (invalidEnemyPlacement(enemy) || !fitsEntryScreen(enemy, zoneEntryVerticalRange(getZoneIndexAt(enemy.spawnX)))) {
       enemies.pop();
-      game.hint = "적을 배치할 수 없는 위치입니다. 맵 안으로 이동하세요."; game.hintTimer = 2.5;
+      game.hint = "적을 배치할 수 없습니다. 구역 입장 화면의 높이 안으로 이동하세요."; game.hintTimer = 2.5;
       return null;
     }
     recordAdminSpawnedEnemy(enemy);

@@ -1,18 +1,19 @@
-// World-bound cleanup, not camera culling. Exercises the shipped build, restart,
-// containment and periodic-audit paths without mutating shared editing data.
+// Initial entry-screen policy plus world-bound runtime cleanup, not live camera
+// culling. Exercises build/restart/audit without mutating shared editing data.
 const assert=require('node:assert/strict'),fs=require('node:fs');
-// Read-only comparison against the v3.11.4 runtime; no checkout or
-// changes to a shared profile/file are performed by this optional mode.
+// Read-only comparison against v3.11.5 (before initial entry-screen filtering).
+// This optional baseline intentionally fails the new build policy; no checkout
+// or changes to a shared profile/file are performed.
 const baseline=process.argv.includes('--baseline'),readFile=fs.readFileSync;
 if(baseline){
-  const old=require('node:child_process').execFileSync('git',['show','76c0fee:game.js'],{encoding:'utf8',maxBuffer:8*1024*1024});
+  const old=require('node:child_process').execFileSync('git',['show','04dbcf8:game.js'],{encoding:'utf8',maxBuffer:8*1024*1024});
   fs.readFileSync=function(path,...args){return path==='game.js'?old:readFile.call(this,path,...args);};
 }
 let harness=fs.readFileSync('qa-cross-combo.cjs','utf8').split('function test(name,body)')[0];
 harness=harness.replace('player,game,crossChain,keys,pressed,pointer,camera,',
   `player,game,crossChain,keys,pressed,pointer,camera,WORLD_H,H,zones,
   removeInitiallyOffscreenEnemies,cullEnemiesOutsideVerticalView,enforceEnemyLockdowns,
-  getZoneRemaining,getZoneIndexAt,saveCampaign,restoreAdminSpawnedEnemy,
+  getZoneRemaining,getZoneIndexAt,getCheckpointRespawnPosition,saveCampaign,restoreAdminSpawnedEnemy,
   adminRemovedEnemyIds,persistAdminRemovedEnemies,
   setAdminRecords(records){adminSpawnedEnemyData=structuredClone(records);persistAdminSpawnedEnemies();},
   getAdminRecords(){return structuredClone(adminSpawnedEnemyData);},
@@ -55,13 +56,20 @@ test('authored ceiling-hovering drone with its permanent aiming center outside i
   assert(e.y+e.h>0,'one visible pixel alone does not make this permanent authored hover anchor playable');
   assert.equal(q.removeInitiallyOffscreenEnemies(),1);assert(!q.enemies.includes(e));assert.deepEqual(rewards(),before);
 });
+// Compare each difficulty to the same clean hard install rather than an obsolete
+// fixed roster size. Entry-screen filtering intentionally changes this roster.
+clean();q.rebuild('darkhorse');
+const referenceHardIds=new Set(q.enemies.filter(e=>e.type!=='boss'&&!e.adminSpawned&&!e.summonedByBossId&&e.alive).map(e=>e.id));
+assert(referenceHardIds.size>0,'clean hard install retains a playable ordinary roster');
 for(const difficulty of['chick','cadet','darkhorse','weapon'])test(`${difficulty} real build excludes two authored upper ghosts and retains every boss`,()=>{
   clean();q.rebuild(difficulty);
   assert(!q.enemies.some(e=>e.id==='4:drone:141828'),'post-ejection upper ghost must not block Act 5 region 03');
   assert(!q.enemies.some(e=>e.id==='3:drone:121288'),'above-world permanent hover anchor must not hide Act 4 region 06 drone');
   assert(q.enemies.filter(e=>e.type!=='boss'&&e.alive).every(e=>!outside(e)),'all authored normals start inside the vertical world');
-  const expectedMobs=Math.round(448*({chick:.5,cadet:2/3,darkhorse:1,weapon:1}[difficulty]));
-  assert.equal(q.enemies.filter(e=>e.type!=='boss'&&!e.adminSpawned&&e.alive).length,expectedMobs,'cleanup precedes the exact difficulty population subset');
+  const expectedMobs=Math.round(referenceHardIds.size*({chick:.5,cadet:2/3,darkhorse:1,weapon:1}[difficulty]));
+  const normals=q.enemies.filter(e=>e.type!=='boss'&&!e.adminSpawned&&!e.summonedByBossId&&e.alive);
+  assert.equal(normals.length,expectedMobs,'cleanup precedes the exact difficulty population subset');
+  assert(normals.every(e=>referenceHardIds.has(e.id)),'every difficulty remains a subset of the clean hard roster');
   const bosses=q.enemies.filter(e=>e.type==='boss'&&!e.adminSpawned);
   assert.equal(bosses.length,10);assert.equal(new Set(bosses.map(e=>e.bossKind)).size,10);
   assert(bosses.every(e=>e.alive));assert.equal(q.game.totalEnemies,q.enemies.filter(e=>e.alive).length);
@@ -69,11 +77,14 @@ for(const difficulty of['chick','cadet','darkhorse','weapon'])test(`${difficulty
   assert.equal(q.getZoneRemaining(34),expected);assert(expected>0,'cleanup must not erase the entire future region');
   assert.equal(q.game.kills,0);assert.equal(q.game.defeatedBosses.size,0);
 });
-test('full build filters raw out-of-world admin spawns but leaves shared records byte-for-byte intact',()=>{
-  clean();const records=[record('above',-300),record('below',q.WORLD_H+300),record('valid-lower',1000),record('partial-top',-10)];
+test('full build omits world-invalid and entry-hidden admin spawns without editing shared records',()=>{
+  clean();q.rebuild('darkhorse');
+  const spawn=q.getCheckpointRespawnPosition(q.checkpoints[2]);
+  const records=[record('above',-300),record('below',q.WORLD_H+300),record('entry-hidden-lower',1000),record('partial-top',-10),
+    record('valid-entry',spawn.y+q.player.h-34,{x:spawn.x+q.player.w/2-25})];
   q.setAdminRecords(records);const stored=localStorage.getItem(spawnKey);q.rebuild('darkhorse');
-  assert(!q.enemies.some(e=>e.id===records[0].id||e.id===records[1].id),'clamping must not turn invalid saved origins into new live enemies');
-  for(const r of records.slice(2))assert(q.enemies.some(e=>e.id===r.id&&e.alive),`valid admin placement ${r.id} preserved`);
+  for(const r of records.slice(0,4))assert(!q.enemies.some(e=>e.id===r.id),`initial world/entry-hidden placement ${r.id} omitted`);
+  assert(q.enemies.some(e=>e.id===records[4].id&&e.alive),'valid in-entry administrator placement remains');
   assert.equal(localStorage.getItem(spawnKey),stored);assert.deepEqual(q.getAdminRecords(),records);
   assert.equal(q.game.totalEnemies,q.enemies.filter(e=>e.alive).length);assert.equal(q.game.kills,0);
 });
@@ -122,5 +133,5 @@ test('falling out temporarily does not delete a valid original spawn on checkpoi
 });
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'} ${r.name}`);
 for(const r of results.filter(r=>!r.ok))console.error(r.error);
-console.log(`Offscreen enemy QA${baseline?' (v3.11.4 baseline 76c0fee)':''}: ${results.filter(r=>r.ok).length}/${results.length} passed`);
+console.log(`Offscreen enemy QA${baseline?' (v3.11.5 baseline 04dbcf8)':''}: ${results.filter(r=>r.ok).length}/${results.length} passed; clean hard roster ${referenceHardIds.size}`);
 process.exitCode=Number(results.some(r=>!r.ok));
